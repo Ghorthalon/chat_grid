@@ -606,6 +606,42 @@ function shouldReplaceCurrentText(code: string, key: string): boolean {
   return false;
 }
 
+function textInputMaxLengthForMode(mode: typeof state.mode): number | null {
+  if (mode === 'nickname') return NICKNAME_MAX_LENGTH;
+  if (mode === 'chat') return 500;
+  if (mode === 'itemPropertyEdit') return 500;
+  return null;
+}
+
+function normalizePastedText(raw: string): string {
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n/g, ' ')
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '');
+}
+
+function pasteIntoActiveTextInput(raw: string): boolean {
+  const maxLength = textInputMaxLengthForMode(state.mode);
+  if (maxLength === null) {
+    return false;
+  }
+  const text = normalizePastedText(raw);
+  if (!text) {
+    return true;
+  }
+  const available = Math.max(0, maxLength - state.nicknameInput.length);
+  if (available <= 0) {
+    return true;
+  }
+  const insert = text.slice(0, available);
+  state.nicknameInput =
+    state.nicknameInput.slice(0, state.cursorPos) + insert + state.nicknameInput.slice(state.cursorPos);
+  state.cursorPos += insert.length;
+  replaceTextOnNextType = false;
+  return true;
+}
+
 function describeCharacter(ch: string): string {
   if (ch === ' ') return 'space';
   if (ch === '\t') return 'tab';
@@ -1890,6 +1926,14 @@ function setupInputHandlers(): void {
 
   document.addEventListener('keyup', (event) => {
     state.keysPressed[event.code] = false;
+  });
+
+  document.addEventListener('paste', (event) => {
+    if (document.activeElement !== dom.canvas) return;
+    if (!state.running) return;
+    const pasted = event.clipboardData?.getData('text') ?? '';
+    if (!pasteIntoActiveTextInput(pasted)) return;
+    event.preventDefault();
   });
 }
 
