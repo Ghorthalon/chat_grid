@@ -12,6 +12,7 @@ class ItemDefinition:
     capabilities: tuple[str, ...]
     use_sound: str | None
     default_params: dict
+    use_cooldown_ms: int = 1000
 
 
 ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
@@ -32,3 +33,11 @@ ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
 
 def get_item_definition(item_type: ItemType) -> ItemDefinition:
     return ITEM_DEFINITIONS[item_type]
+
+
+def get_item_use_cooldown_ms(item_type: ItemType) -> int:
+    definition = get_item_definition(item_type)
+    cooldown_ms = definition.use_cooldown_ms
+    if isinstance(cooldown_ms, int) and cooldown_ms > 0:
+        return cooldown_ms
+    return 1000

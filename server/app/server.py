@@ -15,6 +15,7 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from .client import ClientConnection
 from .config import load_config
+from .item_catalog import get_item_use_cooldown_ms
 from .item_service import ItemService
 from .models import (
     BroadcastChatMessagePacket,
@@ -66,6 +67,7 @@ class SignalingServer:
         self._ssl_context = self._build_ssl_context(ssl_cert, ssl_key)
         self.clients: dict[ServerConnection, ClientConnection] = {}
         self.item_service = ItemService(state_file=state_file)
+        self.item_last_use_ms: dict[str, int] = {}
 
     @property
     def items(self) -> dict[str, WorldItem]:
@@ -369,6 +371,7 @@ class SignalingServer:
                 await self._send_item_result(client, False, "delete", "Item is not on your square.", item.id)
                 return
             self.item_service.remove_item(item.id)
+            self.item_last_use_ms.pop(item.id, None)
             await self._broadcast(ItemRemovePacket(type="item_remove", itemId=item.id))
             self.item_service.save_state()
             await self._send_item_result(client, True, "delete", f"Deleted {item.title}.", item.id)
@@ -388,6 +391,20 @@ class SignalingServer:
             if item.type != "dice":
                 await self._send_item_result(client, False, "use", "This item cannot be used yet.", item.id)
                 return
+            now_ms = self.item_service.now_ms()
+            cooldown_ms = get_item_use_cooldown_ms(item.type)
+            last_use_ms = self.item_last_use_ms.get(item.id)
+            if last_use_ms is not None and now_ms - last_use_ms < cooldown_ms:
+                remaining_ms = cooldown_ms - (now_ms - last_use_ms)
+                await self._send_item_result(
+                    client,
+                    False,
+                    "use",
+                    f"Item is on cooldown for {max(1, remaining_ms)} ms.",
+                    item.id,
+                )
+                return
+            self.item_last_use_ms[item.id] = now_ms
             try:
                 sides = max(1, min(100, int(item.params.get("sides", 6))))
                 number = max(1, min(100, int(item.params.get("number", 2))))

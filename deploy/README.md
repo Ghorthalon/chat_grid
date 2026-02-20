@@ -114,3 +114,35 @@ sudo /usr/local/cpanel/scripts/restartsrv_httpd
 
 Usage example in Chat Grid:
 - `https://bestmidi.com/listen/8000/stream`
+
+## 8) GitHub-based update flow (`bestmidi`)
+
+Initial clone (one time):
+
+```bash
+cd /home/bestmidi
+git clone git@github.com:jage9/chat_grid.git chgrid
+```
+
+Update and redeploy:
+
+```bash
+cd /home/bestmidi/chgrid
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+
+# Rebuild/publish web client
+./deploy/scripts/deploy_client.sh /home/bestmidi/chgrid /home/bestmidi/public_html/chgrid /chgrid/
+
+# Reconcile server env/deps (safe to rerun on updates)
+./deploy/scripts/install_server.sh /home/bestmidi/chgrid
+
+# Restart signaling service
+sudo systemctl restart chgrid-signaling.service
+journalctl -u chgrid-signaling.service -n 50 --no-pager
+```
+
+Notes:
+- Run Apache install/reload steps again only if proxy config changed.
+- If your checkout has local changes, stash or commit before `git pull`.
