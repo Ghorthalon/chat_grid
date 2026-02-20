@@ -747,6 +747,17 @@ function squareWord(distance: number): string {
   return distance === 1 ? 'square' : 'squares';
 }
 
+function persistPlayerPosition(): void {
+  try {
+    localStorage.setItem(
+      'spatialChatPosition',
+      JSON.stringify({ x: state.player.x, y: state.player.y }),
+    );
+  } catch {
+    // Ignore storage failures (private mode/quota/blocked storage).
+  }
+}
+
 function gameLoop(): void {
   if (!state.running) return;
   handleMovement();
@@ -777,6 +788,7 @@ function handleMovement(): void {
 
   state.player.x = nextX;
   state.player.y = nextY;
+  persistPlayerPosition();
   state.player.lastMoveTime = now;
   audio.sfxMove(state.player);
   signaling.send({ type: 'update_position', x: nextX, y: nextY });
@@ -926,10 +938,7 @@ async function connect(): Promise<void> {
 function disconnect(): void {
   const wasRunning = state.running;
   if (state.running) {
-    localStorage.setItem(
-      'spatialChatPosition',
-      JSON.stringify({ x: state.player.x, y: state.player.y }),
-    );
+    persistPlayerPosition();
   }
 
   signaling.disconnect();
@@ -1504,6 +1513,7 @@ function handleListModeInput(code: string): void {
     if (!peer) return;
     state.player.x = peer.x;
     state.player.y = peer.y;
+    persistPlayerPosition();
     signaling.send({ type: 'update_position', x: peer.x, y: peer.y });
     state.mode = 'normal';
     updateStatus(`Moved to ${peer.nickname}.`);
@@ -1541,6 +1551,7 @@ function handleListItemsModeInput(code: string): void {
     if (!item) return;
     state.player.x = item.x;
     state.player.y = item.y;
+    persistPlayerPosition();
     signaling.send({ type: 'update_position', x: item.x, y: item.y });
     state.mode = 'normal';
     updateStatus(`Moved to ${itemLabel(item)}.`);
@@ -1982,6 +1993,13 @@ function closeSettings(): void {
 }
 
 function setupUiHandlers(): void {
+  const persistOnUnload = (): void => {
+    if (!state.running) return;
+    persistPlayerPosition();
+  };
+  window.addEventListener('pagehide', persistOnUnload);
+  window.addEventListener('beforeunload', persistOnUnload);
+
   dom.connectButton.addEventListener('click', () => {
     void connect();
   });
