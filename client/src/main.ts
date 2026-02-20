@@ -642,6 +642,37 @@ function pasteIntoActiveTextInput(raw: string): boolean {
   return true;
 }
 
+function mapTextInputKey(code: string, key: string): string {
+  if (code === 'ArrowLeft') return 'arrowleft';
+  if (code === 'ArrowRight') return 'arrowright';
+  if (code === 'Backspace') return 'backspace';
+  if (code === 'Home') return 'home';
+  if (code === 'End') return 'end';
+  return key;
+}
+
+function applyTextInputEdit(code: string, key: string, maxLength: number, allowReplaceOnNextType = false): void {
+  const beforeText = state.nicknameInput;
+  const beforeCursor = state.cursorPos;
+  const mappedKey = mapTextInputKey(code, key);
+
+  if (allowReplaceOnNextType && shouldReplaceCurrentText(code, key)) {
+    state.nicknameInput = key;
+    state.cursorPos = key.length;
+    return;
+  }
+
+  const result = applyTextInput(mappedKey, state.nicknameInput, state.cursorPos, maxLength);
+  state.nicknameInput = result.newString;
+  state.cursorPos = result.newCursorPos;
+  if (code === 'Backspace') {
+    announceBackspaceDeletedCharacter(beforeText, beforeCursor);
+  }
+  if (code === 'ArrowLeft' || code === 'ArrowRight' || code === 'Home' || code === 'End') {
+    announceCursorCharacter(state.nicknameInput, state.cursorPos);
+  }
+}
+
 function describeCharacter(ch: string): string {
   if (ch === ' ') return 'space';
   if (ch === '\t') return 'tab';
@@ -1445,30 +1476,7 @@ function handleChatModeInput(code: string, key: string): void {
     return;
   }
 
-  const beforeText = state.nicknameInput;
-  const beforeCursor = state.cursorPos;
-  const mappedKey =
-    code === 'ArrowLeft'
-      ? 'arrowleft'
-      : code === 'ArrowRight'
-        ? 'arrowright'
-        : code === 'Backspace'
-          ? 'backspace'
-          : code === 'Home'
-            ? 'home'
-            : code === 'End'
-              ? 'end'
-              : key;
-
-  const result = applyTextInput(mappedKey, state.nicknameInput, state.cursorPos, 500);
-  state.nicknameInput = result.newString;
-  state.cursorPos = result.newCursorPos;
-  if (code === 'Backspace') {
-    announceBackspaceDeletedCharacter(beforeText, beforeCursor);
-  }
-  if (code === 'ArrowLeft' || code === 'ArrowRight' || code === 'Home' || code === 'End') {
-    announceCursorCharacter(state.nicknameInput, state.cursorPos);
-  }
+  applyTextInputEdit(code, key, 500);
 }
 
 function handleListModeInput(code: string): void {
@@ -1776,34 +1784,7 @@ function handleItemPropertyEditModeInput(code: string, key: string): void {
     audio.sfxUiCancel();
     return;
   }
-  const beforeText = state.nicknameInput;
-  const beforeCursor = state.cursorPos;
-  const mappedKey =
-    code === 'ArrowLeft'
-      ? 'arrowleft'
-      : code === 'ArrowRight'
-        ? 'arrowright'
-        : code === 'Backspace'
-          ? 'backspace'
-          : code === 'Home'
-            ? 'home'
-            : code === 'End'
-              ? 'end'
-              : key;
-  if (shouldReplaceCurrentText(code, key)) {
-    state.nicknameInput = key;
-    state.cursorPos = key.length;
-    return;
-  }
-  const result = applyTextInput(mappedKey, state.nicknameInput, state.cursorPos, 500);
-  state.nicknameInput = result.newString;
-  state.cursorPos = result.newCursorPos;
-  if (code === 'Backspace') {
-    announceBackspaceDeletedCharacter(beforeText, beforeCursor);
-  }
-  if (code === 'ArrowLeft' || code === 'ArrowRight' || code === 'Home' || code === 'End') {
-    announceCursorCharacter(state.nicknameInput, state.cursorPos);
-  }
+  applyTextInputEdit(code, key, 500, true);
 }
 
 function handleItemPropertyOptionSelectModeInput(code: string): void {
@@ -1871,35 +1852,7 @@ function handleNicknameModeInput(code: string, key: string): void {
     return;
   }
 
-  const beforeText = state.nicknameInput;
-  const beforeCursor = state.cursorPos;
-  const mappedKey =
-    code === 'ArrowLeft'
-      ? 'arrowleft'
-      : code === 'ArrowRight'
-        ? 'arrowright'
-        : code === 'Backspace'
-          ? 'backspace'
-          : code === 'Home'
-            ? 'home'
-            : code === 'End'
-              ? 'end'
-              : key;
-  if (shouldReplaceCurrentText(code, key)) {
-    state.nicknameInput = key;
-    state.cursorPos = key.length;
-    return;
-  }
-
-  const result = applyTextInput(mappedKey, state.nicknameInput, state.cursorPos, NICKNAME_MAX_LENGTH);
-  state.nicknameInput = result.newString;
-  state.cursorPos = result.newCursorPos;
-  if (code === 'Backspace') {
-    announceBackspaceDeletedCharacter(beforeText, beforeCursor);
-  }
-  if (code === 'ArrowLeft' || code === 'ArrowRight' || code === 'Home' || code === 'End') {
-    announceCursorCharacter(state.nicknameInput, state.cursorPos);
-  }
+  applyTextInputEdit(code, key, NICKNAME_MAX_LENGTH, true);
 }
 
 function isTypingKey(code: string): boolean {
