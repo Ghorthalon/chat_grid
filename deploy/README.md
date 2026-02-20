@@ -155,3 +155,32 @@ Notes:
 - If your checkout has local changes, stash or commit before `git pull`.
 - For HTTPS GitHub auth, use your GitHub username plus a Personal Access Token (PAT) as the password.
 - SSH key passphrases are only used for `git@github.com:` remotes, not `https://` remotes.
+
+## 9) Save GitHub PAT for HTTPS pulls/pushes
+
+Persistent storage (simple, plaintext in `~/.git-credentials`):
+
+```bash
+git config --global credential.helper store
+```
+
+Memory cache only (not persisted across reboot):
+
+```bash
+git config --global credential.helper "cache --timeout=28800"
+```
+
+Then run one authenticated command and enter:
+- Username: `jage9`
+- Password: your GitHub PAT
+
+```bash
+cd /home/bestmidi/chgrid
+git pull --ff-only origin main
+```
+
+If you saved the wrong token and need to re-enter it:
+
+```bash
+printf "protocol=https\nhost=github.com\n" | git credential reject
+```
