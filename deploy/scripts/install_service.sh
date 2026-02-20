@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="${1:-/home/bestmidi/chgrid}"
-UNIT_NAME="${2:-chgrid-signaling.service}"
+UNIT_NAME="${2:-chat-grid.service}"
 SRC_UNIT="$REPO_ROOT/deploy/systemd/$UNIT_NAME"
 DST_UNIT="/etc/systemd/system/$UNIT_NAME"
 

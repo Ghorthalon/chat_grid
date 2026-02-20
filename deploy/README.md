@@ -68,7 +68,14 @@ cd /home/bestmidi/chgrid
 Logs:
 
 ```bash
-journalctl -u chgrid-signaling.service -f
+journalctl -u chat-grid.service -f
+```
+
+If you previously used `chgrid-signaling.service`, migrate once:
+
+```bash
+sudo systemctl disable --now chgrid-signaling.service
+sudo systemctl daemon-reload
 ```
 
 ## 6) Apache websocket proxy
@@ -139,8 +146,8 @@ git pull --ff-only origin main
 ./deploy/scripts/install_server.sh /home/bestmidi/chgrid
 
 # Restart signaling service
-sudo systemctl restart chgrid-signaling.service
-journalctl -u chgrid-signaling.service -n 50 --no-pager
+sudo systemctl restart chat-grid.service
+journalctl -u chat-grid.service -n 50 --no-pager
 ```
 
 Notes:
