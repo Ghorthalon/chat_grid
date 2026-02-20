@@ -147,7 +147,6 @@ type ItemRadioOutput = {
 const sharedRadioSources = new Map<string, SharedRadioSource>();
 const itemRadioOutputs = new Map<string, ItemRadioOutput>();
 let replaceTextOnNextType = false;
-let itemPropertiesReadOnly = false;
 let pendingEscapeDisconnect = false;
 
 const signalingProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -343,41 +342,55 @@ function beginItemSelection(context: 'pickup' | 'delete' | 'edit' | 'use' | 'ins
   audio.sfxUiBlip();
 }
 
-function getInspectItemPropertyKeys(item: WorldItem): string[] {
-  const baseKeys = [
-    'title',
-    'type',
-    'x',
-    'y',
-    'carrierId',
-    'version',
-    'createdBy',
-    'createdAt',
-    'updatedAt',
-    'capabilities',
-    'useSound',
-  ];
-  const paramKeys = Object.keys(item.params).sort((a, b) => a.localeCompare(b));
-  const globalKeys = Object.keys(ITEM_TYPE_GLOBAL_PROPERTIES[item.type] ?? {}).sort((a, b) => a.localeCompare(b));
-  return [...baseKeys, ...paramKeys, ...globalKeys];
+function getEditableItemPropertyKeys(item: WorldItem): string[] {
+  const keys = ['title'];
+  if (item.type === 'radio_station') {
+    keys.push('streamUrl', 'enabled', 'volume', 'effect', 'effectValue');
+  } else if (item.type === 'dice') {
+    keys.push('sides', 'number');
+  }
+  return keys;
 }
 
-function beginItemProperties(item: WorldItem, readOnly = false): void {
+function getInspectItemPropertyKeys(item: WorldItem): string[] {
+  const editableKeys = getEditableItemPropertyKeys(item);
+  const seen = new Set(editableKeys);
+  const allKeys: string[] = [...editableKeys];
+
+  const baseKeys = ['type', 'x', 'y', 'carrierId', 'version', 'createdBy', 'createdAt', 'updatedAt', 'capabilities', 'useSound'];
+  for (const key of baseKeys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    allKeys.push(key);
+  }
+
+  const paramKeys = Object.keys(item.params).sort((a, b) => a.localeCompare(b));
+  for (const key of paramKeys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    allKeys.push(key);
+  }
+
+  const globalKeys = Object.keys(ITEM_TYPE_GLOBAL_PROPERTIES[item.type] ?? {}).sort((a, b) => a.localeCompare(b));
+  for (const key of globalKeys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    allKeys.push(key);
+  }
+
+  return allKeys;
+}
+
+function beginItemProperties(item: WorldItem, showAll = false): void {
   state.selectedItemId = item.id;
   state.mode = 'itemProperties';
-  itemPropertiesReadOnly = readOnly;
   state.editingPropertyKey = null;
   state.itemPropertyOptionValues = [];
   state.itemPropertyOptionIndex = 0;
-  if (readOnly) {
+  if (showAll) {
     state.itemPropertyKeys = getInspectItemPropertyKeys(item);
   } else {
-    state.itemPropertyKeys = ['title'];
-    if (item.type === 'radio_station') {
-      state.itemPropertyKeys.push('streamUrl', 'enabled', 'volume', 'effect', 'effectValue');
-    } else if (item.type === 'dice') {
-      state.itemPropertyKeys.push('sides', 'number');
-    }
+    state.itemPropertyKeys = getEditableItemPropertyKeys(item);
   }
   state.itemPropertyIndex = 0;
   const key = state.itemPropertyKeys[0];
@@ -848,7 +861,6 @@ function disconnect(): void {
   state.editingPropertyKey = null;
   state.itemPropertyOptionValues = [];
   state.itemPropertyOptionIndex = 0;
-  itemPropertiesReadOnly = false;
   pendingEscapeDisconnect = false;
 
   connecting = false;
@@ -1556,7 +1568,6 @@ function handleItemPropertiesModeInput(code: string): void {
   const itemId = state.selectedItemId;
   if (!itemId) {
     state.mode = 'normal';
-    itemPropertiesReadOnly = false;
     state.editingPropertyKey = null;
     state.itemPropertyOptionValues = [];
     state.itemPropertyOptionIndex = 0;
@@ -1565,7 +1576,6 @@ function handleItemPropertiesModeInput(code: string): void {
   const item = state.items.get(itemId);
   if (!item) {
     state.mode = 'normal';
-    itemPropertiesReadOnly = false;
     state.editingPropertyKey = null;
     state.itemPropertyOptionValues = [];
     state.itemPropertyOptionIndex = 0;
@@ -1586,7 +1596,7 @@ function handleItemPropertiesModeInput(code: string): void {
   }
   if (code === 'Enter') {
     const key = state.itemPropertyKeys[state.itemPropertyIndex];
-    if (itemPropertiesReadOnly || !EDITABLE_ITEM_PROPERTY_KEYS.has(key)) {
+    if (!EDITABLE_ITEM_PROPERTY_KEYS.has(key)) {
       updateStatus(`${key} is not editable.`);
       audio.sfxUiCancel();
       return;
@@ -1620,7 +1630,6 @@ function handleItemPropertiesModeInput(code: string): void {
   }
   if (code === 'Escape') {
     state.mode = 'normal';
-    itemPropertiesReadOnly = false;
     state.selectedItemId = null;
     state.itemPropertyKeys = [];
     state.itemPropertyIndex = 0;
