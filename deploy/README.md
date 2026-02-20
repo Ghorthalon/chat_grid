@@ -58,6 +58,13 @@ Notes:
 - For `https://bestmidi.com/chgrid/`, use `/chgrid/`.
 - For site root deploy (`https://bestmidi.com/`), use `/`.
 
+Shortcut (client deploy + service restart):
+
+```bash
+cd /home/bestmidi/chgrid
+./deploy/scripts/up.sh /home/bestmidi/chgrid /home/bestmidi/public_html/chgrid /chgrid/
+```
+
 ## 5) Install/restart signaling service (systemd)
 
 ```bash
@@ -148,6 +155,13 @@ git pull --ff-only origin main
 # Restart signaling service
 sudo systemctl restart chat-grid.service
 journalctl -u chat-grid.service -n 50 --no-pager
+```
+
+Typical quick update:
+
+```bash
+cd /home/bestmidi/chgrid
+./deploy/scripts/up.sh /home/bestmidi/chgrid /home/bestmidi/public_html/chgrid /chgrid/
 ```
 
 Notes:
