@@ -988,6 +988,13 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     return;
   }
 
+  if (code === 'Digit1' && shiftKey) {
+    const enabled = audio.toggleLoopback();
+    updateStatus(enabled ? 'Loopback on.' : 'Loopback off.');
+    audio.sfxUiBlip();
+    return;
+  }
+
   if (code === 'KeyE') {
     const effect = audio.cycleOutboundEffect();
     updateStatus(effect.label);

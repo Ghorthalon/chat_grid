@@ -38,6 +38,8 @@ export class AudioEngine {
   private outboundInputGain: GainNode | null = null;
   private outboundDestination: MediaStreamAudioDestinationNode | null = null;
   private outboundEffectRuntime: EffectRuntime | null = null;
+  private loopbackEnabled = false;
+  private loopbackRuntime: EffectRuntime | null = null;
   private outputMode: OutputMode = 'stereo';
   private effectIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === 'off');
   private readonly effectValues: Record<EffectId, number> = {
@@ -158,6 +160,12 @@ export class AudioEngine {
   toggleOutputMode(): OutputMode {
     this.outputMode = this.outputMode === 'stereo' ? 'mono' : 'stereo';
     return this.outputMode;
+  }
+
+  toggleLoopback(): boolean {
+    this.loopbackEnabled = !this.loopbackEnabled;
+    this.rebuildOutboundEffectGraph();
+    return this.loopbackEnabled;
   }
 
   async attachRemoteStream(
@@ -321,6 +329,19 @@ export class AudioEngine {
       effect,
       this.effectValues[effect],
     );
+    this.rebuildLoopbackGraph(effect, this.effectValues[effect]);
+  }
+
+  private rebuildLoopbackGraph(effect: EffectId, effectValue: number): void {
+    if (!this.audioCtx || !this.outboundInputGain) {
+      return;
+    }
+    disconnectEffectRuntime(this.loopbackRuntime);
+    this.loopbackRuntime = null;
+    if (!this.loopbackEnabled) {
+      return;
+    }
+    this.loopbackRuntime = connectEffectChain(this.audioCtx, this.outboundInputGain, this.audioCtx.destination, effect, effectValue);
   }
 
   private clampLevel(value: number): number {
