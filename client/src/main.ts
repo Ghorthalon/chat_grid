@@ -647,10 +647,36 @@ function describeCharacter(ch: string): string {
   if (ch === '\t') return 'tab';
   if (ch === '.') return 'period';
   if (ch === ',') return 'comma';
+  if (ch === ':') return 'colon';
+  if (ch === ';') return 'semicolon';
+  if (ch === '!') return 'exclamation mark';
+  if (ch === '?') return 'question mark';
   if (ch === "'") return 'apostrophe';
   if (ch === '"') return 'quote';
+  if (ch === '/') return 'slash';
+  if (ch === '\\') return 'backslash';
   if (ch === '-') return 'dash';
+  if (ch === '_') return 'underscore';
   if (ch === '=') return 'equals';
+  if (ch === '+') return 'plus';
+  if (ch === '*') return 'asterisk';
+  if (ch === '&') return 'ampersand';
+  if (ch === '@') return 'at sign';
+  if (ch === '#') return 'hash';
+  if (ch === '%') return 'percent';
+  if (ch === '$') return 'dollar sign';
+  if (ch === '^') return 'caret';
+  if (ch === '|') return 'pipe';
+  if (ch === '~') return 'tilde';
+  if (ch === '`') return 'backtick';
+  if (ch === '(') return 'left parenthesis';
+  if (ch === ')') return 'right parenthesis';
+  if (ch === '[') return 'left bracket';
+  if (ch === ']') return 'right bracket';
+  if (ch === '{') return 'left brace';
+  if (ch === '}') return 'right brace';
+  if (ch === '<') return 'less than';
+  if (ch === '>') return 'greater than';
   return ch;
 }
 
