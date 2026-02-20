@@ -400,7 +400,7 @@ class SignalingServer:
                     client,
                     False,
                     "use",
-                    f"Item is on cooldown for {max(1, remaining_ms)} ms.",
+                    f"{item.title} is on cooldown for {max(1, remaining_ms)} ms.",
                     item.id,
                 )
                 return

@@ -88,6 +88,16 @@ const ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, string | numb
   radio_station: { useCooldownMs: 1000 },
   dice: { useCooldownMs: 1000 },
 };
+const EDITABLE_ITEM_PROPERTY_KEYS = new Set([
+  'title',
+  'streamUrl',
+  'enabled',
+  'volume',
+  'effect',
+  'effectValue',
+  'sides',
+  'number',
+]);
 const APP_BASE_URL = import.meta.env.BASE_URL || '/';
 function withBase(path: string): string {
   const normalizedBase = APP_BASE_URL.endsWith('/') ? APP_BASE_URL : `${APP_BASE_URL}/`;
@@ -134,6 +144,7 @@ type ItemRadioOutput = {
 const sharedRadioSources = new Map<string, SharedRadioSource>();
 const itemRadioOutputs = new Map<string, ItemRadioOutput>();
 let replaceTextOnNextType = false;
+let itemPropertiesReadOnly = false;
 
 const signalingProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
 const signalingUrl = `${signalingProtocol}://${window.location.host}/ws`;
@@ -328,14 +339,38 @@ function beginItemSelection(context: 'pickup' | 'delete' | 'edit' | 'use' | 'ins
   audio.sfxUiBlip();
 }
 
-function beginItemProperties(item: WorldItem): void {
+function getInspectItemPropertyKeys(item: WorldItem): string[] {
+  const baseKeys = [
+    'title',
+    'type',
+    'x',
+    'y',
+    'carrierId',
+    'version',
+    'createdBy',
+    'createdAt',
+    'updatedAt',
+    'capabilities',
+    'useSound',
+  ];
+  const paramKeys = Object.keys(item.params).sort((a, b) => a.localeCompare(b));
+  const globalKeys = Object.keys(ITEM_TYPE_GLOBAL_PROPERTIES[item.type] ?? {}).sort((a, b) => a.localeCompare(b));
+  return [...baseKeys, ...paramKeys, ...globalKeys];
+}
+
+function beginItemProperties(item: WorldItem, readOnly = false): void {
   state.selectedItemId = item.id;
   state.mode = 'itemProperties';
-  state.itemPropertyKeys = ['title'];
-  if (item.type === 'radio_station') {
-    state.itemPropertyKeys.push('streamUrl', 'enabled', 'volume', 'effect', 'effectValue');
-  } else if (item.type === 'dice') {
-    state.itemPropertyKeys.push('sides', 'number');
+  itemPropertiesReadOnly = readOnly;
+  if (readOnly) {
+    state.itemPropertyKeys = getInspectItemPropertyKeys(item);
+  } else {
+    state.itemPropertyKeys = ['title'];
+    if (item.type === 'radio_station') {
+      state.itemPropertyKeys.push('streamUrl', 'enabled', 'volume', 'effect', 'effectValue');
+    } else if (item.type === 'dice') {
+      state.itemPropertyKeys.push('sides', 'number');
+    }
   }
   state.itemPropertyIndex = 0;
   const key = state.itemPropertyKeys[0];
@@ -346,25 +381,6 @@ function beginItemProperties(item: WorldItem): void {
 
 function useItem(item: WorldItem): void {
   signaling.send({ type: 'item_use', itemId: item.id });
-}
-
-function announceAllItemProperties(item: WorldItem): void {
-  const details: string[] = [];
-  details.push(`title: ${item.title}`);
-  details.push(`type: ${item.type}`);
-  details.push(`position: ${item.x}, ${item.y}`);
-  details.push(`carrierId: ${item.carrierId ?? 'none'}`);
-  details.push(`version: ${item.version}`);
-  details.push(`capabilities: ${item.capabilities.join(', ') || 'none'}`);
-  details.push(`useSound: ${item.useSound ?? 'none'}`);
-  for (const [key, value] of Object.entries(item.params).sort(([a], [b]) => a.localeCompare(b))) {
-    details.push(`${key}: ${String(value)}`);
-  }
-  const globalProperties = ITEM_TYPE_GLOBAL_PROPERTIES[item.type] ?? {};
-  for (const [key, value] of Object.entries(globalProperties).sort(([a], [b]) => a.localeCompare(b))) {
-    details.push(`${key}: ${String(value)} (global)`);
-  }
-  updateStatus(details.join('; '));
 }
 
 function releaseSharedRadioSource(streamUrl: string): void {
@@ -569,9 +585,21 @@ function describeCharacter(ch: string): string {
 
 function getItemPropertyValue(item: WorldItem, key: string): string {
   if (key === 'title') return item.title;
+  if (key === 'type') return item.type;
+  if (key === 'x') return String(item.x);
+  if (key === 'y') return String(item.y);
+  if (key === 'carrierId') return item.carrierId ?? 'none';
+  if (key === 'version') return String(item.version);
+  if (key === 'createdBy') return item.createdBy;
+  if (key === 'createdAt') return String(item.createdAt);
+  if (key === 'updatedAt') return String(item.updatedAt);
+  if (key === 'capabilities') return item.capabilities.join(', ') || 'none';
+  if (key === 'useSound') return item.useSound ?? 'none';
   if (key === 'enabled') return item.params.enabled === false ? 'off' : 'on';
   if (key === 'effect') return normalizeRadioEffect(item.params.effect);
   if (key === 'effectValue') return String(normalizeRadioEffectValue(item.params.effectValue));
+  const globalValue = ITEM_TYPE_GLOBAL_PROPERTIES[item.type]?.[key];
+  if (globalValue !== undefined) return `${String(globalValue)} (global)`;
   return String(item.params[key] ?? '');
 }
 
@@ -1170,13 +1198,11 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
           audio.sfxUiCancel();
           return;
         }
-        announceAllItemProperties(carried);
-        audio.sfxUiBlip();
+        beginItemProperties(carried, true);
         return;
       }
       if (squareItems.length === 1) {
-        announceAllItemProperties(squareItems[0]);
-        audio.sfxUiBlip();
+        beginItemProperties(squareItems[0], true);
         return;
       }
       beginItemSelection('inspect', squareItems);
@@ -1475,8 +1501,7 @@ function handleSelectItemModeInput(code: string): void {
       return;
     }
     if (context === 'inspect') {
-      announceAllItemProperties(selected);
-      audio.sfxUiBlip();
+      beginItemProperties(selected, true);
       return;
     }
     return;
@@ -1493,11 +1518,13 @@ function handleItemPropertiesModeInput(code: string): void {
   const itemId = state.selectedItemId;
   if (!itemId) {
     state.mode = 'normal';
+    itemPropertiesReadOnly = false;
     return;
   }
   const item = state.items.get(itemId);
   if (!item) {
     state.mode = 'normal';
+    itemPropertiesReadOnly = false;
     updateStatus('Item no longer exists.');
     audio.sfxUiCancel();
     return;
@@ -1515,6 +1542,11 @@ function handleItemPropertiesModeInput(code: string): void {
   }
   if (code === 'Enter') {
     const key = state.itemPropertyKeys[state.itemPropertyIndex];
+    if (itemPropertiesReadOnly || !EDITABLE_ITEM_PROPERTY_KEYS.has(key)) {
+      updateStatus(`${key} is not editable.`);
+      audio.sfxUiCancel();
+      return;
+    }
     if (key === 'enabled') {
       const nextEnabled = item.params.enabled === false;
       signaling.send({ type: 'item_update', itemId, params: { enabled: nextEnabled } });
@@ -1540,6 +1572,7 @@ function handleItemPropertiesModeInput(code: string): void {
   }
   if (code === 'Escape') {
     state.mode = 'normal';
+    itemPropertiesReadOnly = false;
     state.selectedItemId = null;
     state.itemPropertyKeys = [];
     state.itemPropertyIndex = 0;
