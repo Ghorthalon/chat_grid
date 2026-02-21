@@ -107,6 +107,11 @@ function connectRadioChannelSource(
   };
 }
 
+function freshStreamUrl(streamUrl: string): string {
+  const separator = streamUrl.includes('?') ? '&' : '?';
+  return `${streamUrl}${separator}chgrid_start=${Date.now()}`;
+}
+
 export class RadioStationRuntime {
   private readonly sharedRadioSources = new Map<string, SharedRadioSource>();
   private readonly itemRadioOutputs = new Map<string, ItemRadioOutput>();
@@ -251,7 +256,7 @@ export class RadioStationRuntime {
     }
     const audioCtx = this.audio.context;
     if (!audioCtx) return null;
-    const element = new Audio(streamUrl);
+    const element = new Audio(freshStreamUrl(streamUrl));
     element.crossOrigin = 'anonymous';
     element.loop = true;
     element.preload = 'none';
