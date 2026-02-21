@@ -4,18 +4,15 @@ import {
   EFFECT_IDS,
   EFFECT_SEQUENCE,
   clampEffectLevel,
-  connectEffectChain,
-  disconnectEffectRuntime,
   type EffectId,
-  type EffectRuntime,
 } from './audio/effects';
+import { RADIO_CHANNEL_OPTIONS, RadioStationRuntime, normalizeRadioChannel, normalizeRadioEffect, normalizeRadioEffectValue } from './audio/radioStationRuntime';
 import { applyTextInput } from './input/textInput';
 import { type IncomingMessage, type OutgoingMessage } from './network/protocol';
 import { SignalingClient } from './network/signalingClient';
 import { CanvasRenderer } from './render/canvasRenderer';
 import {
   GRID_SIZE,
-  HEARING_RADIUS,
   MOVE_COOLDOWN_MS,
   createInitialState,
   getDirection,
@@ -116,8 +113,6 @@ const EDITABLE_ITEM_PROPERTY_KEYS = new Set([
   'sides',
   'number',
 ]);
-const RADIO_CHANNEL_OPTIONS = ['stereo', 'mono', 'left', 'right'] as const;
-type RadioChannelMode = (typeof RADIO_CHANNEL_OPTIONS)[number];
 const OPTION_ITEM_PROPERTY_VALUES: Partial<Record<string, string[]>> = {
   effect: EFFECT_SEQUENCE.map((effect) => effect.id),
   channel: [...RADIO_CHANNEL_OPTIONS],
@@ -154,30 +149,7 @@ let outputMode = localStorage.getItem(AUDIO_OUTPUT_MODE_STORAGE_KEY) === 'mono' 
 let connecting = false;
 const messageBuffer: string[] = [];
 let messageCursor = -1;
-type SharedRadioSource = {
-  streamUrl: string;
-  element: HTMLAudioElement;
-  source: MediaElementAudioSourceNode;
-  refCount: number;
-};
-type ItemRadioOutput = {
-  streamUrl: string;
-  channel: RadioChannelMode;
-  sharedSource: MediaElementAudioSourceNode;
-  sourceInput: GainNode;
-  channelSplitter: ChannelSplitterNode | null;
-  channelMerger: ChannelMergerNode | null;
-  channelLeftGain: GainNode | null;
-  channelRightGain: GainNode | null;
-  effectInput: GainNode;
-  effectRuntime: EffectRuntime | null;
-  effect: EffectId;
-  effectValue: number;
-  gain: GainNode;
-  panner: StereoPannerNode | null;
-};
-const sharedRadioSources = new Map<string, SharedRadioSource>();
-const itemRadioOutputs = new Map<string, ItemRadioOutput>();
+const radioRuntime = new RadioStationRuntime(audio);
 let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
 
@@ -501,277 +473,6 @@ function openItemPropertyOptionSelect(item: WorldItem, key: string): void {
   audio.sfxUiBlip();
 }
 
-function releaseSharedRadioSource(streamUrl: string): void {
-  const shared = sharedRadioSources.get(streamUrl);
-  if (!shared) return;
-  shared.refCount -= 1;
-  if (shared.refCount > 0) return;
-  shared.element.pause();
-  shared.element.src = '';
-  shared.source.disconnect();
-  sharedRadioSources.delete(streamUrl);
-}
-
-function getOrCreateSharedRadioSource(streamUrl: string): SharedRadioSource | null {
-  const existing = sharedRadioSources.get(streamUrl);
-  if (existing) {
-    existing.refCount += 1;
-    return existing;
-  }
-  const audioCtx = audio.context;
-  if (!audioCtx) return null;
-  const element = new Audio(streamUrl);
-  element.crossOrigin = 'anonymous';
-  element.loop = true;
-  element.preload = 'none';
-  const source = audioCtx.createMediaElementSource(element);
-  void element.play().catch(() => undefined);
-  const shared: SharedRadioSource = {
-    streamUrl,
-    element,
-    source,
-    refCount: 1,
-  };
-  sharedRadioSources.set(streamUrl, shared);
-  return shared;
-}
-
-function cleanupRadioRuntime(itemId: string): void {
-  const output = itemRadioOutputs.get(itemId);
-  if (!output) return;
-  if (output.channelSplitter) {
-    try {
-      output.sharedSource.disconnect(output.channelSplitter);
-    } catch {
-      // Ignore stale graph disconnects.
-    }
-  } else {
-    try {
-      output.sharedSource.disconnect(output.sourceInput);
-    } catch {
-      // Ignore stale graph disconnects.
-    }
-  }
-  output.channelLeftGain?.disconnect();
-  output.channelRightGain?.disconnect();
-  output.channelSplitter?.disconnect();
-  output.channelMerger?.disconnect();
-  output.sourceInput.disconnect();
-  output.effectInput.disconnect();
-  disconnectEffectRuntime(output.effectRuntime);
-  output.gain.disconnect();
-  output.panner?.disconnect();
-  itemRadioOutputs.delete(itemId);
-  releaseSharedRadioSource(output.streamUrl);
-}
-
-function normalizeRadioEffect(effect: unknown): EffectId {
-  if (typeof effect !== 'string') return 'off';
-  const normalized = effect.trim().toLowerCase() as EffectId;
-  return EFFECT_IDS.has(normalized) ? normalized : 'off';
-}
-
-function normalizeRadioEffectValue(effectValue: unknown): number {
-  if (typeof effectValue !== 'number' || !Number.isFinite(effectValue)) {
-    return 50;
-  }
-  return clampEffectLevel(effectValue);
-}
-
-function normalizeRadioChannel(channel: unknown): RadioChannelMode {
-  if (typeof channel !== 'string') return 'stereo';
-  const normalized = channel.trim().toLowerCase() as RadioChannelMode;
-  return (RADIO_CHANNEL_OPTIONS as readonly string[]).includes(normalized) ? normalized : 'stereo';
-}
-
-function connectRadioChannelSource(
-  audioCtx: AudioContext,
-  sharedSource: MediaElementAudioSourceNode,
-  channel: RadioChannelMode,
-  destination: GainNode,
-): {
-  sourceInput: GainNode;
-  channelSplitter: ChannelSplitterNode | null;
-  channelMerger: ChannelMergerNode | null;
-  channelLeftGain: GainNode | null;
-  channelRightGain: GainNode | null;
-} {
-  const sourceInput = audioCtx.createGain();
-  sourceInput.gain.value = 1;
-
-  if (channel === 'stereo') {
-    sharedSource.connect(sourceInput);
-    sourceInput.connect(destination);
-    return {
-      sourceInput,
-      channelSplitter: null,
-      channelMerger: null,
-      channelLeftGain: null,
-      channelRightGain: null,
-    };
-  }
-
-  const splitter = audioCtx.createChannelSplitter(2);
-  const merger = audioCtx.createChannelMerger(1);
-  sharedSource.connect(splitter);
-
-  let leftGain: GainNode | null = null;
-  let rightGain: GainNode | null = null;
-  if (channel === 'mono') {
-    leftGain = audioCtx.createGain();
-    rightGain = audioCtx.createGain();
-    leftGain.gain.value = 0.5;
-    rightGain.gain.value = 0.5;
-    splitter.connect(leftGain, 0);
-    splitter.connect(rightGain, 1);
-    leftGain.connect(merger, 0, 0);
-    rightGain.connect(merger, 0, 0);
-  } else if (channel === 'left') {
-    splitter.connect(merger, 0, 0);
-  } else {
-    splitter.connect(merger, 1, 0);
-  }
-
-  merger.connect(sourceInput);
-  sourceInput.connect(destination);
-  return {
-    sourceInput,
-    channelSplitter: splitter,
-    channelMerger: merger,
-    channelLeftGain: leftGain,
-    channelRightGain: rightGain,
-  };
-}
-
-function applyRadioEffect(
-  output: ItemRadioOutput,
-  audioCtx: AudioContext,
-  effect: EffectId,
-  effectValue: number,
-): void {
-  if (output.effect === effect && output.effectValue === effectValue) {
-    return;
-  }
-  output.effectInput.disconnect();
-  disconnectEffectRuntime(output.effectRuntime);
-  output.effectRuntime = connectEffectChain(audioCtx, output.effectInput, output.gain, effect, effectValue);
-  output.effect = effect;
-  output.effectValue = effectValue;
-}
-
-function cleanupAllRadioRuntimes(): void {
-  for (const id of Array.from(itemRadioOutputs.keys())) {
-    cleanupRadioRuntime(id);
-  }
-}
-
-async function ensureRadioRuntime(item: WorldItem): Promise<void> {
-  const streamUrl = String(item.params.streamUrl ?? '').trim();
-  if (!streamUrl) {
-    cleanupRadioRuntime(item.id);
-    return;
-  }
-  await audio.ensureContext();
-  const audioCtx = audio.context;
-  if (!audioCtx) return;
-
-  const existing = itemRadioOutputs.get(item.id);
-  const channel = normalizeRadioChannel(item.params.channel);
-  if (existing && existing.streamUrl === streamUrl && existing.channel === channel) {
-    return;
-  }
-  if (existing) {
-    cleanupRadioRuntime(item.id);
-  }
-
-  const shared = getOrCreateSharedRadioSource(streamUrl);
-  if (!shared) return;
-
-  const gain = audioCtx.createGain();
-  gain.gain.value = 0;
-  const effectInput = audioCtx.createGain();
-  const channelSource = connectRadioChannelSource(audioCtx, shared.source, channel, effectInput);
-  const effect = normalizeRadioEffect(item.params.effect);
-  const effectValue = normalizeRadioEffectValue(item.params.effectValue);
-  const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
-  let panner: StereoPannerNode | null = null;
-  if (audio.supportsStereoPanner()) {
-    panner = audioCtx.createStereoPanner();
-    gain.connect(panner).connect(audioCtx.destination);
-  } else {
-    gain.connect(audioCtx.destination);
-  }
-  itemRadioOutputs.set(item.id, {
-    streamUrl,
-    channel,
-    sharedSource: shared.source,
-    sourceInput: channelSource.sourceInput,
-    channelSplitter: channelSource.channelSplitter,
-    channelMerger: channelSource.channelMerger,
-    channelLeftGain: channelSource.channelLeftGain,
-    channelRightGain: channelSource.channelRightGain,
-    effectInput,
-    effectRuntime,
-    effect,
-    effectValue,
-    gain,
-    panner,
-  });
-}
-
-async function syncRadioStationPlayback(): Promise<void> {
-  const validIds = new Set<string>();
-  for (const item of state.items.values()) {
-    if (item.type !== 'radio_station') continue;
-    validIds.add(item.id);
-    await ensureRadioRuntime(item);
-  }
-  for (const id of Array.from(itemRadioOutputs.keys())) {
-    if (!validIds.has(id)) {
-      cleanupRadioRuntime(id);
-    }
-  }
-}
-
-function updateRadioStationSpatialAudio(): void {
-  const audioCtx = audio.context;
-  if (!audioCtx) return;
-  for (const [itemId, output] of itemRadioOutputs.entries()) {
-    const item = state.items.get(itemId);
-    if (!item || item.type !== 'radio_station') {
-      cleanupRadioRuntime(itemId);
-      continue;
-    }
-    const streamUrl = String(item.params.streamUrl ?? '').trim();
-    const enabled = item.params.enabled !== false;
-    const volume = Number(item.params.volume ?? 50);
-    const normalizedVolume = Number.isFinite(volume) ? Math.max(0, Math.min(100, volume)) / 100 : 0.5;
-    const effect = normalizeRadioEffect(item.params.effect);
-    const effectValue = normalizeRadioEffectValue(item.params.effectValue);
-    applyRadioEffect(output, audioCtx, effect, effectValue);
-    if (!streamUrl || !enabled) {
-      output.gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
-      continue;
-    }
-    const dist = Math.hypot(item.x - state.player.x, item.y - state.player.y);
-    let gainValue = 0;
-    let panValue = 0;
-    if (dist < HEARING_RADIUS) {
-      gainValue = Math.pow(1 - dist / HEARING_RADIUS, 2);
-      panValue = Math.sin(((item.x - state.player.x) / HEARING_RADIUS) * (Math.PI / 2));
-    }
-    if (dist <= 1) {
-      gainValue = 1;
-      panValue = 0;
-    }
-    output.gain.gain.linearRampToValueAtTime(gainValue * normalizedVolume, audioCtx.currentTime + 0.1);
-    if (output.panner) {
-      const resolvedPan = Math.max(-1, Math.min(1, panValue));
-      output.panner.pan.linearRampToValueAtTime(resolvedPan, audioCtx.currentTime + 0.1);
-    }
-  }
-}
-
 function shouldReplaceCurrentText(code: string, key: string): boolean {
   if (!replaceTextOnNextType) return false;
   if (code === 'ArrowLeft' || code === 'ArrowRight' || code === 'Home' || code === 'End') {
@@ -950,7 +651,7 @@ function gameLoop(): void {
   if (!state.running) return;
   handleMovement();
   audio.updateSpatialAudio(peerManager.getPeers(), { x: state.player.x, y: state.player.y });
-  updateRadioStationSpatialAudio();
+  radioRuntime.updateSpatialAudio(state.items, { x: state.player.x, y: state.player.y });
   state.cursorVisible = Math.floor(Date.now() / 500) % 2 === 0;
   renderer.draw(state);
   requestAnimationFrame(gameLoop);
@@ -1137,7 +838,7 @@ function disconnect(): void {
   stopLocalMedia();
 
   peerManager.cleanupAll();
-  cleanupAllRadioRuntimes();
+  radioRuntime.cleanupAll();
   state.running = false;
   state.keysPressed = {};
   state.peers.clear();
@@ -1201,7 +902,7 @@ async function onMessage(message: IncomingMessage): Promise<void> {
           carrierId: item.carrierId ?? null,
         });
       }
-      await syncRadioStationPlayback();
+      await radioRuntime.sync(state.items.values());
 
       gameLoop();
       break;
@@ -1304,14 +1005,14 @@ async function onMessage(message: IncomingMessage): Promise<void> {
           updateStatus(`${key}: ${getItemPropertyValue(message.item, key)}`);
         }
       }
-      await syncRadioStationPlayback();
+      await radioRuntime.sync(state.items.values());
       break;
     }
 
     case 'item_remove': {
       state.items.delete(message.itemId);
       state.carriedItemId = getCarriedItem()?.id ?? null;
-      cleanupRadioRuntime(message.itemId);
+      radioRuntime.cleanup(message.itemId);
       break;
     }
 
