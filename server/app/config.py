@@ -1,3 +1,5 @@
+"""Configuration models and loader for the signaling server."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,29 +9,41 @@ from pydantic import BaseModel, Field
 
 
 class ServerConfigSection(BaseModel):
+    """Bind address and port options for websocket serving."""
+
     bind_ip: str = "127.0.0.1"
     port: int = 8765
 
 
 class NetworkConfigSection(BaseModel):
+    """Network transport and safety limits."""
+
     max_message_bytes: int = Field(default=2_000_000, gt=0)
     allow_insecure_ws: bool = True
 
 
 class TlsConfigSection(BaseModel):
+    """TLS certificate/key file configuration."""
+
     cert_file: str = ""
     key_file: str = ""
 
 
 class LoggingConfigSection(BaseModel):
+    """Runtime logging verbosity options."""
+
     level: str = "INFO"
 
 
 class StorageConfigSection(BaseModel):
+    """Persistent state file location."""
+
     state_file: str = "runtime/items.json"
 
 
 class AppConfig(BaseModel):
+    """Top-level application configuration document."""
+
     server: ServerConfigSection = ServerConfigSection()
     network: NetworkConfigSection = NetworkConfigSection()
     tls: TlsConfigSection = TlsConfigSection()
@@ -38,6 +52,8 @@ class AppConfig(BaseModel):
 
 
 def load_config(path: Path | None) -> AppConfig:
+    """Load and validate config TOML, applying defaults and TLS checks."""
+
     if path is None:
         return AppConfig()
 

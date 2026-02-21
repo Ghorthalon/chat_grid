@@ -1,3 +1,5 @@
+"""Item persistence, hydration, and local mutation helpers."""
+
 from __future__ import annotations
 
 import json
@@ -16,16 +18,24 @@ LOGGER = logging.getLogger("chgrid.server")
 
 
 class ItemService:
+    """Owns world-item storage, lifecycle, and persistence to disk."""
+
     def __init__(self, state_file: Path | None = None):
+        """Create service and eagerly load persisted state when configured."""
+
         self.state_file = state_file
         self.items: dict[str, WorldItem] = {}
         self.load_state()
 
     @staticmethod
     def now_ms() -> int:
+        """Return current Unix time in milliseconds."""
+
         return int(time.time() * 1000)
 
     def default_item(self, client: ClientConnection, item_type: Literal["radio_station", "dice", "wheel", "clock"]) -> WorldItem:
+        """Create a new server-authoritative item at the caller's position."""
+
         item_def = get_item_definition(item_type)
         now = self.now_ms()
         return WorldItem(
@@ -46,22 +56,32 @@ class ItemService:
         )
 
     def add_item(self, item: WorldItem) -> None:
+        """Insert or replace an item in in-memory state."""
+
         self.items[item.id] = item
 
     def remove_item(self, item_id: str) -> None:
+        """Remove an item by id when present."""
+
         if item_id in self.items:
             del self.items[item_id]
 
     def find_carried_item(self, client_id: str) -> WorldItem | None:
+        """Return the currently carried item for a client, if any."""
+
         for item in self.items.values():
             if item.carrierId == client_id:
                 return item
         return None
 
     def items_on_square(self, x: int, y: int) -> list[WorldItem]:
+        """Return non-carried items occupying a specific world coordinate."""
+
         return [item for item in self.items.values() if item.carrierId is None and item.x == x and item.y == y]
 
     def drop_carried_items_for_disconnect(self, client: ClientConnection) -> list[WorldItem]:
+        """Drop all items carried by a disconnected client onto their last tile."""
+
         changed: list[WorldItem] = []
         for item in self.items.values():
             if item.carrierId == client.id:
@@ -73,6 +93,8 @@ class ItemService:
         return changed
 
     def load_state(self) -> None:
+        """Load persisted item instances and rehydrate global fields from catalog."""
+
         if not self.state_file:
             return
         try:
@@ -108,6 +130,8 @@ class ItemService:
             LOGGER.warning("failed to load persisted item state from %s: %s", self.state_file, exc)
 
     def save_state(self) -> None:
+        """Persist instance-only item data to configured state file."""
+
         if not self.state_file:
             return
         try:

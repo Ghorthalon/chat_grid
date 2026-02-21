@@ -1,3 +1,5 @@
+"""Websocket signaling server for chat, presence, and item interactions."""
+
 from __future__ import annotations
 
 import argparse
@@ -55,6 +57,8 @@ RADIO_CHANNEL_IDS = {"stereo", "mono", "left", "right"}
 
 
 class SignalingServer:
+    """Coordinates websocket clients, signaling, and authoritative item actions."""
+
     def __init__(
         self,
         host: str,
@@ -64,6 +68,8 @@ class SignalingServer:
         max_message_size: int = 2_000_000,
         state_file: Path | None = None,
     ):
+        """Initialize runtime state, TLS context, and item service."""
+
         self.host = host
         self.port = port
         self.max_message_size = max_message_size
@@ -74,12 +80,18 @@ class SignalingServer:
 
     @property
     def items(self) -> dict[str, WorldItem]:
+        """Expose current item map owned by the item service."""
+
         return self.item_service.items
 
     def _nickname_key(self, nickname: str) -> str:
+        """Normalize nickname for case-insensitive comparisons."""
+
         return nickname.casefold()
 
     def _is_nickname_taken(self, nickname: str, exclude_client_id: str | None = None) -> bool:
+        """Check whether nickname is already used by another active client."""
+
         wanted = self._nickname_key(nickname)
         for other in self.clients.values():
             if exclude_client_id is not None and other.id == exclude_client_id:
@@ -90,10 +102,14 @@ class SignalingServer:
 
     @staticmethod
     def _item_type_label(item: WorldItem) -> str:
+        """Return user-facing item type wording for chat/status strings."""
+
         return "radio" if item.type == "radio_station" else item.type
 
     @staticmethod
     def _normalize_clock_timezone(value: object) -> str:
+        """Normalize timezone input to one of supported clock zones."""
+
         token = str(value or "").strip()
         if token in CLOCK_TIME_ZONE_OPTIONS:
             return token
@@ -101,6 +117,8 @@ class SignalingServer:
 
     @staticmethod
     def _parse_clock_use_24_hour(value: object) -> bool | None:
+        """Parse bool-like clock format values (`on/off`, `true/false`, etc.)."""
+
         if isinstance(value, bool):
             return value
         if isinstance(value, (int, float)):
@@ -115,6 +133,8 @@ class SignalingServer:
 
     @classmethod
     def _format_clock_display_time(cls, params: dict) -> str:
+        """Render current clock text based on item timezone/format params."""
+
         tz_name = cls._normalize_clock_timezone(params.get("timeZone"))
         use_24_hour = cls._parse_clock_use_24_hour(params.get("use24Hour"))
         if use_24_hour is None:
@@ -133,6 +153,8 @@ class SignalingServer:
         message: str,
         item_id: str | None = None,
     ) -> None:
+        """Send a structured item action result to one client."""
+
         await self._send(
             client.websocket,
             ItemActionResultPacket(
@@ -145,9 +167,13 @@ class SignalingServer:
         )
 
     async def _broadcast_item(self, item: WorldItem) -> None:
+        """Broadcast a full item snapshot update to all connected clients."""
+
         await self._broadcast(ItemUpsertPacket(type="item_upsert", item=item))
 
     async def start(self) -> None:
+        """Start websocket serving and run until cancelled."""
+
         protocol = "wss" if self._ssl_context else "ws"
         LOGGER.info("starting signaling server on %s://%s:%d", protocol, self.host, self.port)
         async with serve(
@@ -160,6 +186,8 @@ class SignalingServer:
             await asyncio.Future()
 
     async def _handle_client(self, websocket: ServerConnection) -> None:
+        """Handle one websocket client's connect/message/disconnect lifecycle."""
+
         client = ClientConnection(websocket=websocket, id=str(uuid.uuid4()))
         self.clients[websocket] = client
         LOGGER.info("client connected id=%s total=%d", client.id, len(self.clients))
@@ -191,6 +219,8 @@ class SignalingServer:
                 )
 
     async def _send_welcome(self, client: ClientConnection) -> None:
+        """Send initial world snapshot to a newly connected client."""
+
         users = [
             RemoteUser(id=other.id, nickname=other.nickname, x=other.x, y=other.y)
             for ws, other in self.clients.items()
@@ -211,6 +241,8 @@ class SignalingServer:
         others_message: str,
         delay_seconds: float = 3.0,
     ) -> None:
+        """Delay then publish wheel result text to self and other users."""
+
         await asyncio.sleep(delay_seconds)
         await self._broadcast(
             BroadcastChatMessagePacket(type="chat_message", message=others_message, system=True),
@@ -223,6 +255,8 @@ class SignalingServer:
             )
 
     async def _handle_message(self, client: ClientConnection, raw_message: str) -> None:
+        """Decode, validate, and route one inbound client packet."""
+
         try:
             payload = json.loads(raw_message)
         except json.JSONDecodeError:
@@ -754,12 +788,16 @@ class SignalingServer:
         )
 
     async def _broadcast(self, packet: object, exclude: ServerConnection | None = None) -> None:
+        """Broadcast one packet to all clients except an optional websocket."""
+
         for websocket in list(self.clients.keys()):
             if websocket is exclude:
                 continue
             await self._send(websocket, packet)
 
     async def _send(self, websocket: ServerConnection, packet: object) -> None:
+        """Send one packet to one websocket, swallowing per-client send failures."""
+
         try:
             if hasattr(packet, "model_dump"):
                 data = packet.model_dump(exclude_none=True)
@@ -770,6 +808,8 @@ class SignalingServer:
             LOGGER.debug("send failure: %s", exc)
 
     def _find_by_id(self, client_id: str) -> ClientConnection | None:
+        """Resolve a client id to an active connection."""
+
         for client in self.clients.values():
             if client.id == client_id:
                 return client
@@ -777,6 +817,8 @@ class SignalingServer:
 
     @staticmethod
     def _build_ssl_context(cert: str | None, key: str | None) -> ssl.SSLContext | None:
+        """Create TLS server context when cert/key are configured."""
+
         if not cert or not key:
             return None
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -785,6 +827,8 @@ class SignalingServer:
 
 
 def run() -> None:
+    """CLI entrypoint for running the signaling server process."""
+
     parser = argparse.ArgumentParser(description="chgrid signaling server")
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--host", default=None)

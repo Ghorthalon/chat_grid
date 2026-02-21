@@ -1,3 +1,5 @@
+"""Server-side catalog of global item type definitions and defaults."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -51,6 +53,8 @@ CLOCK_TIME_ZONE_OPTIONS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class ItemDefinition:
+    """Global behavior and defaults shared by all instances of one item type."""
+
     default_title: str
     capabilities: tuple[str, ...]
     use_sound: str | None
@@ -93,10 +97,14 @@ ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
 
 
 def get_item_definition(item_type: ItemType) -> ItemDefinition:
+    """Return catalog definition for a known item type."""
+
     return ITEM_DEFINITIONS[item_type]
 
 
 def get_item_use_cooldown_ms(item_type: ItemType) -> int:
+    """Return validated global use cooldown in milliseconds for an item type."""
+
     definition = get_item_definition(item_type)
     cooldown_ms = definition.use_cooldown_ms
     if isinstance(cooldown_ms, int) and cooldown_ms > 0:

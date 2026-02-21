@@ -1,3 +1,5 @@
+"""Pydantic packet and entity models shared across server message handling."""
+
 from __future__ import annotations
 
 from typing import Literal

@@ -105,6 +105,20 @@ type ChangelogData = {
   sections: ChangelogSection[];
 };
 
+type HelpItem = {
+  keys: string;
+  description: string;
+};
+
+type HelpSection = {
+  title: string;
+  items: HelpItem[];
+};
+
+type HelpData = {
+  sections: HelpSection[];
+};
+
 type AudioLayerState = {
   voice: boolean;
   item: boolean;
@@ -245,6 +259,7 @@ audio.setOutputMode(outputMode);
 
 loadEffectLevels();
 loadAudioLayerState();
+void loadHelp();
 void loadChangelog();
 
 function requiredById<T extends HTMLElement>(id: string): T {
@@ -295,6 +310,42 @@ function setUpdatesExpanded(expanded: boolean): void {
   dom.updatesToggle.textContent = expanded ? 'Hide updates' : 'Show updates';
   dom.updatesPanel.hidden = !expanded;
   dom.updatesPanel.classList.toggle('hidden', !expanded);
+}
+
+function renderHelp(help: HelpData): void {
+  dom.instructions.innerHTML = '';
+  const heading = document.createElement('h2');
+  heading.textContent = 'Help';
+  dom.instructions.appendChild(heading);
+  for (const section of help.sections) {
+    const sectionHeading = document.createElement('h3');
+    sectionHeading.textContent = section.title;
+    dom.instructions.appendChild(sectionHeading);
+    for (const item of section.items) {
+      const line = document.createElement('p');
+      const keys = document.createElement('b');
+      keys.textContent = `${item.keys}:`;
+      line.appendChild(keys);
+      line.append(` ${item.description}`);
+      dom.instructions.appendChild(line);
+    }
+  }
+}
+
+async function loadHelp(): Promise<void> {
+  try {
+    const response = await fetch(withBase('help.json'), { cache: 'no-store' });
+    if (!response.ok) {
+      return;
+    }
+    const help = (await response.json()) as HelpData;
+    if (!Array.isArray(help.sections) || help.sections.length === 0) {
+      return;
+    }
+    renderHelp(help);
+  } catch {
+    // Keep existing/static help if loading fails.
+  }
 }
 
 function renderChangelog(changelog: ChangelogData): void {
