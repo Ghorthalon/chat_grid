@@ -24,6 +24,7 @@
 - TypeScript: strict typing, `camelCase`, small focused modules.
 - Python: PEP 8, 4 spaces, `snake_case`, typed Pydantic models.
 - Python docstrings: for `server/app` changes, include module docstring, class docstring, and docstrings for public functions/methods where behavior/contracts matter.
+- Shared logic first: when behavior is reused across modes/features, implement it in shared helpers/modules rather than duplicating branch-specific logic.
 - Keep protocol changes synced in `client/src/network/protocol.ts` and `server/app/models.py`.
 
 ## Documentation Maintenance
