@@ -104,6 +104,16 @@
 ```
 
 - `timeZone`: one of `America/Detroit | America/New_York | America/Indiana/Indianapolis | America/Kentucky/Louisville`.
+- `timeZone`: one representative IANA zone per world UTC offset. Includes:
+  `America/Anchorage`, `America/Argentina/Buenos_Aires`, `America/Chicago`, `America/Detroit`,
+  `America/Halifax`, `America/Indiana/Indianapolis`, `America/Kentucky/Louisville`,
+  `America/Los_Angeles`, `America/St_Johns`, `Asia/Bangkok`, `Asia/Dhaka`, `Asia/Dubai`,
+  `Asia/Hong_Kong`, `Asia/Kabul`, `Asia/Karachi`, `Asia/Kathmandu`, `Asia/Kolkata`,
+  `Asia/Seoul`, `Asia/Singapore`, `Asia/Tehran`, `Asia/Tokyo`, `Asia/Yangon`,
+  `Atlantic/Azores`, `Atlantic/South_Georgia`, `Australia/Brisbane`, `Australia/Darwin`,
+  `Australia/Eucla`, `Australia/Lord_Howe`, `Europe/Berlin`, `Europe/Helsinki`,
+  `Europe/London`, `Europe/Moscow`, `Pacific/Apia`, `Pacific/Auckland`, `Pacific/Chatham`,
+  `Pacific/Honolulu`, `Pacific/Kiritimati`, `Pacific/Noumea`, `Pacific/Pago_Pago`, `UTC`.
 - `use24Hour`: boolean (or `on/off` in updates), default `false`.
 
 ## Packet Shapes

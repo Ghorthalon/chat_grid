@@ -106,15 +106,51 @@ type ChangelogData = {
 const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
 const DISPLAY_TIME_ZONE = resolveDisplayTimeZone();
 const CLOCK_TIME_ZONE_OPTIONS = [
+  'America/Anchorage',
+  'America/Argentina/Buenos_Aires',
+  'America/Chicago',
   'America/Detroit',
-  'America/New_York',
   'America/Indiana/Indianapolis',
+  'America/Halifax',
+  'America/Los_Angeles',
+  'America/St_Johns',
+  'Asia/Bangkok',
+  'Asia/Dhaka',
+  'Asia/Dubai',
+  'Asia/Hong_Kong',
+  'Asia/Kabul',
+  'Asia/Karachi',
+  'Asia/Kathmandu',
+  'Asia/Kolkata',
+  'Asia/Seoul',
+  'Asia/Singapore',
+  'Asia/Tehran',
+  'Asia/Tokyo',
+  'Asia/Yangon',
+  'Atlantic/Azores',
+  'Atlantic/South_Georgia',
+  'Australia/Brisbane',
+  'Australia/Darwin',
+  'Australia/Eucla',
+  'Australia/Lord_Howe',
+  'Europe/Berlin',
+  'Europe/Helsinki',
   'America/Kentucky/Louisville',
+  'Europe/London',
+  'Europe/Moscow',
+  'Pacific/Auckland',
+  'Pacific/Chatham',
+  'Pacific/Honolulu',
+  'Pacific/Kiritimati',
+  'Pacific/Noumea',
+  'Pacific/Pago_Pago',
+  'Pacific/Apia',
+  'UTC',
 ] as const;
 dom.appVersion.textContent = APP_VERSION
   ? `Another AI experiment with Jage. Version ${APP_VERSION}`
   : 'Another AI experiment with Jage. Version unknown';
-const ITEM_TYPE_SEQUENCE: ItemType[] = ['radio_station', 'dice', 'wheel', 'clock'];
+const ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel'];
 const ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, string | number | boolean>> = {
   radio_station: { emitSound: 'none', useCooldownMs: 1000 },
   dice: { emitSound: 'sounds/roll.ogg', useCooldownMs: 1000 },

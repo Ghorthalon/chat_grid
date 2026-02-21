@@ -171,10 +171,10 @@ async def test_clock_timezone_update_validates(monkeypatch: pytest.MonkeyPatch) 
 
     await server._handle_message(
         client,
-        json.dumps({"type": "item_update", "itemId": item.id, "params": {"timeZone": "America/New_York"}}),
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"timeZone": "Europe/Berlin"}}),
     )
     assert send_payloads[-1].ok is True
-    assert item.params.get("timeZone") == "America/New_York"
+    assert item.params.get("timeZone") == "Europe/Berlin"
 
     await server._handle_message(
         client,
