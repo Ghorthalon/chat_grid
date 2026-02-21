@@ -600,18 +600,47 @@ function mapTextInputKey(code: string, key: string): string {
   return key;
 }
 
+function isWordCharacter(ch: string): boolean {
+  return /[A-Za-z0-9_]/.test(ch);
+}
+
 function moveCursorWordLeft(text: string, cursorPos: number): number {
-  let pos = cursorPos;
-  while (pos > 0 && /\s/.test(text[pos - 1])) pos -= 1;
-  while (pos > 0 && !/\s/.test(text[pos - 1])) pos -= 1;
+  if (cursorPos <= 0) return 0;
+  let pos = cursorPos - 1;
+  while (pos > 0 && !isWordCharacter(text[pos])) pos -= 1;
+  while (pos > 0 && isWordCharacter(text[pos - 1])) pos -= 1;
   return pos;
 }
 
 function moveCursorWordRight(text: string, cursorPos: number): number {
   let pos = cursorPos;
-  while (pos < text.length && /\s/.test(text[pos])) pos += 1;
-  while (pos < text.length && !/\s/.test(text[pos])) pos += 1;
+  while (pos < text.length && isWordCharacter(text[pos])) pos += 1;
+  while (pos < text.length && !isWordCharacter(text[pos])) pos += 1;
   return pos;
+}
+
+function wordAtCursor(text: string, cursorPos: number): string | null {
+  if (cursorPos < 0 || cursorPos >= text.length || !isWordCharacter(text[cursorPos])) {
+    return null;
+  }
+  let start = cursorPos;
+  while (start > 0 && isWordCharacter(text[start - 1])) start -= 1;
+  let end = cursorPos + 1;
+  while (end < text.length && isWordCharacter(text[end])) end += 1;
+  return text.slice(start, end);
+}
+
+function announceCursorWordOrCharacter(text: string, cursorPos: number): void {
+  if (cursorPos === text.length) {
+    updateStatus('space');
+    return;
+  }
+  const word = wordAtCursor(text, cursorPos);
+  if (word) {
+    updateStatus(word);
+    return;
+  }
+  announceCursorCharacter(text, cursorPos);
 }
 
 function applyTextInputEdit(code: string, key: string, maxLength: number, ctrlKey = false, allowReplaceOnNextType = false): void {
@@ -623,12 +652,12 @@ function applyTextInputEdit(code: string, key: string, maxLength: number, ctrlKe
   }
   if (ctrlKey && code === 'ArrowLeft') {
     state.cursorPos = moveCursorWordLeft(state.nicknameInput, state.cursorPos);
-    announceCursorCharacter(state.nicknameInput, state.cursorPos);
+    announceCursorWordOrCharacter(state.nicknameInput, state.cursorPos);
     return;
   }
   if (ctrlKey && code === 'ArrowRight') {
     state.cursorPos = moveCursorWordRight(state.nicknameInput, state.cursorPos);
-    announceCursorCharacter(state.nicknameInput, state.cursorPos);
+    announceCursorWordOrCharacter(state.nicknameInput, state.cursorPos);
     return;
   }
 
@@ -713,7 +742,11 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
 }
 
 function announceCursorCharacter(text: string, cursorPos: number): void {
-  if (cursorPos < 0 || cursorPos >= text.length || text.length === 0) {
+  if (cursorPos < 0 || cursorPos > text.length) {
+    return;
+  }
+  if (cursorPos === text.length) {
+    updateStatus('space');
     return;
   }
   updateStatus(describeCharacter(text[cursorPos]));
