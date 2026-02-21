@@ -153,6 +153,7 @@ let connecting = false;
 const messageBuffer: string[] = [];
 let messageCursor = -1;
 const radioRuntime = new RadioStationRuntime(audio);
+let internalClipboardText = '';
 let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
 
@@ -569,6 +570,10 @@ function pasteIntoActiveTextInput(raw: string): boolean {
   state.cursorPos += insert.length;
   replaceTextOnNextType = false;
   return true;
+}
+
+function isTextEditingMode(mode: typeof state.mode): boolean {
+  return mode === 'nickname' || mode === 'chat' || mode === 'itemPropertyEdit';
 }
 
 function mapTextInputKey(code: string, key: string): string {
@@ -2035,10 +2040,34 @@ function setupInputHandlers(): void {
 
     if (!state.running) return;
     if (document.activeElement !== dom.canvas) return;
-    if (event.ctrlKey || event.altKey) return;
+    if (event.altKey) return;
+    if (event.ctrlKey && !isTextEditingMode(state.mode)) return;
 
     if (state.mode !== 'normal' || !code.startsWith('Arrow')) {
       event.preventDefault();
+    }
+
+    if (event.ctrlKey && isTextEditingMode(state.mode)) {
+      if (code === 'KeyC') {
+        const text = state.nicknameInput;
+        internalClipboardText = text;
+        void navigator.clipboard?.writeText(text).catch(() => undefined);
+        updateStatus('copied');
+        return;
+      }
+      if (code === 'KeyX') {
+        const text = state.nicknameInput;
+        internalClipboardText = text;
+        void navigator.clipboard?.writeText(text).catch(() => undefined);
+        state.nicknameInput = '';
+        state.cursorPos = 0;
+        replaceTextOnNextType = false;
+        updateStatus('cut');
+        return;
+      }
+      if (code === 'KeyV') {
+        updateStatus('pasted');
+      }
     }
 
     if (isTypingKey(code) && state.keysPressed[code]) return;
@@ -2077,9 +2106,10 @@ function setupInputHandlers(): void {
   document.addEventListener('paste', (event) => {
     if (document.activeElement !== dom.canvas) return;
     if (!state.running) return;
-    const pasted = event.clipboardData?.getData('text') ?? '';
+    const pasted = event.clipboardData?.getData('text') ?? internalClipboardText;
     if (!pasteIntoActiveTextInput(pasted)) return;
     event.preventDefault();
+    updateStatus('pasted');
   });
 }
 
