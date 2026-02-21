@@ -670,6 +670,13 @@ function squareWord(distance: number): string {
   return distance === 1 ? 'square' : 'squares';
 }
 
+function distanceDirectionPhrase(px: number, py: number, tx: number, ty: number): string {
+  const distance = Math.round(Math.hypot(tx - px, ty - py));
+  const direction = getDirection(px, py, tx, ty);
+  if (direction === 'here') return 'here';
+  return `${distance} ${squareWord(distance)} ${direction}`;
+}
+
 function persistPlayerPosition(): void {
   try {
     localStorage.setItem(
@@ -1216,9 +1223,8 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       state.mode = 'listItems';
       const first = state.items.get(state.sortedItemIds[0]);
       if (first) {
-        const distance = Math.round(Math.hypot(first.x - state.player.x, first.y - state.player.y));
         updateStatus(
-          `List: ${itemLabel(first)}, ${distance} ${squareWord(distance)} ${getDirection(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+          `List: ${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
         );
       }
       audio.sfxUiBlip();
@@ -1233,9 +1239,8 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     const item = state.items.get(nearest.itemId);
     if (!item) return;
     audio.sfxLocate({ x: item.x - state.player.x, y: item.y - state.player.y });
-    const roundedDistance = Math.round(nearest.distance);
     updateStatus(
-      `${itemLabel(item)}, ${roundedDistance} ${squareWord(roundedDistance)} ${getDirection(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
+      `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
     );
     return;
   }
@@ -1336,9 +1341,8 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       state.mode = 'listUsers';
       const first = state.peers.get(state.sortedPeerIds[0]);
       if (first) {
-        const distance = Math.round(Math.hypot(first.x - state.player.x, first.y - state.player.y));
         updateStatus(
-          `List: ${first.nickname}, ${distance} ${squareWord(distance)} ${getDirection(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+          `List: ${first.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
         );
       }
       audio.sfxUiBlip();
@@ -1354,9 +1358,8 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     const peer = state.peers.get(nearest.peerId);
     if (!peer) return;
     audio.sfxLocate({ x: peer.x - state.player.x, y: peer.y - state.player.y });
-    const roundedDistance = Math.round(nearest.distance);
     updateStatus(
-      `${peer.nickname}, ${roundedDistance} ${squareWord(roundedDistance)} ${getDirection(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
+      `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
     );
     return;
   }
@@ -1484,9 +1487,8 @@ function handleListModeInput(code: string, key: string): void {
         : (state.listIndex - 1 + state.sortedPeerIds.length) % state.sortedPeerIds.length;
     const peer = state.peers.get(state.sortedPeerIds[state.listIndex]);
     if (!peer) return;
-    const distance = Math.round(Math.hypot(peer.x - state.player.x, peer.y - state.player.y));
     updateStatus(
-      `${peer.nickname}, ${distance} ${squareWord(distance)} ${getDirection(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
+      `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
     );
     return;
   }
@@ -1500,9 +1502,8 @@ function handleListModeInput(code: string, key: string): void {
     state.listIndex = nextByInitial;
     const peer = state.peers.get(state.sortedPeerIds[state.listIndex]);
     if (!peer) return;
-    const distance = Math.round(Math.hypot(peer.x - state.player.x, peer.y - state.player.y));
     updateStatus(
-      `${peer.nickname}, ${distance} ${squareWord(distance)} ${getDirection(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
+      `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
     );
     audio.sfxUiBlip();
     return;
@@ -1540,9 +1541,8 @@ function handleListItemsModeInput(code: string, key: string): void {
         : (state.itemListIndex - 1 + state.sortedItemIds.length) % state.sortedItemIds.length;
     const item = state.items.get(state.sortedItemIds[state.itemListIndex]);
     if (!item) return;
-    const distance = Math.round(Math.hypot(item.x - state.player.x, item.y - state.player.y));
     updateStatus(
-      `${itemLabel(item)}, ${distance} ${squareWord(distance)} ${getDirection(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
+      `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
     );
     return;
   }
@@ -1559,9 +1559,8 @@ function handleListItemsModeInput(code: string, key: string): void {
     state.itemListIndex = nextByInitial;
     const item = state.items.get(state.sortedItemIds[state.itemListIndex]);
     if (!item) return;
-    const distance = Math.round(Math.hypot(item.x - state.player.x, item.y - state.player.y));
     updateStatus(
-      `${itemLabel(item)}, ${distance} ${squareWord(distance)} ${getDirection(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
+      `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
     );
     audio.sfxUiBlip();
     return;

@@ -133,13 +133,14 @@ export function getDirection(px: number, py: number, tx: number, ty: number): st
   const dx = tx - px;
   const dy = ty - py;
   if (dx === 0 && dy === 0) return 'here';
-  let vDir = '';
-  let hDir = '';
-  if (dy > 0) vDir = 'north';
-  if (dy < 0) vDir = 'south';
-  if (dx > 0) hDir = 'east';
-  if (dx < 0) hDir = 'west';
-  return `${vDir} ${hDir}`.trim();
+  if (dx === 0) return dy > 0 ? 'directly north' : 'directly south';
+  if (dy === 0) return dx > 0 ? 'directly east' : 'directly west';
+
+  const octants = ['east', 'northeast', 'north', 'northwest', 'west', 'southwest', 'south', 'southeast'] as const;
+  const step = Math.PI / 4;
+  const rawIndex = Math.round(Math.atan2(dy, dx) / step);
+  const index = ((rawIndex % octants.length) + octants.length) % octants.length;
+  return octants[index];
 }
 
 export function getNearestItem(state: GameState): { itemId: string | null; distance: number } {
