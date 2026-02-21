@@ -147,6 +147,13 @@ type SharedRadioSource = {
 };
 type ItemRadioOutput = {
   streamUrl: string;
+  channel: RadioChannelMode;
+  sharedSource: MediaElementAudioSourceNode;
+  sourceInput: GainNode;
+  channelSplitter: ChannelSplitterNode | null;
+  channelMerger: ChannelMergerNode | null;
+  channelLeftGain: GainNode | null;
+  channelRightGain: GainNode | null;
   effectInput: GainNode;
   effectRuntime: EffectRuntime | null;
   effect: EffectId;
@@ -469,6 +476,24 @@ function getOrCreateSharedRadioSource(streamUrl: string): SharedRadioSource | nu
 function cleanupRadioRuntime(itemId: string): void {
   const output = itemRadioOutputs.get(itemId);
   if (!output) return;
+  if (output.channelSplitter) {
+    try {
+      output.sharedSource.disconnect(output.channelSplitter);
+    } catch {
+      // Ignore stale graph disconnects.
+    }
+  } else {
+    try {
+      output.sharedSource.disconnect(output.sourceInput);
+    } catch {
+      // Ignore stale graph disconnects.
+    }
+  }
+  output.channelLeftGain?.disconnect();
+  output.channelRightGain?.disconnect();
+  output.channelSplitter?.disconnect();
+  output.channelMerger?.disconnect();
+  output.sourceInput.disconnect();
   output.effectInput.disconnect();
   disconnectEffectRuntime(output.effectRuntime);
   output.gain.disconnect();
@@ -494,6 +519,65 @@ function normalizeRadioChannel(channel: unknown): RadioChannelMode {
   if (typeof channel !== 'string') return 'stereo';
   const normalized = channel.trim().toLowerCase() as RadioChannelMode;
   return (RADIO_CHANNEL_OPTIONS as readonly string[]).includes(normalized) ? normalized : 'stereo';
+}
+
+function connectRadioChannelSource(
+  audioCtx: AudioContext,
+  sharedSource: MediaElementAudioSourceNode,
+  channel: RadioChannelMode,
+  destination: GainNode,
+): {
+  sourceInput: GainNode;
+  channelSplitter: ChannelSplitterNode | null;
+  channelMerger: ChannelMergerNode | null;
+  channelLeftGain: GainNode | null;
+  channelRightGain: GainNode | null;
+} {
+  const sourceInput = audioCtx.createGain();
+  sourceInput.gain.value = 1;
+
+  if (channel === 'stereo') {
+    sharedSource.connect(sourceInput);
+    sourceInput.connect(destination);
+    return {
+      sourceInput,
+      channelSplitter: null,
+      channelMerger: null,
+      channelLeftGain: null,
+      channelRightGain: null,
+    };
+  }
+
+  const splitter = audioCtx.createChannelSplitter(2);
+  const merger = audioCtx.createChannelMerger(1);
+  sharedSource.connect(splitter);
+
+  let leftGain: GainNode | null = null;
+  let rightGain: GainNode | null = null;
+  if (channel === 'mono') {
+    leftGain = audioCtx.createGain();
+    rightGain = audioCtx.createGain();
+    leftGain.gain.value = 0.5;
+    rightGain.gain.value = 0.5;
+    splitter.connect(leftGain, 0);
+    splitter.connect(rightGain, 1);
+    leftGain.connect(merger, 0, 0);
+    rightGain.connect(merger, 0, 0);
+  } else if (channel === 'left') {
+    splitter.connect(merger, 0, 0);
+  } else {
+    splitter.connect(merger, 1, 0);
+  }
+
+  merger.connect(sourceInput);
+  sourceInput.connect(destination);
+  return {
+    sourceInput,
+    channelSplitter: splitter,
+    channelMerger: merger,
+    channelLeftGain: leftGain,
+    channelRightGain: rightGain,
+  };
 }
 
 function applyRadioEffect(
@@ -529,7 +613,8 @@ async function ensureRadioRuntime(item: WorldItem): Promise<void> {
   if (!audioCtx) return;
 
   const existing = itemRadioOutputs.get(item.id);
-  if (existing && existing.streamUrl === streamUrl) {
+  const channel = normalizeRadioChannel(item.params.channel);
+  if (existing && existing.streamUrl === streamUrl && existing.channel === channel) {
     return;
   }
   if (existing) {
@@ -542,7 +627,7 @@ async function ensureRadioRuntime(item: WorldItem): Promise<void> {
   const gain = audioCtx.createGain();
   gain.gain.value = 0;
   const effectInput = audioCtx.createGain();
-  shared.source.connect(effectInput);
+  const channelSource = connectRadioChannelSource(audioCtx, shared.source, channel, effectInput);
   const effect = normalizeRadioEffect(item.params.effect);
   const effectValue = normalizeRadioEffectValue(item.params.effectValue);
   const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
@@ -553,7 +638,22 @@ async function ensureRadioRuntime(item: WorldItem): Promise<void> {
   } else {
     gain.connect(audioCtx.destination);
   }
-  itemRadioOutputs.set(item.id, { streamUrl, effectInput, effectRuntime, effect, effectValue, gain, panner });
+  itemRadioOutputs.set(item.id, {
+    streamUrl,
+    channel,
+    sharedSource: shared.source,
+    sourceInput: channelSource.sourceInput,
+    channelSplitter: channelSource.channelSplitter,
+    channelMerger: channelSource.channelMerger,
+    channelLeftGain: channelSource.channelLeftGain,
+    channelRightGain: channelSource.channelRightGain,
+    effectInput,
+    effectRuntime,
+    effect,
+    effectValue,
+    gain,
+    panner,
+  });
 }
 
 async function syncRadioStationPlayback(): Promise<void> {
@@ -605,12 +705,8 @@ function updateRadioStationSpatialAudio(): void {
     output.gain.gain.linearRampToValueAtTime(gainValue * normalizedVolume, audioCtx.currentTime + 0.1);
     if (output.panner) {
       let resolvedPan = Math.max(-1, Math.min(1, panValue));
-      if (channel === 'mono') {
+      if (channel !== 'stereo') {
         resolvedPan = 0;
-      } else if (channel === 'left') {
-        resolvedPan = -1;
-      } else if (channel === 'right') {
-        resolvedPan = 1;
       }
       output.panner.pan.linearRampToValueAtTime(resolvedPan, audioCtx.currentTime + 0.1);
     }
