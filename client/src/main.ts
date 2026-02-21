@@ -236,6 +236,8 @@ const itemEmitRuntime = new ItemEmitRuntime(audio, resolveIncomingSoundUrl);
 let internalClipboardText = '';
 let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
+let helpViewerLines: string[] = [];
+let helpViewerIndex = 0;
 let audioLayers: AudioLayerState = {
   voice: true,
   item: true,
@@ -313,6 +315,7 @@ function setUpdatesExpanded(expanded: boolean): void {
 }
 
 function renderHelp(help: HelpData): void {
+  const lines: string[] = [];
   dom.instructions.innerHTML = '';
   const heading = document.createElement('h2');
   heading.textContent = 'Help';
@@ -321,6 +324,7 @@ function renderHelp(help: HelpData): void {
     const sectionHeading = document.createElement('h3');
     sectionHeading.textContent = section.title;
     dom.instructions.appendChild(sectionHeading);
+    lines.push(section.title);
     for (const item of section.items) {
       const line = document.createElement('p');
       const keys = document.createElement('b');
@@ -328,8 +332,11 @@ function renderHelp(help: HelpData): void {
       line.appendChild(keys);
       line.append(` ${item.description}`);
       dom.instructions.appendChild(line);
+      lines.push(`${item.keys}: ${item.description}`);
     }
   }
+  helpViewerLines = lines;
+  helpViewerIndex = 0;
 }
 
 async function loadHelp(): Promise<void> {
@@ -579,6 +586,18 @@ function itemLabel(item: WorldItem): string {
 function itemPropertyLabel(key: string): string {
   if (key === 'use24Hour') return 'use 24 hour format';
   return key;
+}
+
+function openHelpViewer(): void {
+  if (helpViewerLines.length === 0) {
+    updateStatus('Help unavailable.');
+    audio.sfxUiCancel();
+    return;
+  }
+  state.mode = 'helpView';
+  helpViewerIndex = 0;
+  updateStatus(helpViewerLines[helpViewerIndex]);
+  audio.sfxUiBlip();
 }
 
 function getItemsAtPosition(x: number, y: number): WorldItem[] {
@@ -1533,6 +1552,11 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     return;
   }
 
+  if (code === 'Slash' && shiftKey) {
+    openHelpViewer();
+    return;
+  }
+
   if (code === 'Slash' && !shiftKey) {
     state.mode = 'chat';
     state.nicknameInput = '';
@@ -1571,6 +1595,45 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     updateStatus('Press Escape again to disconnect.');
     audio.sfxUiCancel();
     return;
+  }
+}
+
+function handleHelpViewModeInput(code: string): void {
+  if (helpViewerLines.length === 0) {
+    state.mode = 'normal';
+    updateStatus('Help unavailable.');
+    audio.sfxUiCancel();
+    return;
+  }
+
+  if (code === 'ArrowDown') {
+    helpViewerIndex = Math.min(helpViewerLines.length - 1, helpViewerIndex + 1);
+    updateStatus(helpViewerLines[helpViewerIndex]);
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'ArrowUp') {
+    helpViewerIndex = Math.max(0, helpViewerIndex - 1);
+    updateStatus(helpViewerLines[helpViewerIndex]);
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'Home') {
+    helpViewerIndex = 0;
+    updateStatus(helpViewerLines[helpViewerIndex]);
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'End') {
+    helpViewerIndex = helpViewerLines.length - 1;
+    updateStatus(helpViewerLines[helpViewerIndex]);
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'Escape') {
+    state.mode = 'normal';
+    updateStatus('Closed help.');
+    audio.sfxUiCancel();
   }
 }
 
@@ -2220,6 +2283,8 @@ function setupInputHandlers(): void {
       handleChatModeInput(code, event.key, event.ctrlKey);
     } else if (state.mode === 'effectSelect') {
       handleEffectSelectModeInput(code, event.key);
+    } else if (state.mode === 'helpView') {
+      handleHelpViewModeInput(code);
     } else if (state.mode === 'listUsers') {
       handleListModeInput(code, event.key);
     } else if (state.mode === 'listItems') {

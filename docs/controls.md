@@ -6,6 +6,7 @@ This document is the authoritative keymap for the client.
 
 ### Movement
 - `Arrow Keys`: Move
+- `?`: Open help viewer
 - `C`: Speak coordinates
 - `Escape`: Press once for disconnect prompt, press again to disconnect
 
@@ -61,3 +62,10 @@ Applies to effect select, user/item list modes, item selection, item property li
 - `Enter`: Confirm selection
 - `Escape`: Exit/cancel
 - First-letter navigation: jump to next matching entry
+
+## Help Viewer Mode
+
+- `ArrowUp` / `ArrowDown`: Previous/next help line
+- `Home` / `End`: First/last help line
+- `Escape`: Exit help viewer
+- No first-letter navigation in this mode

@@ -4,6 +4,7 @@
       "title": "Movement",
       "items": [
         { "keys": "Arrow Keys", "description": "Move" },
+        { "keys": "Question Mark", "description": "Open help viewer" },
         { "keys": "C", "description": "Speak coordinates" },
         { "keys": "Escape", "description": "Disconnect/cancel" }
       ]

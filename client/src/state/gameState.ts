@@ -25,6 +25,7 @@ export type SelectionContext = 'pickup' | 'drop' | 'delete' | 'edit' | 'use' | '
 
 export type GameMode =
   | 'normal'
+  | 'helpView'
   | 'nickname'
   | 'chat'
   | 'effectSelect'
