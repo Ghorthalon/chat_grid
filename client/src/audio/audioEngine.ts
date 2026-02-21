@@ -253,8 +253,12 @@ export class AudioEngine {
     this.playSound({ freq: isDefault ? 659.25 : 440, duration: 0.1, type: 'sine', gain: 0.35 });
   }
 
-  sfxTileOccupantPing(): void {
+  sfxTileItemPing(): void {
     this.playSound({ freq: 1320, duration: 0.12, type: 'sine', gain: 0.45 });
+  }
+
+  sfxTileUserPing(): void {
+    this.playSound({ freq: 880, duration: 0.12, type: 'sine', gain: 0.45 });
   }
 
   async playSpatialSample(url: string, sourcePosition: { x: number; y: number }, gain = 1): Promise<void> {

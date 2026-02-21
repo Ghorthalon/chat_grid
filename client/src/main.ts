@@ -572,6 +572,21 @@ function pasteIntoActiveTextInput(raw: string): boolean {
   return true;
 }
 
+async function handlePasteShortcut(): Promise<void> {
+  let pasted = internalClipboardText;
+  try {
+    const clipboardText = await navigator.clipboard?.readText();
+    if (typeof clipboardText === 'string') {
+      pasted = clipboardText;
+      internalClipboardText = clipboardText;
+    }
+  } catch {
+    // Clipboard read can fail without user gesture/permissions; fallback to internal clipboard.
+  }
+  if (!pasteIntoActiveTextInput(pasted)) return;
+  updateStatus('pasted');
+}
+
 function isTextEditingMode(mode: typeof state.mode): boolean {
   return mode === 'nickname' || mode === 'chat' || mode === 'itemPropertyEdit';
 }
@@ -779,13 +794,14 @@ function handleMovement(): void {
   const tileAnnouncements: string[] = [];
   if (namesOnTile.length > 0) {
     tileAnnouncements.push(namesOnTile.join(', '));
+    audio.sfxTileUserPing();
   }
   if (itemsOnTile.length > 0) {
     tileAnnouncements.push(itemsOnTile.map((item) => itemLabel(item)).join(', '));
+    audio.sfxTileItemPing();
   }
   if (tileAnnouncements.length > 0) {
     updateStatus(tileAnnouncements.join('. '));
-    audio.sfxTileOccupantPing();
   }
 }
 
@@ -2066,7 +2082,8 @@ function setupInputHandlers(): void {
         return;
       }
       if (code === 'KeyV') {
-        updateStatus('pasted');
+        void handlePasteShortcut();
+        return;
       }
     }
 
