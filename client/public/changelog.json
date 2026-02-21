@@ -1,0 +1,17 @@
+{
+  "sections": [
+    {
+      "date": "February 20, 2026",
+      "items": [
+        "Fixed reconnect failure paths so bad saved position or signaling errors do not leave connect stuck, and hardened websocket message parsing.",
+        "Unified voice effects under a shared effect model for users and radio stations, including loopback monitoring.",
+        "Added global item use cooldown support on the server with per-item-type override capability.",
+        "Added Shift+O inspector mode to read all item properties, including global and non-editable values.",
+        "Added paste support for canvas text-entry modes (chat and field editors).",
+        "Expanded character/arrow review announcements to include common punctuation names.",
+        "Persisted player position across refresh/unload so reconnect restores the previous grid location.",
+        "Added the deploy helper script for quick client publish plus service restart workflow."
+      ]
+    }
+  ]
+}

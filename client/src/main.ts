@@ -43,6 +43,9 @@ declare global {
 
 type Dom = {
   appVersion: HTMLElement;
+  updatesSection: HTMLElement;
+  updatesToggle: HTMLButtonElement;
+  updatesPanel: HTMLDivElement;
   nicknameContainer: HTMLDivElement;
   preconnectNickname: HTMLInputElement;
   connectButton: HTMLButtonElement;
@@ -62,6 +65,9 @@ type Dom = {
 
 const dom: Dom = {
   appVersion: requiredById('appVersion'),
+  updatesSection: requiredById('updatesSection'),
+  updatesToggle: requiredById('updatesToggle'),
+  updatesPanel: requiredById('updatesPanel'),
   nicknameContainer: requiredById('nicknameContainer'),
   preconnectNickname: requiredById('preconnectNickname'),
   connectButton: requiredById('connectButton'),
@@ -77,6 +83,15 @@ const dom: Dom = {
   canvas: requiredById('gameCanvas'),
   status: requiredById('status'),
   instructions: requiredById('instructions'),
+};
+
+type ChangelogSection = {
+  date: string;
+  items: string[];
+};
+
+type ChangelogData = {
+  sections: ChangelogSection[];
 };
 
 const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
@@ -181,6 +196,7 @@ const peerManager = new PeerManager(
 audio.setOutputMode(outputMode);
 
 loadEffectLevels();
+void loadChangelog();
 
 function requiredById<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -188,6 +204,53 @@ function requiredById<T extends HTMLElement>(id: string): T {
     throw new Error(`Missing element: ${id}`);
   }
   return found as T;
+}
+
+function setUpdatesExpanded(expanded: boolean): void {
+  dom.updatesToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  dom.updatesToggle.textContent = expanded ? 'Hide updates' : 'Show updates';
+  dom.updatesPanel.hidden = !expanded;
+  dom.updatesPanel.classList.toggle('hidden', !expanded);
+}
+
+function renderChangelog(changelog: ChangelogData): void {
+  dom.updatesPanel.innerHTML = '';
+  for (const section of changelog.sections) {
+    const heading = document.createElement('h3');
+    heading.textContent = section.date;
+    dom.updatesPanel.appendChild(heading);
+
+    const list = document.createElement('ul');
+    for (const item of section.items) {
+      const li = document.createElement('li');
+      li.textContent = item;
+      list.appendChild(li);
+    }
+    dom.updatesPanel.appendChild(list);
+  }
+}
+
+async function loadChangelog(): Promise<void> {
+  try {
+    const response = await fetch(withBase('changelog.json'), { cache: 'no-store' });
+    if (!response.ok) {
+      dom.updatesSection.classList.add('hidden');
+      return;
+    }
+    const changelog = (await response.json()) as ChangelogData;
+    if (!Array.isArray(changelog.sections) || changelog.sections.length === 0) {
+      dom.updatesSection.classList.add('hidden');
+      return;
+    }
+    renderChangelog(changelog);
+    setUpdatesExpanded(false);
+    dom.updatesToggle.addEventListener('click', () => {
+      const expanded = dom.updatesToggle.getAttribute('aria-expanded') === 'true';
+      setUpdatesExpanded(!expanded);
+    });
+  } catch {
+    dom.updatesSection.classList.add('hidden');
+  }
 }
 
 function updateStatus(message: string): void {

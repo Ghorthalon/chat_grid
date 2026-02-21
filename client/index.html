@@ -67,7 +67,16 @@
         <p><b>Dash or Equals:</b> Lower/raise active effect value</p>
       </div>
 
-      <small id="appVersion">Another AI experiment with Jage. Version</small>
+      <footer id="appFooter">
+        <small id="appVersion">Another AI experiment with Jage. Version</small>
+        <section id="updatesSection" class="updates-section">
+          <h2>Latest Updates</h2>
+          <button id="updatesToggle" type="button" aria-expanded="false" aria-controls="updatesPanel">
+            Show updates
+          </button>
+          <div id="updatesPanel" class="hidden" hidden></div>
+        </section>
+      </footer>
 
       <div id="settingsModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <div class="modal-content">

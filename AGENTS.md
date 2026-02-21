@@ -35,3 +35,7 @@
 ## Audio Asset Rules
 - Keep all runtime sounds in `client/public/sounds/`.
 - Reference sounds as absolute web paths (example: `/sounds/roll.ogg`).
+
+## Changelog Policy
+- Footer changelog content is sourced from `client/public/changelog.json`.
+- Do not add or edit changelog lines unless the user explicitly instructs to do so.
