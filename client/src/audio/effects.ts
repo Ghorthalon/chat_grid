@@ -61,7 +61,7 @@ export function connectEffectChain(
     if (effect === 'high_pass') {
       filter.frequency.value = 120 + effectMix * 7000;
     } else {
-      filter.frequency.value = 7800 - effectMix * 7600;
+      filter.frequency.value = 7800 - effectMix * 7750;
     }
     filter.Q.value = 0.7 + effectMix * 8;
     input.connect(filter);
