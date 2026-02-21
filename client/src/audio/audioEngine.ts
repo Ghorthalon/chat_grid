@@ -111,6 +111,13 @@ export class AudioEngine {
     return EFFECT_SEQUENCE[this.effectIndex];
   }
 
+  setOutboundEffect(effectId: EffectId): { id: EffectId; label: string } {
+    const nextIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === effectId);
+    this.effectIndex = nextIndex >= 0 ? nextIndex : this.effectIndex;
+    this.rebuildOutboundEffectGraph();
+    return EFFECT_SEQUENCE[this.effectIndex];
+  }
+
   getCurrentEffect(): { id: EffectId; label: string; value: number; defaultValue: number } {
     const effect = EFFECT_SEQUENCE[this.effectIndex];
     return {

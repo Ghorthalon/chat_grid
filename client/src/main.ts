@@ -1092,6 +1092,7 @@ function disconnect(): void {
   state.editingPropertyKey = null;
   state.itemPropertyOptionValues = [];
   state.itemPropertyOptionIndex = 0;
+  state.effectSelectIndex = 0;
   pendingEscapeDisconnect = false;
 
   connecting = false;
@@ -1327,8 +1328,11 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
   }
 
   if (code === 'KeyE') {
-    const effect = audio.cycleOutboundEffect();
-    updateStatus(effect.label);
+    const currentEffect = audio.getCurrentEffect();
+    const currentIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === currentEffect.id);
+    state.effectSelectIndex = currentIndex >= 0 ? currentIndex : 0;
+    state.mode = 'effectSelect';
+    updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
     audio.sfxUiBlip();
     return;
   }
@@ -1623,6 +1627,46 @@ function handleChatModeInput(code: string, key: string): void {
   }
 
   applyTextInputEdit(code, key, 500);
+}
+
+function handleEffectSelectModeInput(code: string, key: string): void {
+  if (code === 'ArrowDown' || code === 'ArrowUp') {
+    state.effectSelectIndex =
+      code === 'ArrowDown'
+        ? (state.effectSelectIndex + 1) % EFFECT_SEQUENCE.length
+        : (state.effectSelectIndex - 1 + EFFECT_SEQUENCE.length) % EFFECT_SEQUENCE.length;
+    updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
+    audio.sfxUiBlip();
+    return;
+  }
+
+  const nextByInitial = findNextIndexByInitial(
+    EFFECT_SEQUENCE,
+    state.effectSelectIndex,
+    key,
+    (effect) => effect.label,
+  );
+  if (nextByInitial >= 0) {
+    state.effectSelectIndex = nextByInitial;
+    updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
+    audio.sfxUiBlip();
+    return;
+  }
+
+  if (code === 'Enter') {
+    const selected = EFFECT_SEQUENCE[state.effectSelectIndex];
+    const effect = audio.setOutboundEffect(selected.id);
+    state.mode = 'normal';
+    updateStatus(effect.label);
+    audio.sfxUiBlip();
+    return;
+  }
+
+  if (code === 'Escape') {
+    state.mode = 'normal';
+    updateStatus('Cancelled.');
+    audio.sfxUiCancel();
+  }
 }
 
 function handleListModeInput(code: string, key: string): void {
@@ -2164,6 +2208,8 @@ function setupInputHandlers(): void {
       handleNicknameModeInput(code, event.key);
     } else if (state.mode === 'chat') {
       handleChatModeInput(code, event.key);
+    } else if (state.mode === 'effectSelect') {
+      handleEffectSelectModeInput(code, event.key);
     } else if (state.mode === 'listUsers') {
       handleListModeInput(code, event.key);
     } else if (state.mode === 'listItems') {

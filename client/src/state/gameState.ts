@@ -26,6 +26,7 @@ export type GameMode =
   | 'normal'
   | 'nickname'
   | 'chat'
+  | 'effectSelect'
   | 'listUsers'
   | 'listItems'
   | 'addItem'
@@ -69,6 +70,7 @@ export type GameState = {
   editingPropertyKey: string | null;
   itemPropertyOptionValues: string[];
   itemPropertyOptionIndex: number;
+  effectSelectIndex: number;
   addItemTypeIndex: number;
   isMuted: boolean;
   player: Player;
@@ -98,6 +100,7 @@ export function createInitialState(): GameState {
     editingPropertyKey: null,
     itemPropertyOptionValues: [],
     itemPropertyOptionIndex: 0,
+    effectSelectIndex: 0,
     addItemTypeIndex: 0,
     isMuted: false,
     player: {
