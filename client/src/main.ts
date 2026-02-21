@@ -147,13 +147,13 @@ const CLOCK_TIME_ZONE_OPTIONS = [
   'Europe/Helsinki',
   'Europe/London',
   'Europe/Moscow',
+  'Pacific/Apia',
   'Pacific/Auckland',
   'Pacific/Chatham',
   'Pacific/Honolulu',
   'Pacific/Kiritimati',
   'Pacific/Noumea',
   'Pacific/Pago_Pago',
-  'Pacific/Apia',
   'UTC',
 ] as const;
 dom.appVersion.textContent = APP_VERSION

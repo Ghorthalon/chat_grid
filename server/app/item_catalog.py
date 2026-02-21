@@ -38,13 +38,13 @@ CLOCK_TIME_ZONE_OPTIONS: tuple[str, ...] = (
     "Europe/Helsinki",
     "Europe/London",
     "Europe/Moscow",
+    "Pacific/Apia",
     "Pacific/Auckland",
     "Pacific/Chatham",
     "Pacific/Honolulu",
     "Pacific/Kiritimati",
     "Pacific/Noumea",
     "Pacific/Pago_Pago",
-    "Pacific/Apia",
     "UTC",
 )
 
