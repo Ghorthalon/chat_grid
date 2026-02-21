@@ -9,8 +9,11 @@ type EmitOutput = {
   panner: StereoPannerNode | null;
 };
 
+const ITEM_EMIT_BASE_GAIN = 0.3;
+
 export class ItemEmitRuntime {
   private readonly outputs = new Map<string, EmitOutput>();
+  private layerEnabled = true;
 
   constructor(
     private readonly audio: AudioEngine,
@@ -34,7 +37,20 @@ export class ItemEmitRuntime {
     }
   }
 
+  async setLayerEnabled(enabled: boolean, items: Iterable<WorldItem>): Promise<void> {
+    this.layerEnabled = enabled;
+    if (!enabled) {
+      this.cleanupAll();
+      return;
+    }
+    await this.sync(items);
+  }
+
   async sync(items: Iterable<WorldItem>): Promise<void> {
+    if (!this.layerEnabled) {
+      this.cleanupAll();
+      return;
+    }
     const validIds = new Set<string>();
     await this.audio.ensureContext();
     const audioCtx = this.audio.context;
@@ -81,6 +97,7 @@ export class ItemEmitRuntime {
   }
 
   updateSpatialAudio(items: Map<string, WorldItem>, playerPosition: { x: number; y: number }): void {
+    if (!this.layerEnabled) return;
     const audioCtx = this.audio.context;
     if (!audioCtx) return;
 
@@ -101,7 +118,7 @@ export class ItemEmitRuntime {
         gainValue = 1;
         panValue = 0;
       }
-      output.gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + 0.1);
+      output.gain.gain.linearRampToValueAtTime(gainValue * ITEM_EMIT_BASE_GAIN, audioCtx.currentTime + 0.1);
       if (output.panner) {
         const resolvedPan = this.audio.getOutputMode() === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
         output.panner.pan.linearRampToValueAtTime(resolvedPan, audioCtx.currentTime + 0.1);

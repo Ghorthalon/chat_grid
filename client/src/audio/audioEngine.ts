@@ -41,6 +41,7 @@ export class AudioEngine {
   private loopbackEnabled = false;
   private loopbackRuntime: EffectRuntime | null = null;
   private outputMode: OutputMode = 'stereo';
+  private voiceLayerEnabled = true;
   private effectIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === 'off');
   private readonly effectValues: Record<EffectId, number> = {
     reverb: 50,
@@ -173,6 +174,14 @@ export class AudioEngine {
     return this.outputMode;
   }
 
+  setVoiceLayerEnabled(enabled: boolean): void {
+    this.voiceLayerEnabled = enabled;
+  }
+
+  isVoiceLayerEnabled(): boolean {
+    return this.voiceLayerEnabled;
+  }
+
   toggleLoopback(): boolean {
     this.loopbackEnabled = !this.loopbackEnabled;
     this.rebuildOutboundEffectGraph();
@@ -186,6 +195,7 @@ export class AudioEngine {
   ): Promise<void> {
     await this.ensureContext();
     if (!this.audioCtx) return;
+    this.cleanupPeerAudio(peer);
 
     const audioElement = new Audio();
     audioElement.srcObject = stream;
@@ -206,9 +216,13 @@ export class AudioEngine {
     let pannerNode: StereoPannerNode | undefined;
     if (this.supportsStereoPanner()) {
       pannerNode = this.audioCtx.createStereoPanner();
-      gainNode.connect(pannerNode).connect(this.audioCtx.destination);
+      if (this.voiceLayerEnabled) {
+        gainNode.connect(pannerNode).connect(this.audioCtx.destination);
+      }
     } else {
-      gainNode.connect(this.audioCtx.destination);
+      if (this.voiceLayerEnabled) {
+        gainNode.connect(this.audioCtx.destination);
+      }
     }
 
     peer.audioElement = audioElement;
@@ -313,9 +327,16 @@ export class AudioEngine {
   }
 
   cleanupPeerAudio(peer: SpatialPeerRuntime): void {
-    peer.audioElement?.remove();
+    if (peer.audioElement) {
+      peer.audioElement.pause();
+      peer.audioElement.srcObject = null;
+      peer.audioElement.remove();
+    }
     peer.gain?.disconnect();
     peer.panner?.disconnect();
+    peer.audioElement = undefined;
+    peer.gain = undefined;
+    peer.panner = undefined;
   }
 
   private rebuildOutboundEffectGraph(): void {

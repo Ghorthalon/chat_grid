@@ -40,6 +40,7 @@ const AUDIO_OUTPUT_STORAGE_KEY = 'chatGridAudioOutputDeviceId';
 const AUDIO_INPUT_NAME_STORAGE_KEY = 'chatGridAudioInputDeviceName';
 const AUDIO_OUTPUT_NAME_STORAGE_KEY = 'chatGridAudioOutputDeviceName';
 const AUDIO_OUTPUT_MODE_STORAGE_KEY = 'chatGridAudioOutputMode';
+const AUDIO_LAYER_STATE_STORAGE_KEY = 'chatGridAudioLayers';
 const DEFAULT_DISPLAY_TIME_ZONE = 'America/Detroit';
 const NICKNAME_STORAGE_KEY = 'spatialChatNickname';
 const NICKNAME_MAX_LENGTH = 32;
@@ -102,6 +103,13 @@ type ChangelogSection = {
 
 type ChangelogData = {
   sections: ChangelogSection[];
+};
+
+type AudioLayerState = {
+  voice: boolean;
+  item: boolean;
+  media: boolean;
+  world: boolean;
 };
 
 const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
@@ -214,6 +222,12 @@ const itemEmitRuntime = new ItemEmitRuntime(audio, resolveIncomingSoundUrl);
 let internalClipboardText = '';
 let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
+let audioLayers: AudioLayerState = {
+  voice: true,
+  item: true,
+  media: true,
+  world: true,
+};
 
 const signalingProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
 const signalingUrl = `${signalingProtocol}://${window.location.host}/ws`;
@@ -230,6 +244,7 @@ const peerManager = new PeerManager(
 audio.setOutputMode(outputMode);
 
 loadEffectLevels();
+loadAudioLayerState();
 void loadChangelog();
 
 function requiredById<T extends HTMLElement>(id: string): T {
@@ -376,6 +391,47 @@ function loadEffectLevels(): void {
 
 function persistEffectLevels(): void {
   localStorage.setItem(EFFECT_LEVELS_STORAGE_KEY, JSON.stringify(audio.getEffectLevels()));
+}
+
+function loadAudioLayerState(): void {
+  const raw = localStorage.getItem(AUDIO_LAYER_STATE_STORAGE_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<AudioLayerState>;
+      audioLayers = {
+        voice: parsed.voice !== false,
+        item: parsed.item !== false,
+        media: parsed.media !== false,
+        world: parsed.world !== false,
+      };
+    } catch {
+      // Ignore malformed persisted values.
+    }
+  }
+  audio.setVoiceLayerEnabled(audioLayers.voice);
+}
+
+function persistAudioLayerState(): void {
+  localStorage.setItem(AUDIO_LAYER_STATE_STORAGE_KEY, JSON.stringify(audioLayers));
+}
+
+async function applyAudioLayerState(): Promise<void> {
+  audio.setVoiceLayerEnabled(audioLayers.voice);
+  if (audioLayers.voice) {
+    await peerManager.resumeRemoteAudio();
+  } else {
+    peerManager.suspendRemoteAudio();
+  }
+  await radioRuntime.setLayerEnabled(audioLayers.media, state.items.values());
+  await itemEmitRuntime.setLayerEnabled(audioLayers.item, state.items.values());
+}
+
+function toggleAudioLayer(layer: keyof AudioLayerState): void {
+  audioLayers = { ...audioLayers, [layer]: !audioLayers[layer] };
+  persistAudioLayerState();
+  void applyAudioLayerState();
+  updateStatus(`${layer} layer ${audioLayers[layer] ? 'on' : 'off'}.`);
+  audio.sfxUiBlip();
 }
 
 function pushChatMessage(message: string): void {
@@ -983,6 +1039,7 @@ async function onMessage(message: IncomingMessage): Promise<void> {
       }
       await radioRuntime.sync(state.items.values());
       await itemEmitRuntime.sync(state.items.values());
+      await applyAudioLayerState();
 
       gameLoop();
       break;
@@ -1012,11 +1069,13 @@ async function onMessage(message: IncomingMessage): Promise<void> {
       if (peer) {
         const movementDelta = Math.hypot(message.x - prevX, message.y - prevY);
         const soundUrl = movementDelta > 1.5 ? TELEPORT_SOUND_URL : randomFootstepUrl();
-        void audio.playSpatialSample(
-          soundUrl,
-          { x: peer.x - state.player.x, y: peer.y - state.player.y },
-          FOOTSTEP_GAIN,
-        );
+        if (audioLayers.world) {
+          void audio.playSpatialSample(
+            soundUrl,
+            { x: peer.x - state.player.x, y: peer.y - state.player.y },
+            FOOTSTEP_GAIN,
+          );
+        }
       }
       break;
     }
@@ -1120,11 +1179,13 @@ async function onMessage(message: IncomingMessage): Promise<void> {
     case 'item_use_sound': {
       const soundUrl = resolveIncomingSoundUrl(message.sound);
       if (!soundUrl) break;
-      void audio.playSpatialSample(
-        soundUrl,
-        { x: message.x - state.player.x, y: message.y - state.player.y },
-        1,
-      );
+      if (audioLayers.world) {
+        void audio.playSpatialSample(
+          soundUrl,
+          { x: message.x - state.player.x, y: message.y - state.player.y },
+          1,
+        );
+      }
       break;
     }
   }
@@ -1170,6 +1231,26 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     const enabled = audio.toggleLoopback();
     updateStatus(enabled ? 'Loopback on.' : 'Loopback off.');
     audio.sfxUiBlip();
+    return;
+  }
+
+  if (code === 'Digit1') {
+    toggleAudioLayer('voice');
+    return;
+  }
+
+  if (code === 'Digit2') {
+    toggleAudioLayer('item');
+    return;
+  }
+
+  if (code === 'Digit3') {
+    toggleAudioLayer('media');
+    return;
+  }
+
+  if (code === 'Digit4') {
+    toggleAudioLayer('world');
     return;
   }
 

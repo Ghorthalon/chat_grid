@@ -4,6 +4,7 @@ import type { RemoteUser } from '../network/protocol';
 export type PeerRuntime = SpatialPeerRuntime & {
   id: string;
   pc: RTCPeerConnection;
+  remoteStream?: MediaStream;
 };
 
 type SendSignal = (targetId: string, payload: { sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit }) => void;
@@ -57,7 +58,12 @@ export class PeerManager {
     };
 
     pc.ontrack = async (event) => {
-      await this.audio.attachRemoteStream(peer, event.streams[0], this.outputDeviceId);
+      peer.remoteStream = event.streams[0];
+      if (this.audio.isVoiceLayerEnabled()) {
+        await this.audio.attachRemoteStream(peer, event.streams[0], this.outputDeviceId);
+      } else {
+        this.audio.cleanupPeerAudio(peer);
+      }
     };
 
     if (isInitiator) {
@@ -147,6 +153,19 @@ export class PeerManager {
         setSinkId?: (id: string) => Promise<void>;
       };
       await sinkTarget.setSinkId?.(deviceId).catch(() => undefined);
+    }
+  }
+
+  suspendRemoteAudio(): void {
+    for (const peer of this.peers.values()) {
+      this.audio.cleanupPeerAudio(peer);
+    }
+  }
+
+  async resumeRemoteAudio(): Promise<void> {
+    for (const peer of this.peers.values()) {
+      if (!peer.remoteStream) continue;
+      await this.audio.attachRemoteStream(peer, peer.remoteStream, this.outputDeviceId);
     }
   }
 

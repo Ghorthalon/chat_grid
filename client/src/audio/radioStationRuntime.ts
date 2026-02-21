@@ -110,6 +110,7 @@ function connectRadioChannelSource(
 export class RadioStationRuntime {
   private readonly sharedRadioSources = new Map<string, SharedRadioSource>();
   private readonly itemRadioOutputs = new Map<string, ItemRadioOutput>();
+  private layerEnabled = true;
 
   constructor(private readonly audio: AudioEngine) {}
 
@@ -148,7 +149,20 @@ export class RadioStationRuntime {
     }
   }
 
+  async setLayerEnabled(enabled: boolean, items: Iterable<WorldItem>): Promise<void> {
+    this.layerEnabled = enabled;
+    if (!enabled) {
+      this.cleanupAll();
+      return;
+    }
+    await this.sync(items);
+  }
+
   async sync(items: Iterable<WorldItem>): Promise<void> {
+    if (!this.layerEnabled) {
+      this.cleanupAll();
+      return;
+    }
     const validIds = new Set<string>();
     for (const item of items) {
       if (item.type !== 'radio_station') continue;
@@ -163,6 +177,7 @@ export class RadioStationRuntime {
   }
 
   updateSpatialAudio(items: Map<string, WorldItem>, playerPosition: { x: number; y: number }): void {
+    if (!this.layerEnabled) return;
     const audioCtx = this.audio.context;
     if (!audioCtx) return;
     for (const [itemId, output] of this.itemRadioOutputs.entries()) {
