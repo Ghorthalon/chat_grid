@@ -1635,7 +1635,7 @@ function handleEffectSelectModeInput(code: string, key: string): void {
       code === 'ArrowDown'
         ? (state.effectSelectIndex + 1) % EFFECT_SEQUENCE.length
         : (state.effectSelectIndex - 1 + EFFECT_SEQUENCE.length) % EFFECT_SEQUENCE.length;
-    updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
+    updateStatus(EFFECT_SEQUENCE[state.effectSelectIndex].label);
     audio.sfxUiBlip();
     return;
   }
@@ -1648,7 +1648,7 @@ function handleEffectSelectModeInput(code: string, key: string): void {
   );
   if (nextByInitial >= 0) {
     state.effectSelectIndex = nextByInitial;
-    updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
+    updateStatus(EFFECT_SEQUENCE[state.effectSelectIndex].label);
     audio.sfxUiBlip();
     return;
   }
