@@ -392,7 +392,7 @@ class SignalingServer:
             if item.carrierId is None and (item.x != client.x or item.y != client.y):
                 await self._send_item_result(client, False, "use", "Item is not on your square.", item.id)
                 return
-            if item.type not in {"dice", "wheel"}:
+            if item.type not in {"radio_station", "dice", "wheel"}:
                 await self._send_item_result(client, False, "use", "This item cannot be used yet.", item.id)
                 return
             now_ms = self.item_service.now_ms()
@@ -409,7 +409,26 @@ class SignalingServer:
                 )
                 return
             self.item_last_use_ms[item.id] = now_ms
-            if item.type == "dice":
+            delayed_wheel_result: str | None = None
+            if item.type == "radio_station":
+                enabled_value = item.params.get("enabled", True)
+                if isinstance(enabled_value, bool):
+                    currently_enabled = enabled_value
+                elif isinstance(enabled_value, (int, float)):
+                    currently_enabled = bool(enabled_value)
+                elif isinstance(enabled_value, str):
+                    currently_enabled = enabled_value.strip().lower() in {"on", "true", "1", "yes"}
+                else:
+                    currently_enabled = True
+                next_enabled = not currently_enabled
+                item.params = {**item.params, "enabled": next_enabled}
+                item.updatedAt = now_ms
+                self.item_service.save_state()
+                await self._broadcast_item(item)
+                state_text = "on" if next_enabled else "off"
+                others_message = f"{client.nickname} turns {state_text} {item.title}."
+                self_message = others_message
+            elif item.type == "dice":
                 try:
                     sides = max(1, min(100, int(item.params.get("sides", 6))))
                     number = max(1, min(100, int(item.params.get("number", 2))))
@@ -422,7 +441,6 @@ class SignalingServer:
                     f"{client.nickname} rolled {item.title}: {', '.join(str(value) for value in rolls)} (total {total})."
                 )
                 self_message = f"You rolled {item.title}: {', '.join(str(value) for value in rolls)} (total {total})."
-                delayed_wheel_result: str | None = None
             else:
                 spaces_raw = item.params.get("spaces", "")
                 if isinstance(spaces_raw, str):

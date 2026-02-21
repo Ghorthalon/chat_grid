@@ -18,7 +18,7 @@ class ItemDefinition:
 ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
     "radio_station": ItemDefinition(
         default_title="radio",
-        capabilities=("editable", "carryable", "deletable"),
+        capabilities=("editable", "carryable", "deletable", "usable"),
         use_sound=None,
         default_params={"streamUrl": "", "enabled": True, "volume": 50, "effect": "off", "effectValue": 50},
     ),

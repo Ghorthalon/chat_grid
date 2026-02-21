@@ -46,3 +46,39 @@ async def test_item_use_has_global_cooldown(monkeypatch: pytest.MonkeyPatch) -> 
     now_ms += 700
     await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
     assert send_payloads[-1].ok is True
+
+
+@pytest.mark.asyncio
+async def test_radio_use_toggles_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=6)
+    server.clients[ws] = client
+    item = server.item_service.default_item(client, "radio_station")
+    server.item_service.add_item(item)
+
+    send_payloads: list[object] = []
+    broadcast_payloads: list[object] = []
+    now_ms = 20_000
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server.item_service, "now_ms", lambda: now_ms)
+
+    assert item.params.get("enabled") is True
+    await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
+    assert item.params.get("enabled") is False
+    assert send_payloads[-1].ok is True
+
+    now_ms += 1200
+    await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
+    assert item.params.get("enabled") is True
+    assert send_payloads[-1].ok is True
+
+    assert any(getattr(packet, "type", "") == "item_upsert" for packet in broadcast_payloads)
