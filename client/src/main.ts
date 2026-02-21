@@ -552,6 +552,13 @@ function pasteIntoActiveTextInput(raw: string): boolean {
   if (!text) {
     return true;
   }
+  if (replaceTextOnNextType) {
+    const replacement = text.slice(0, maxLength);
+    state.nicknameInput = replacement;
+    state.cursorPos = replacement.length;
+    replaceTextOnNextType = false;
+    return true;
+  }
   const available = Math.max(0, maxLength - state.nicknameInput.length);
   if (available <= 0) {
     return true;
@@ -573,7 +580,38 @@ function mapTextInputKey(code: string, key: string): string {
   return key;
 }
 
-function applyTextInputEdit(code: string, key: string, maxLength: number, allowReplaceOnNextType = false): void {
+function moveCursorWordLeft(text: string, cursorPos: number): number {
+  let pos = cursorPos;
+  while (pos > 0 && /\s/.test(text[pos - 1])) pos -= 1;
+  while (pos > 0 && !/\s/.test(text[pos - 1])) pos -= 1;
+  return pos;
+}
+
+function moveCursorWordRight(text: string, cursorPos: number): number {
+  let pos = cursorPos;
+  while (pos < text.length && /\s/.test(text[pos])) pos += 1;
+  while (pos < text.length && !/\s/.test(text[pos])) pos += 1;
+  return pos;
+}
+
+function applyTextInputEdit(code: string, key: string, maxLength: number, ctrlKey = false, allowReplaceOnNextType = false): void {
+  if (ctrlKey && code === 'KeyA') {
+    replaceTextOnNextType = true;
+    state.cursorPos = state.nicknameInput.length;
+    updateStatus(`${state.nicknameInput} selected`);
+    return;
+  }
+  if (ctrlKey && code === 'ArrowLeft') {
+    state.cursorPos = moveCursorWordLeft(state.nicknameInput, state.cursorPos);
+    announceCursorCharacter(state.nicknameInput, state.cursorPos);
+    return;
+  }
+  if (ctrlKey && code === 'ArrowRight') {
+    state.cursorPos = moveCursorWordRight(state.nicknameInput, state.cursorPos);
+    announceCursorCharacter(state.nicknameInput, state.cursorPos);
+    return;
+  }
+
   const beforeText = state.nicknameInput;
   const beforeCursor = state.cursorPos;
   const mappedKey = mapTextInputKey(code, key);
@@ -1405,7 +1443,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
   }
 }
 
-function handleChatModeInput(code: string, key: string): void {
+function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void {
   if (code === 'Enter') {
     const message = state.nicknameInput.trim();
     if (message.length > 0) {
@@ -1431,7 +1469,7 @@ function handleChatModeInput(code: string, key: string): void {
     return;
   }
 
-  applyTextInputEdit(code, key, 500);
+  applyTextInputEdit(code, key, 500, ctrlKey);
 }
 
 function handleEffectSelectModeInput(code: string, key: string): void {
@@ -1785,7 +1823,7 @@ function handleItemPropertiesModeInput(code: string, key: string): void {
   }
 }
 
-function handleItemPropertyEditModeInput(code: string, key: string): void {
+function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boolean): void {
   const itemId = state.selectedItemId;
   const propertyKey = state.editingPropertyKey;
   if (!itemId || !propertyKey) {
@@ -1879,7 +1917,7 @@ function handleItemPropertyEditModeInput(code: string, key: string): void {
     audio.sfxUiCancel();
     return;
   }
-  applyTextInputEdit(code, key, 500, true);
+  applyTextInputEdit(code, key, 500, ctrlKey, true);
 }
 
 function handleItemPropertyOptionSelectModeInput(code: string, key: string): void {
@@ -1935,7 +1973,7 @@ function handleItemPropertyOptionSelectModeInput(code: string, key: string): voi
   }
 }
 
-function handleNicknameModeInput(code: string, key: string): void {
+function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): void {
   if (code === 'Enter') {
     const clean = sanitizeName(state.nicknameInput);
     if (clean) {
@@ -1959,7 +1997,7 @@ function handleNicknameModeInput(code: string, key: string): void {
     return;
   }
 
-  applyTextInputEdit(code, key, NICKNAME_MAX_LENGTH, true);
+  applyTextInputEdit(code, key, NICKNAME_MAX_LENGTH, ctrlKey, true);
 }
 
 function isTypingKey(code: string): boolean {
@@ -2006,9 +2044,9 @@ function setupInputHandlers(): void {
     if (isTypingKey(code) && state.keysPressed[code]) return;
 
     if (state.mode === 'nickname') {
-      handleNicknameModeInput(code, event.key);
+      handleNicknameModeInput(code, event.key, event.ctrlKey);
     } else if (state.mode === 'chat') {
-      handleChatModeInput(code, event.key);
+      handleChatModeInput(code, event.key, event.ctrlKey);
     } else if (state.mode === 'effectSelect') {
       handleEffectSelectModeInput(code, event.key);
     } else if (state.mode === 'listUsers') {
@@ -2022,7 +2060,7 @@ function setupInputHandlers(): void {
     } else if (state.mode === 'itemProperties') {
       handleItemPropertiesModeInput(code, event.key);
     } else if (state.mode === 'itemPropertyEdit') {
-      handleItemPropertyEditModeInput(code, event.key);
+      handleItemPropertyEditModeInput(code, event.key, event.ctrlKey);
     } else if (state.mode === 'itemPropertyOptionSelect') {
       handleItemPropertyOptionSelectModeInput(code, event.key);
     } else {
