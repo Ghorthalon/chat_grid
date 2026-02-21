@@ -105,7 +105,6 @@
 }
 ```
 
-- `timeZone`: one of the supported IANA zones listed below.
 - `timeZone`: one representative IANA zone per world UTC offset. Includes:
   `America/Anchorage`, `America/Argentina/Buenos_Aires`, `America/Chicago`, `America/Detroit`,
   `America/Halifax`, `America/Indiana/Indianapolis`, `America/Kentucky/Louisville`,

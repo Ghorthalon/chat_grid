@@ -38,3 +38,13 @@ Summary:
 - Client sounds: `client/public/sounds/`
 - Server config template: `server/config.example.toml`
 - Server runtime items: `server/runtime/items.json`
+
+## Documentation
+
+- Controls/keymap: `docs/controls.md`
+- Audio architecture and layers: `docs/audio-architecture.md`
+- Item behavior by type: `docs/item-types.md`
+- Runtime lifecycle flow: `docs/runtime-flow.md`
+- Protocol behavior notes: `docs/protocol-notes.md`
+- Item schema reference: `docs/item-schema.md`
+- Local dev commands: `docs/local.md`

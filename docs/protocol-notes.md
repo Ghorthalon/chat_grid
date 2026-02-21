@@ -1,0 +1,42 @@
+# Protocol Notes
+
+This is a behavior guide for packet semantics beyond raw schemas.
+
+## Direction
+
+- Client packet schema lives in `server/app/models.py` (`ClientPacket`).
+- Browser-side validation/parsing lives in `client/src/network/protocol.ts`.
+- Keep these synchronized on every protocol change.
+
+## Client -> Server
+
+- `update_position`: authoritative player position update.
+- `update_nickname`: nickname change request (server enforces uniqueness).
+- `chat_message`: player chat.
+- `ping`: latency measurement.
+- `item_add`, `item_pickup`, `item_drop`, `item_delete`, `item_use`, `item_update`: item actions.
+
+## Server -> Client
+
+- `welcome`: initial snapshot with users/items.
+- `signal`: forwarded WebRTC offer/answer/ICE.
+- `update_position`, `update_nickname`, `user_left`: presence updates.
+- `chat_message`: system and user chat stream.
+- `pong`: ping response.
+- `nickname_result`: accepted/rejected nickname result.
+- `item_upsert`: full item replacement after mutation.
+- `item_remove`: item deletion.
+- `item_action_result`: action success/failure and user-facing message.
+- `item_use_sound`: spatial one-shot sound on successful item use (if `useSound` configured).
+
+## Item Packet Behavior
+
+- `item_upsert` is full-state replacement for one item, not partial patch.
+- `item_action_result` messages are intended for direct screen-reader/user status feedback.
+- `item_use_sound` contains absolute item world coordinates (`x`, `y`) and sound path.
+
+## Validation Boundaries
+
+- Server is authoritative for all action validation and normalization.
+- Client validates incoming packet shapes and applies runtime behavior.
+- Client-side item edit validation is convenience only; server remains source of truth.
