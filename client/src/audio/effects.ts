@@ -21,7 +21,7 @@ export type EffectRuntime = {
 
 export function clampEffectLevel(value: number): number {
   const clamped = Math.max(0, Math.min(100, value));
-  return Math.round(clamped / 5) * 5;
+  return Math.round(clamped * 10) / 10;
 }
 
 export function disconnectEffectRuntime(runtime: EffectRuntime | null): void {

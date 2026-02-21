@@ -654,7 +654,7 @@ class SignalingServer:
                     next_params["channel"] = channel
 
                     try:
-                        effect_value = int(next_params.get("effectValue", 50))
+                        effect_value = float(next_params.get("effectValue", 50))
                     except (TypeError, ValueError):
                         await self._send_item_result(client, False, "update", "effectValue must be a number.", item.id)
                         return
@@ -663,7 +663,7 @@ class SignalingServer:
                             client, False, "update", "effectValue must be between 0 and 100.", item.id
                         )
                         return
-                    next_params["effectValue"] = round(effect_value / 5) * 5
+                    next_params["effectValue"] = round(effect_value, 1)
                 item.params = next_params
             item.updatedAt = self.item_service.now_ms()
             item.version += 1

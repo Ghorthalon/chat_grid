@@ -1831,8 +1831,8 @@ function handleItemPropertyEditModeInput(code: string, key: string): void {
       signaling.send({ type: 'item_update', itemId, params: { effect: normalized } });
     } else if (propertyKey === 'effectValue') {
       const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
-        updateStatus('effectValue must be an integer between 0 and 100.');
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+        updateStatus('effectValue must be a number between 0 and 100.');
         audio.sfxUiCancel();
         return;
       }
