@@ -48,6 +48,7 @@
 - Global/type-level properties are loaded from server registry in `server/app/item_catalog.py`.
 - Per-type use/update validation and message behavior are handled in `server/app/item_type_handlers.py`.
 - Client-side add/edit metadata is handled in `client/src/items/itemRegistry.ts`.
+- End-to-end add-item template: `docs/item-type-template.md`.
 
 ## Type Params
 

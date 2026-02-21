@@ -100,6 +100,8 @@ This is behavior-focused documentation for item types and their defaults.
 
 Item types are currently code-registered on both server and client so new types are additive instead of editing one large branch.
 
+For a full copy/paste example with plain-English explanation, see `docs/item-type-template.md`.
+
 1. Server catalog: add global defaults in `server/app/item_catalog.py` (`ITEM_DEFINITIONS`).
 2. Server handlers: add `validate_update` + `use` logic in `server/app/item_type_handlers.py` and register it in `ITEM_TYPE_HANDLERS`.
 3. Server models: extend `ItemType` literals in `server/app/models.py` and any packet enums that list item types.
