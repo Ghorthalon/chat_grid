@@ -477,7 +477,7 @@ class SignalingServer:
                 others_message = f"{client.nickname} spins {item.title}."
                 self_message = f"You spin {item.title}."
                 delayed_wheel_self_result = str(landed)
-                delayed_wheel_others_result = f"{client.nickname}: {landed}"
+                delayed_wheel_others_result = str(landed)
             await self._broadcast(
                 BroadcastChatMessagePacket(type="chat_message", message=others_message, system=True),
                 exclude=client.websocket,
