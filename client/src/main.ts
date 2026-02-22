@@ -68,10 +68,11 @@ const NICKNAME_STORAGE_KEY = 'spatialChatNickname';
 const NICKNAME_MAX_LENGTH = 32;
 const MIC_CALIBRATION_DURATION_MS = 5000;
 const MIC_CALIBRATION_SAMPLE_INTERVAL_MS = 50;
-const MIC_CALIBRATION_MIN_GAIN = 0.25;
-const MIC_CALIBRATION_MAX_GAIN = 3;
+const MIC_CALIBRATION_MIN_GAIN = 0.5;
+const MIC_CALIBRATION_MAX_GAIN = 4;
 const MIC_CALIBRATION_TARGET_RMS = 0.12;
 const MIC_CALIBRATION_ACTIVE_RMS_THRESHOLD = 0.003;
+const MIC_INPUT_GAIN_SCALE_MULTIPLIER = 2;
 
 declare global {
   interface Window {
@@ -445,7 +446,7 @@ function clampMicInputGain(value: number): number {
 function loadMicInputGain(): void {
   const raw = localStorage.getItem(MIC_INPUT_GAIN_STORAGE_KEY);
   if (!raw) {
-    audio.setOutboundInputGain(1);
+    audio.setOutboundInputGain(2);
     return;
   }
   const parsed = Number(raw);
@@ -1085,7 +1086,7 @@ async function calibrateMicInputGain(): Promise<void> {
     return;
   }
 
-  const calibratedGain = clampMicInputGain(MIC_CALIBRATION_TARGET_RMS / observedRms);
+  const calibratedGain = clampMicInputGain((MIC_CALIBRATION_TARGET_RMS / observedRms) * MIC_INPUT_GAIN_SCALE_MULTIPLIER);
   const appliedGain = audio.setOutboundInputGain(calibratedGain);
   persistMicInputGain(appliedGain);
   updateStatus(`Mic calibration set to ${appliedGain.toFixed(2)}x.`);
