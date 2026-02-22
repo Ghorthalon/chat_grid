@@ -1,11 +1,17 @@
 import { cycleIndex, findNextIndexByInitial } from './listNavigation';
 
+/**
+ * Normalized control result for list-like menus.
+ */
 export type ListControlResult =
   | { type: 'move'; index: number; reason: 'arrow' | 'initial' }
   | { type: 'select' }
   | { type: 'cancel' }
   | { type: 'none' };
 
+/**
+ * Applies common list key handling (arrows, first-letter jump, enter, escape).
+ */
 export function handleListControlKey<T>(
   code: string,
   key: string,

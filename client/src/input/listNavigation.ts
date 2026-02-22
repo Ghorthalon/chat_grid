@@ -1,3 +1,6 @@
+/**
+ * Cycles an index through a fixed-length list.
+ */
 export function cycleIndex(currentIndex: number, length: number, direction: 'next' | 'prev'): number {
   if (length <= 0) return 0;
   if (direction === 'next') {
@@ -6,6 +9,9 @@ export function cycleIndex(currentIndex: number, length: number, direction: 'nex
   return (currentIndex - 1 + length) % length;
 }
 
+/**
+ * Finds the next entry whose label starts with the pressed initial.
+ */
 export function findNextIndexByInitial<T>(
   entries: readonly T[],
   currentIndex: number,

@@ -1,3 +1,6 @@
+/**
+ * Snaps a numeric value to the nearest step anchored to a minimum/base value.
+ */
 export function snapNumberToStep(value: number, step: number, anchor = 0): number {
   if (!(step > 0) || !Number.isFinite(value) || !Number.isFinite(anchor)) {
     return value;
@@ -7,6 +10,9 @@ export function snapNumberToStep(value: number, step: number, anchor = 0): numbe
   return Number(normalized.toFixed(decimals));
 }
 
+/**
+ * Formats stepped numeric values for speech/status without trailing decimal zeros.
+ */
 export function formatSteppedNumber(value: number, step: number): string {
   const decimals = step >= 1 ? 0 : Math.min(6, Math.ceil(Math.abs(Math.log10(step))) + 1);
   if (decimals <= 0) {

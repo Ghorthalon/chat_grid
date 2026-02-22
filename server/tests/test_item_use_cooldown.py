@@ -304,7 +304,7 @@ async def test_widget_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert send_payloads[-1].ok is True
     assert item.params.get("directional") is True
-    assert item.params.get("facing") == 123.4
+    assert item.params.get("facing") == 123
     assert item.params.get("emitRange") == 7
     assert item.params.get("emitVolume") == 42
     assert item.params.get("emitSoundSpeed") == 25

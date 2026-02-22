@@ -1681,10 +1681,11 @@ function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void 
 }
 
 function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean): void {
-  if (code === 'ArrowUp' || code === 'ArrowDown') {
+  if (code === 'ArrowUp' || code === 'ArrowDown' || code === 'PageUp' || code === 'PageDown') {
     const raw = Number(state.nicknameInput.trim());
     const base = Number.isFinite(raw) ? raw : audio.getOutboundInputGain();
-    const delta = code === 'ArrowUp' ? MIC_INPUT_GAIN_STEP : -MIC_INPUT_GAIN_STEP;
+    const multiplier = code === 'PageUp' || code === 'PageDown' ? 10 : 1;
+    const delta = (code === 'ArrowUp' || code === 'PageUp' ? MIC_INPUT_GAIN_STEP : -MIC_INPUT_GAIN_STEP) * multiplier;
     const attempted = snapNumberToStep(base + delta, MIC_INPUT_GAIN_STEP, MIC_CALIBRATION_MIN_GAIN);
     const next = clampMicInputGain(attempted);
     state.nicknameInput = formatSteppedNumber(next, MIC_INPUT_GAIN_STEP);

@@ -1,3 +1,6 @@
+/**
+ * Declarative command ids for the primary gameplay input mode.
+ */
 export type MainModeCommand =
   | 'editNickname'
   | 'toggleMute'
@@ -28,6 +31,9 @@ export type MainModeCommand =
   | 'chatLast'
   | 'escape';
 
+/**
+ * Maps raw key events to a semantic command for main mode handling.
+ */
 export function resolveMainModeCommand(code: string, shiftKey: boolean): MainModeCommand | null {
   if (code === 'KeyN') return 'editNickname';
   if (code === 'KeyM') return shiftKey ? 'toggleOutputMode' : 'toggleMute';

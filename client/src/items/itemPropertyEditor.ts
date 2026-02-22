@@ -3,6 +3,9 @@ import { getEditSessionAction } from '../input/editSession';
 import { formatSteppedNumber, snapNumberToStep } from '../input/numeric';
 import { type WorldItem } from '../state/gameState';
 
+/**
+ * Dependencies required to drive item property inspect/edit flows.
+ */
 type EditorDeps = {
   state: {
     mode: string;
@@ -40,6 +43,9 @@ type EditorDeps = {
   sfxUiCancel: () => void;
 };
 
+/**
+ * Creates item property mode handlers so main input dispatch can stay lean.
+ */
 export function createItemPropertyEditor(deps: EditorDeps): {
   handleItemPropertiesModeInput: (code: string, key: string) => void;
   handleItemPropertyEditModeInput: (code: string, key: string, ctrlKey: boolean) => void;
@@ -155,7 +161,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
       deps.sfxUiCancel();
       return;
     }
-    if (code === 'ArrowUp' || code === 'ArrowDown') {
+    if (code === 'ArrowUp' || code === 'ArrowDown' || code === 'PageUp' || code === 'PageDown') {
       const metadata = deps.getItemPropertyMetadata(item.type, propertyKey);
       if (metadata?.valueType === 'number') {
         const range = metadata.range;
@@ -171,7 +177,8 @@ export function createItemPropertyEditor(deps: EditorDeps): {
             : Number.isFinite(min)
               ? min
               : 0;
-        const delta = code === 'ArrowUp' ? step : -step;
+        const multiplier = code === 'PageUp' || code === 'PageDown' ? 10 : 1;
+        const delta = (code === 'ArrowUp' || code === 'PageUp' ? step : -step) * multiplier;
         const anchor = Number.isFinite(min) ? min : 0;
         const attempted = snapNumberToStep(currentValue + delta, step, anchor);
         let nextValue = attempted;

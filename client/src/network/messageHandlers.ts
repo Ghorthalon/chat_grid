@@ -1,6 +1,9 @@
 import { type IncomingMessage } from './protocol';
 import { type WorldItem } from '../state/gameState';
 
+/**
+ * Dependency contract for creating a message handler without hard-coupling to `main.ts`.
+ */
 type MessageHandlerDeps = {
   getWorldGridSize: () => number;
   setWorldGridSize: (size: number) => void;
@@ -63,6 +66,9 @@ type MessageHandlerDeps = {
   playIncomingItemUseSound: (url: string, x: number, y: number) => void;
 };
 
+/**
+ * Builds the websocket message dispatcher used by the signaling client.
+ */
 export function createOnMessageHandler(deps: MessageHandlerDeps): (message: IncomingMessage) => Promise<void> {
   return async function onMessage(message: IncomingMessage): Promise<void> {
     switch (message.type) {

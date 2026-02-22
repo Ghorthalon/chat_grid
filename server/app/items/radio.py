@@ -61,7 +61,7 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "facing": {
         "valueType": "number",
         "tooltip": "Facing direction in degrees used for directional emit.",
-        "range": {"min": 0, "max": 360, "step": 0.1},
+        "range": {"min": 0, "max": 360, "step": 1},
     },
     "emitRange": {
         "valueType": "number",
@@ -133,7 +133,7 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
         raise ValueError("facing must be a number between 0 and 360.") from exc
     if not (0 <= facing <= 360):
         raise ValueError("facing must be between 0 and 360.")
-    next_params["facing"] = round(facing, 1)
+    next_params["facing"] = int(round(facing))
 
     try:
         emit_range = int(next_params.get("emitRange", item.params.get("emitRange", 20)))

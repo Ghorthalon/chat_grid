@@ -1,3 +1,6 @@
+/**
+ * UI elements used by binder setup.
+ */
 type UiDom = {
   connectButton: HTMLButtonElement;
   preconnectNickname: HTMLInputElement;
@@ -11,6 +14,9 @@ type UiDom = {
   canvas: HTMLCanvasElement;
 };
 
+/**
+ * Dependency contract for binding DOM event handlers.
+ */
 type UiBindingsDeps = {
   dom: UiDom;
   sanitizeName: (value: string) => string;
@@ -30,6 +36,9 @@ type UiBindingsDeps = {
   persistOnUnload: () => void;
 };
 
+/**
+ * Attaches UI listeners (connect/settings/device changes) and focus traps.
+ */
 export function setupUiHandlers(deps: UiBindingsDeps): void {
   window.addEventListener('pagehide', deps.persistOnUnload);
   window.addEventListener('beforeunload', deps.persistOnUnload);
