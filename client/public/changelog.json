@@ -3,7 +3,8 @@
     {
       "date": "February 22, 2026",
       "items": [
-        "Added support for Dropbox links and HTTP streams for item sounds and radio stations."
+        "Added support for Dropbox links and HTTP streams for item sounds and radio stations.",
+        "You will no longer repeatedly hit walls."
       ]
     },
     {
