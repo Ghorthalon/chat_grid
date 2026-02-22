@@ -78,7 +78,7 @@ const MIC_CALIBRATION_ACTIVE_RMS_THRESHOLD = 0.003;
 const MIC_INPUT_GAIN_SCALE_MULTIPLIER = 2;
 const MIC_INPUT_GAIN_STEP = 0.05;
 const HEARTBEAT_INTERVAL_MS = 10_000;
-const RECONNECT_DELAY_MS = 2_000;
+const RECONNECT_DELAY_MS = 5_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
 
 declare global {
@@ -515,7 +515,12 @@ function handleSignalingStatus(message: string): void {
     return;
   }
   if (message === 'Disconnected.' && state.running && !reconnectInFlight) {
+    pushChatMessage('Disconnected from server. Reconnecting...');
     void reconnectAfterSocketClose();
+    return;
+  }
+  if (message === 'Disconnected.') {
+    pushChatMessage('Disconnected from server.');
     return;
   }
   pushChatMessage(message);
@@ -1140,7 +1145,7 @@ async function reconnectWithRetry(reason: 'heartbeat' | 'socketClose'): Promise<
       return;
     }
     if (attempt < RECONNECT_MAX_ATTEMPTS) {
-      pushChatMessage(`Reconnect attempt ${attempt} failed. Retrying...`);
+      pushChatMessage(`Reconnect attempt ${attempt} failed. Retrying in 5 seconds...`);
     }
   }
   pushChatMessage('Reconnect failed after 3 attempts. Press Connect to retry.');
@@ -1256,7 +1261,9 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
   if (message.type === 'welcome') {
     const incomingInstanceId = String(message.serverInfo?.instanceId ?? '').trim() || null;
     const incomingVersion = String(message.serverInfo?.version ?? '').trim() || 'unknown';
-    connectedAnnouncement = `Connected. Version ${incomingVersion}.`;
+    connectedAnnouncement = reconnectInFlight
+      ? `Reconnected to server. Version ${incomingVersion}.`
+      : `Connected to server. Version ${incomingVersion}.`;
     if (
       !reloadScheduledForVersionMismatch &&
       APP_VERSION &&
@@ -1278,12 +1285,12 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
     startHeartbeat();
   }
   await onAppMessage(message);
-  if (connectedAnnouncement) {
-    pushChatMessage(connectedAnnouncement);
-  }
   if (restartAnnouncement) {
     pushChatMessage(restartAnnouncement);
     audio.sfxUiConfirm();
+  }
+  if (connectedAnnouncement) {
+    pushChatMessage(connectedAnnouncement);
   }
 }
 

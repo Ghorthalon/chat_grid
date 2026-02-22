@@ -50,7 +50,7 @@ Core incoming message effects:
 - If websocket closes unexpectedly, client starts reconnect flow immediately.
 - While running, client also sends heartbeat `ping` every 10 seconds (fallback for silent half-open cases).
 - If one heartbeat `pong` is missed (10-second interval), client starts reconnect flow.
-- Reconnect flow waits 2 seconds and retries up to 3 times.
+- Reconnect flow waits 5 seconds and retries up to 3 times.
 - If reconnect lands on a different `welcome.serverInfo.instanceId`, client announces server restart.
 - Connect/reconnect status message is emitted from `welcome` and includes server version.
 
