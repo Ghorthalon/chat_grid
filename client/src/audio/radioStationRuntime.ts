@@ -5,6 +5,7 @@ import { resolveSpatialMix } from './spatial';
 
 export const RADIO_CHANNEL_OPTIONS = ['stereo', 'mono', 'left', 'right'] as const;
 export type RadioChannelMode = (typeof RADIO_CHANNEL_OPTIONS)[number];
+const APP_BASE_PATH = import.meta.env.BASE_URL ?? '/';
 
 type SharedRadioSource = {
   streamUrl: string;
@@ -108,18 +109,48 @@ function connectRadioChannelSource(
   };
 }
 
-function freshStreamUrl(streamUrl: string): string {
+function isDropboxHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host.endsWith('dropbox.com') || host.endsWith('dropboxusercontent.com');
+}
+
+function shouldProxyStreamUrl(streamUrl: string): boolean {
   try {
     const parsed = new URL(streamUrl);
+    if (
+      parsed.origin === window.location.origin &&
+      parsed.pathname.toLowerCase().endsWith('/media_proxy.php')
+    ) {
+      return false;
+    }
+    if (parsed.protocol === 'http:') return true;
+    if (parsed.protocol === 'https:' && isDropboxHost(parsed.hostname)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function getProxyUrlForStream(streamUrl: string): string {
+  const normalizedBase = APP_BASE_PATH.endsWith('/') ? APP_BASE_PATH : `${APP_BASE_PATH}/`;
+  const proxy = new URL(`${normalizedBase}media_proxy.php`, window.location.origin);
+  proxy.searchParams.set('url', streamUrl);
+  return proxy.toString();
+}
+
+function freshStreamUrl(streamUrl: string): string {
+  const playbackSource = shouldProxyStreamUrl(streamUrl) ? getProxyUrlForStream(streamUrl) : streamUrl;
+  try {
+    const parsed = new URL(playbackSource);
     const hostname = parsed.hostname.toLowerCase();
     if (hostname.endsWith('dropbox.com') || hostname.endsWith('dropboxusercontent.com')) {
-      return streamUrl;
+      return playbackSource;
     }
   } catch {
     // Leave non-URL strings to the generic cache-buster behavior below.
   }
-  const separator = streamUrl.includes('?') ? '&' : '?';
-  return `${streamUrl}${separator}chgrid_start=${Date.now()}`;
+  const separator = playbackSource.includes('?') ? '&' : '?';
+  return `${playbackSource}${separator}chgrid_start=${Date.now()}`;
 }
 
 type RadioSpatialConfig = {
