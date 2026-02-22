@@ -7,6 +7,7 @@ import {
   type EffectId,
   type EffectRuntime,
 } from './effects';
+import { resolveSpatialMix } from './spatial';
 
 export type SpatialPeerRuntime = {
   nickname: string;
@@ -235,14 +236,15 @@ export class AudioEngine {
 
     for (const peer of peers) {
       if (!peer.gain) continue;
-      const dist = Math.hypot(peer.x - playerPosition.x, peer.y - playerPosition.y);
-      let gainValue = 0;
-      let panValue = 0;
-      if (dist < HEARING_RADIUS) {
-        gainValue = Math.pow(1 - dist / HEARING_RADIUS, 2);
-        panValue = Math.sin(((peer.x - playerPosition.x) / HEARING_RADIUS) * (Math.PI / 2));
-      }
-      if (dist < 1.5) gainValue = 1;
+      const mix = resolveSpatialMix({
+        dx: peer.x - playerPosition.x,
+        dy: peer.y - playerPosition.y,
+        range: HEARING_RADIUS,
+        nearFieldDistance: 1.5,
+        nearFieldGain: 1,
+      });
+      const gainValue = mix?.gain ?? 0;
+      const panValue = mix?.pan ?? 0;
       peer.gain.gain.linearRampToValueAtTime(gainValue, this.audioCtx.currentTime + 0.1);
       if (peer.panner) {
         const resolvedPan = this.outputMode === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
@@ -284,7 +286,12 @@ export class AudioEngine {
     const { audioCtx, sfxGainNode } = this;
     if (!audioCtx || !sfxGainNode) return;
 
-    const resolved = this.resolveSpatialMix(sourcePosition, gain);
+    const resolved = resolveSpatialMix({
+      dx: sourcePosition.x,
+      dy: sourcePosition.y,
+      range: HEARING_RADIUS,
+      baseGain: gain,
+    });
     if (!resolved) return;
 
     try {
@@ -380,10 +387,17 @@ export class AudioEngine {
     if (!audioCtx || !sfxGainNode) return;
 
     const baseGain = spec.gain ?? 1;
-    const resolved = this.resolveSpatialMix(spec.sourcePosition, baseGain);
+    const resolved = spec.sourcePosition
+      ? resolveSpatialMix({
+          dx: spec.sourcePosition.x,
+          dy: spec.sourcePosition.y,
+          range: HEARING_RADIUS,
+          baseGain,
+        })
+      : { gain: baseGain, pan: 0 };
     if (!resolved) return;
     const finalGain = resolved.gain;
-    const panValue = resolved.pan;
+    const panValue = spec.sourcePosition ? resolved.pan : undefined;
 
     if (finalGain <= 0) return;
 
@@ -407,24 +421,6 @@ export class AudioEngine {
 
     oscillator.start(startTime);
     oscillator.stop(startTime + spec.duration);
-  }
-
-  private resolveSpatialMix(
-    sourcePosition: { x: number; y: number } | undefined,
-    baseGain: number,
-  ): { gain: number; pan?: number } | null {
-    if (!sourcePosition) {
-      return { gain: baseGain };
-    }
-    const distance = Math.hypot(sourcePosition.x, sourcePosition.y);
-    if (distance > HEARING_RADIUS) {
-      return null;
-    }
-    const volumeRatio = Math.max(0, 1 - distance / HEARING_RADIUS);
-    const finalGain = baseGain * Math.pow(volumeRatio, 2);
-    const clampedX = Math.max(-HEARING_RADIUS, Math.min(HEARING_RADIUS, sourcePosition.x));
-    const pan = Math.sin((clampedX / HEARING_RADIUS) * (Math.PI / 2));
-    return { gain: finalGain, pan };
   }
 
   private async getSampleBuffer(url: string): Promise<AudioBuffer> {

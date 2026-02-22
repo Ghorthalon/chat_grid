@@ -1,6 +1,7 @@
 import { HEARING_RADIUS, type WorldItem } from '../state/gameState';
 import { EFFECT_IDS, clampEffectLevel, connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
 import { AudioEngine } from './audioEngine';
+import { resolveSpatialMix } from './spatial';
 
 export const RADIO_CHANNEL_OPTIONS = ['stereo', 'mono', 'left', 'right'] as const;
 export type RadioChannelMode = (typeof RADIO_CHANNEL_OPTIONS)[number];
@@ -202,18 +203,18 @@ export class RadioStationRuntime {
         output.gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
         continue;
       }
-      const dist = Math.hypot(item.x - playerPosition.x, item.y - playerPosition.y);
-      let gainValue = 0;
-      let panValue = 0;
-      if (dist < HEARING_RADIUS) {
-        gainValue = Math.pow(1 - dist / HEARING_RADIUS, 2);
-        panValue = Math.sin(((item.x - playerPosition.x) / HEARING_RADIUS) * (Math.PI / 2));
-      }
-      if (dist <= 1) {
-        gainValue = 1;
-        panValue = 0;
-      }
-      output.gain.gain.linearRampToValueAtTime(gainValue * normalizedVolume, audioCtx.currentTime + 0.1);
+      const mix = resolveSpatialMix({
+        dx: item.x - playerPosition.x,
+        dy: item.y - playerPosition.y,
+        range: HEARING_RADIUS,
+        baseGain: normalizedVolume,
+        nearFieldDistance: 1,
+        nearFieldGain: 1,
+        nearFieldCenterPan: true,
+      });
+      const gainValue = mix?.gain ?? 0;
+      const panValue = mix?.pan ?? 0;
+      output.gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + 0.1);
       if (output.panner) {
         const resolvedPan = this.audio.getOutputMode() === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
         output.panner.pan.linearRampToValueAtTime(resolvedPan, audioCtx.currentTime + 0.1);
