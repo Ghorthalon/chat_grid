@@ -148,7 +148,9 @@ export class ItemEmitRuntime {
           rearGain: 0.35,
         },
       );
-      const cutoffHz = 12000 - (12000 - 2500) * muffleRatio;
+      const clearCutoffHz = 22050;
+      const rearCutoffHz = 2500;
+      const cutoffHz = clearCutoffHz - (clearCutoffHz - rearCutoffHz) * muffleRatio;
       output.directionalFilter.frequency.linearRampToValueAtTime(cutoffHz, audioCtx.currentTime + 0.1);
       output.gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + 0.1);
       if (output.panner) {
