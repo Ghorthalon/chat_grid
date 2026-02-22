@@ -28,6 +28,7 @@ import {
   moveCursorWordRight,
   shouldReplaceCurrentText,
 } from './input/textInput';
+import { resolveMainModeCommand } from './input/mainCommandRouter';
 import { cycleIndex, findNextIndexByInitial } from './input/listNavigation';
 import { formatSteppedNumber, snapNumberToStep } from './input/numeric';
 import { type IncomingMessage, type OutgoingMessage } from './network/protocol';
@@ -1437,348 +1438,311 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
   if (code !== 'Escape' && pendingEscapeDisconnect) {
     pendingEscapeDisconnect = false;
   }
+  const command = resolveMainModeCommand(code, shiftKey);
+  if (!command) return;
 
-  if (code === 'KeyN') {
-    state.mode = 'nickname';
-    state.nicknameInput = state.player.nickname;
-    state.cursorPos = state.player.nickname.length;
-    replaceTextOnNextType = true;
-    updateStatus(`Nickname edit: ${state.nicknameInput}`);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'KeyM') {
-    if (shiftKey) {
+  switch (command) {
+    case 'editNickname':
+      state.mode = 'nickname';
+      state.nicknameInput = state.player.nickname;
+      state.cursorPos = state.player.nickname.length;
+      replaceTextOnNextType = true;
+      updateStatus(`Nickname edit: ${state.nicknameInput}`);
+      audio.sfxUiBlip();
+      return;
+    case 'toggleMute':
+      toggleMute();
+      return;
+    case 'toggleOutputMode':
       outputMode = audio.toggleOutputMode();
       localStorage.setItem(AUDIO_OUTPUT_MODE_STORAGE_KEY, outputMode);
       updateStatus(outputMode === 'mono' ? 'Mono output.' : 'Stereo output.');
       audio.sfxUiBlip();
       return;
-    }
-    toggleMute();
-    return;
-  }
-
-  if (code === 'Digit1' && shiftKey) {
-    const enabled = audio.toggleLoopback();
-    updateStatus(enabled ? 'Loopback on.' : 'Loopback off.');
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'Digit1') {
-    toggleAudioLayer('voice');
-    return;
-  }
-
-  if (code === 'Digit2') {
-    toggleAudioLayer('item');
-    return;
-  }
-
-  if (code === 'Digit3') {
-    toggleAudioLayer('media');
-    return;
-  }
-
-  if (code === 'Digit4') {
-    toggleAudioLayer('world');
-    return;
-  }
-
-  if (code === 'KeyE') {
-    const currentEffect = audio.getCurrentEffect();
-    const currentIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === currentEffect.id);
-    state.effectSelectIndex = currentIndex >= 0 ? currentIndex : 0;
-    state.mode = 'effectSelect';
-    updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'Equal' || code === 'NumpadAdd' || code === 'Minus' || code === 'NumpadSubtract') {
-    const step = code === 'Equal' || code === 'NumpadAdd' ? 5 : -5;
-    const adjusted = audio.adjustCurrentEffectLevel(step);
-    if (!adjusted) {
+    case 'toggleLoopback': {
+      const enabled = audio.toggleLoopback();
+      updateStatus(enabled ? 'Loopback on.' : 'Loopback off.');
+      audio.sfxUiBlip();
       return;
     }
-    persistEffectLevels();
-    audio.sfxEffectLevel(adjusted.value === adjusted.defaultValue);
-    updateStatus(`${adjusted.label} ${adjusted.value}`);
-    return;
-  }
-
-  if (code === 'KeyC') {
-    updateStatus(`${state.player.x}, ${state.player.y}`);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'KeyV') {
-    if (shiftKey) {
+    case 'toggleVoiceLayer':
+      toggleAudioLayer('voice');
+      return;
+    case 'toggleItemLayer':
+      toggleAudioLayer('item');
+      return;
+    case 'toggleMediaLayer':
+      toggleAudioLayer('media');
+      return;
+    case 'toggleWorldLayer':
+      toggleAudioLayer('world');
+      return;
+    case 'openEffectSelect': {
+      const currentEffect = audio.getCurrentEffect();
+      const currentIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === currentEffect.id);
+      state.effectSelectIndex = currentIndex >= 0 ? currentIndex : 0;
+      state.mode = 'effectSelect';
+      updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
+      audio.sfxUiBlip();
+      return;
+    }
+    case 'effectValueUp':
+    case 'effectValueDown': {
+      const step = command === 'effectValueUp' ? 5 : -5;
+      const adjusted = audio.adjustCurrentEffectLevel(step);
+      if (!adjusted) return;
+      persistEffectLevels();
+      audio.sfxEffectLevel(adjusted.value === adjusted.defaultValue);
+      updateStatus(`${adjusted.label} ${adjusted.value}`);
+      return;
+    }
+    case 'speakCoordinates':
+      updateStatus(`${state.player.x}, ${state.player.y}`);
+      audio.sfxUiBlip();
+      return;
+    case 'openMicGainEdit':
+      state.mode = 'micGainEdit';
+      state.nicknameInput = formatSteppedNumber(audio.getOutboundInputGain(), MIC_INPUT_GAIN_STEP);
+      state.cursorPos = state.nicknameInput.length;
+      replaceTextOnNextType = true;
+      updateStatus(`Set microphone gain: ${state.nicknameInput}`);
+      audio.sfxUiBlip();
+      return;
+    case 'calibrateMicrophone':
       void calibrateMicInputGain();
       return;
-    }
-    state.mode = 'micGainEdit';
-    state.nicknameInput = formatSteppedNumber(audio.getOutboundInputGain(), MIC_INPUT_GAIN_STEP);
-    state.cursorPos = state.nicknameInput.length;
-    replaceTextOnNextType = true;
-    updateStatus(`Set microphone gain: ${state.nicknameInput}`);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'KeyU') {
-    if (shiftKey) {
-      const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((p) => p.nickname)];
-      const label = allUsers.length === 1 ? 'user' : 'users';
-      updateStatus(`${allUsers.length} ${label}: ${allUsers.join(', ')}`);
-      audio.sfxUiBlip();
-      return;
-    }
-    const carried = getCarriedItem();
-    if (carried) {
-      useItem(carried);
-      return;
-    }
-    const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-    const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
-    if (usable.length === 0) {
-      updateStatus('No usable items here.');
-      audio.sfxUiCancel();
-      return;
-    }
-    if (usable.length === 1) {
-      useItem(usable[0]);
-      return;
-    }
-    beginItemSelection('use', usable);
-    return;
-  }
-
-  if (code === 'KeyA') {
-    const itemTypeSequence = getItemTypeSequence();
-    if (itemTypeSequence.length === 0) {
-      updateStatus('No item types available.');
-      audio.sfxUiCancel();
-      return;
-    }
-    state.addItemTypeIndex = Math.max(0, Math.min(state.addItemTypeIndex, itemTypeSequence.length - 1));
-    state.mode = 'addItem';
-    updateStatus(`Add item: ${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'KeyI') {
-    if (shiftKey) {
-      if (state.items.size === 0) {
-        updateStatus('No items to list.');
-        audio.sfxUiCancel();
+    case 'useItemOrUsersSummary':
+      if (shiftKey) {
+        const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((p) => p.nickname)];
+        const label = allUsers.length === 1 ? 'user' : 'users';
+        updateStatus(`${allUsers.length} ${label}: ${allUsers.join(', ')}`);
+        audio.sfxUiBlip();
         return;
       }
-      state.sortedItemIds = Array.from(state.items.entries())
-        .filter(([, item]) => !item.carrierId)
-        .sort(
-          (a, b) =>
-            Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
-            Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
-        )
-        .map(([id]) => id);
-      if (state.sortedItemIds.length === 0) {
-        updateStatus('No items to list.');
-        audio.sfxUiCancel();
-        return;
-      }
-      state.itemListIndex = 0;
-      state.mode = 'listItems';
-      const first = state.items.get(state.sortedItemIds[0]);
-      if (first) {
-        updateStatus(
-          `List: ${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
-        );
-      }
-      audio.sfxUiBlip();
-      return;
-    }
-    const nearest = getNearestItem(state);
-    if (!nearest.itemId) {
-      updateStatus('No items to locate.');
-      audio.sfxUiCancel();
-      return;
-    }
-    const item = state.items.get(nearest.itemId);
-    if (!item) return;
-    audio.sfxLocate({ x: item.x - state.player.x, y: item.y - state.player.y });
-    updateStatus(
-      `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
-    );
-    return;
-  }
-
-  if (code === 'KeyD') {
-    const carried = getCarriedItem();
-    if (shiftKey) {
-      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-      if (squareItems.length === 0) {
-        updateStatus('No items to delete.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (squareItems.length === 1) {
-        signaling.send({ type: 'item_delete', itemId: squareItems[0].id });
-        return;
-      }
-      beginItemSelection('delete', squareItems);
-      return;
-    }
-
-    if (carried) {
-      signaling.send({ type: 'item_drop', itemId: carried.id, x: state.player.x, y: state.player.y });
-      return;
-    }
-    const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-    if (squareItems.length === 0) {
-      updateStatus('No items to pick up.');
-      audio.sfxUiCancel();
-      return;
-    }
-    if (squareItems.length === 1) {
-      signaling.send({ type: 'item_pickup', itemId: squareItems[0].id });
-      return;
-    }
-    beginItemSelection('pickup', squareItems);
-    return;
-  }
-
-  if (code === 'KeyO') {
-    const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-    const carried = getCarriedItem();
-    if (shiftKey) {
-      if (squareItems.length === 0) {
-        if (!carried) {
-          updateStatus('No item to inspect.');
+      {
+        const carried = getCarriedItem();
+        if (carried) {
+          useItem(carried);
+          return;
+        }
+        const squareItems = getItemsAtPosition(state.player.x, state.player.y);
+        const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
+        if (usable.length === 0) {
+          updateStatus('No usable items here.');
           audio.sfxUiCancel();
           return;
         }
-        beginItemProperties(carried, true);
+        if (usable.length === 1) {
+          useItem(usable[0]);
+          return;
+        }
+        beginItemSelection('use', usable);
         return;
       }
-      if (squareItems.length === 1) {
-        beginItemProperties(squareItems[0], true);
-        return;
-      }
-      beginItemSelection('inspect', squareItems);
-      return;
-    }
-
-    if (squareItems.length === 0) {
-      if (!carried) {
-        updateStatus('No editable item here.');
+    case 'addItem': {
+      const itemTypeSequence = getItemTypeSequence();
+      if (itemTypeSequence.length === 0) {
+        updateStatus('No item types available.');
         audio.sfxUiCancel();
         return;
       }
-      beginItemProperties(carried);
-      return;
-    }
-    if (squareItems.length === 1) {
-      beginItemProperties(squareItems[0]);
-      return;
-    }
-    beginItemSelection('edit', squareItems);
-    return;
-  }
-
-  if (code === 'KeyP') {
-    signaling.send({ type: 'ping', clientSentAt: Date.now() });
-    return;
-  }
-
-  if (code === 'KeyL') {
-    if (shiftKey) {
-      if (state.peers.size === 0) {
-        updateStatus('No users to list.');
-        audio.sfxUiCancel();
-        return;
-      }
-      state.sortedPeerIds = Array.from(state.peers.entries())
-        .sort(
-          (a, b) =>
-            Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
-            Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
-        )
-        .map(([id]) => id);
-      state.listIndex = 0;
-      state.mode = 'listUsers';
-      const first = state.peers.get(state.sortedPeerIds[0]);
-      if (first) {
-        updateStatus(
-          `List: ${first.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
-        );
-      }
+      state.addItemTypeIndex = Math.max(0, Math.min(state.addItemTypeIndex, itemTypeSequence.length - 1));
+      state.mode = 'addItem';
+      updateStatus(`Add item: ${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
       audio.sfxUiBlip();
       return;
     }
-
-    const nearest = getNearestPeer(state);
-    if (!nearest.peerId) {
-      updateStatus('No users to locate.');
+    case 'locateOrListItems':
+      if (shiftKey) {
+        if (state.items.size === 0) {
+          updateStatus('No items to list.');
+          audio.sfxUiCancel();
+          return;
+        }
+        state.sortedItemIds = Array.from(state.items.entries())
+          .filter(([, item]) => !item.carrierId)
+          .sort(
+            (a, b) =>
+              Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
+              Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
+          )
+          .map(([id]) => id);
+        if (state.sortedItemIds.length === 0) {
+          updateStatus('No items to list.');
+          audio.sfxUiCancel();
+          return;
+        }
+        state.itemListIndex = 0;
+        state.mode = 'listItems';
+        const first = state.items.get(state.sortedItemIds[0]);
+        if (first) {
+          updateStatus(
+            `List: ${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+          );
+        }
+        audio.sfxUiBlip();
+        return;
+      }
+      {
+        const nearest = getNearestItem(state);
+        if (!nearest.itemId) {
+          updateStatus('No items to locate.');
+          audio.sfxUiCancel();
+          return;
+        }
+        const item = state.items.get(nearest.itemId);
+        if (!item) return;
+        audio.sfxLocate({ x: item.x - state.player.x, y: item.y - state.player.y });
+        updateStatus(
+          `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
+        );
+        return;
+      }
+    case 'pickupDropOrDelete': {
+      const carried = getCarriedItem();
+      if (shiftKey) {
+        const squareItems = getItemsAtPosition(state.player.x, state.player.y);
+        if (squareItems.length === 0) {
+          updateStatus('No items to delete.');
+          audio.sfxUiCancel();
+          return;
+        }
+        if (squareItems.length === 1) {
+          signaling.send({ type: 'item_delete', itemId: squareItems[0].id });
+          return;
+        }
+        beginItemSelection('delete', squareItems);
+        return;
+      }
+      if (carried) {
+        signaling.send({ type: 'item_drop', itemId: carried.id, x: state.player.x, y: state.player.y });
+        return;
+      }
+      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
+      if (squareItems.length === 0) {
+        updateStatus('No items to pick up.');
+        audio.sfxUiCancel();
+        return;
+      }
+      if (squareItems.length === 1) {
+        signaling.send({ type: 'item_pickup', itemId: squareItems[0].id });
+        return;
+      }
+      beginItemSelection('pickup', squareItems);
+      return;
+    }
+    case 'editOrInspectItem': {
+      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
+      const carried = getCarriedItem();
+      if (shiftKey) {
+        if (squareItems.length === 0) {
+          if (!carried) {
+            updateStatus('No item to inspect.');
+            audio.sfxUiCancel();
+            return;
+          }
+          beginItemProperties(carried, true);
+          return;
+        }
+        if (squareItems.length === 1) {
+          beginItemProperties(squareItems[0], true);
+          return;
+        }
+        beginItemSelection('inspect', squareItems);
+        return;
+      }
+      if (squareItems.length === 0) {
+        if (!carried) {
+          updateStatus('No editable item here.');
+          audio.sfxUiCancel();
+          return;
+        }
+        beginItemProperties(carried);
+        return;
+      }
+      if (squareItems.length === 1) {
+        beginItemProperties(squareItems[0]);
+        return;
+      }
+      beginItemSelection('edit', squareItems);
+      return;
+    }
+    case 'pingServer':
+      signaling.send({ type: 'ping', clientSentAt: Date.now() });
+      return;
+    case 'locateOrListUsers':
+      if (shiftKey) {
+        if (state.peers.size === 0) {
+          updateStatus('No users to list.');
+          audio.sfxUiCancel();
+          return;
+        }
+        state.sortedPeerIds = Array.from(state.peers.entries())
+          .sort(
+            (a, b) =>
+              Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
+              Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
+          )
+          .map(([id]) => id);
+        state.listIndex = 0;
+        state.mode = 'listUsers';
+        const first = state.peers.get(state.sortedPeerIds[0]);
+        if (first) {
+          updateStatus(
+            `List: ${first.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+          );
+        }
+        audio.sfxUiBlip();
+        return;
+      }
+      {
+        const nearest = getNearestPeer(state);
+        if (!nearest.peerId) {
+          updateStatus('No users to locate.');
+          audio.sfxUiCancel();
+          return;
+        }
+        const peer = state.peers.get(nearest.peerId);
+        if (!peer) return;
+        audio.sfxLocate({ x: peer.x - state.player.x, y: peer.y - state.player.y });
+        updateStatus(
+          `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
+        );
+        return;
+      }
+    case 'openHelp':
+      openHelpViewer();
+      return;
+    case 'openChat':
+      state.mode = 'chat';
+      state.nicknameInput = '';
+      state.cursorPos = 0;
+      replaceTextOnNextType = false;
+      updateStatus('Chat.');
+      audio.sfxUiBlip();
+      return;
+    case 'chatPrev':
+      navigateChatBuffer('prev');
+      return;
+    case 'chatNext':
+      navigateChatBuffer('next');
+      return;
+    case 'chatFirst':
+      navigateChatBuffer('first');
+      return;
+    case 'chatLast':
+      navigateChatBuffer('last');
+      return;
+    case 'escape':
+      if (pendingEscapeDisconnect) {
+        pendingEscapeDisconnect = false;
+        disconnect();
+        return;
+      }
+      pendingEscapeDisconnect = true;
+      updateStatus('Press Escape again to disconnect.');
       audio.sfxUiCancel();
       return;
-    }
-    const peer = state.peers.get(nearest.peerId);
-    if (!peer) return;
-    audio.sfxLocate({ x: peer.x - state.player.x, y: peer.y - state.player.y });
-    updateStatus(
-      `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
-    );
-    return;
-  }
-
-  if (code === 'Slash' && shiftKey) {
-    openHelpViewer();
-    return;
-  }
-
-  if (code === 'Slash' && !shiftKey) {
-    state.mode = 'chat';
-    state.nicknameInput = '';
-    state.cursorPos = 0;
-    replaceTextOnNextType = false;
-    updateStatus('Chat.');
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'Comma') {
-    if (shiftKey) {
-      navigateChatBuffer('first');
-    } else {
-      navigateChatBuffer('prev');
-    }
-    return;
-  }
-
-  if (code === 'Period') {
-    if (shiftKey) {
-      navigateChatBuffer('last');
-    } else {
-      navigateChatBuffer('next');
-    }
-    return;
-  }
-
-  if (code === 'Escape') {
-    if (pendingEscapeDisconnect) {
-      pendingEscapeDisconnect = false;
-      disconnect();
-      return;
-    }
-    pendingEscapeDisconnect = true;
-    updateStatus('Press Escape again to disconnect.');
-    audio.sfxUiCancel();
-    return;
   }
 }
 
