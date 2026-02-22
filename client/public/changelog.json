@@ -1,6 +1,12 @@
 {
   "sections": [
     {
+      "date": "February 22, 2026",
+      "items": [
+        "Added support for Dropbox links and HTTP streams for item sounds and radio stations."
+      ]
+    },
+    {
       "date": "February 21, 2026",
       "items": [
         "Added a generic Widget item type. This type lets you edit a variety of global item properties, and you can use remote URL's for sounds.",
