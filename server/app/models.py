@@ -103,6 +103,7 @@ class WelcomePacket(BasePacket):
     items: list[dict] | None = None
     worldConfig: dict | None = None
     uiDefinitions: dict | None = None
+    serverInfo: dict | None = None
 
 
 class UserLeftPacket(BasePacket):

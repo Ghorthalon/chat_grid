@@ -38,6 +38,9 @@ This is a behavior guide for packet semantics beyond raw schemas.
 ## Welcome Metadata
 
 - `welcome.worldConfig.gridSize`: server-authoritative grid size used by clients for bounds/drawing.
+- `welcome.serverInfo`: server process identity/version metadata:
+  - `instanceId`: unique id generated at server startup
+  - `version`: server package version (or `unknown` fallback)
 - `welcome.uiDefinitions`: server-provided item UI definitions:
   - `itemTypeOrder`: add-item menu order
   - `itemTypes[].tooltip`: item-level tooltip/help text
@@ -53,3 +56,11 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - Server is authoritative for all action validation and normalization.
 - Client validates incoming packet shapes and applies runtime behavior.
 - Client-side item edit validation is convenience only; server remains source of truth.
+
+## Heartbeat/Stale Recovery
+
+- Client sends automatic heartbeat `ping` packets every 10 seconds while connected.
+- Heartbeat pings use negative `clientSentAt` ids and are internal (not user-visible ping status).
+- If no heartbeat `pong` arrives within 25 seconds, client force-disconnects and reconnects.
+- After reconnect, if `welcome.serverInfo.instanceId` changed, client announces:
+  `Server restarted, version <version>.`

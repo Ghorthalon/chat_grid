@@ -77,6 +77,8 @@ const MIC_CALIBRATION_TARGET_RMS = 0.12;
 const MIC_CALIBRATION_ACTIVE_RMS_THRESHOLD = 0.003;
 const MIC_INPUT_GAIN_SCALE_MULTIPLIER = 2;
 const MIC_INPUT_GAIN_STEP = 0.05;
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const HEARTBEAT_TIMEOUT_MS = 25_000;
 
 declare global {
   interface Window {
@@ -194,6 +196,11 @@ let pendingEscapeDisconnect = false;
 let micGainLoopbackRestoreState: boolean | null = null;
 let helpViewerLines: string[] = [];
 let helpViewerIndex = 0;
+let heartbeatTimerId: number | null = null;
+let heartbeatLastPongAt = 0;
+let heartbeatNextPingId = -1;
+let reconnectInFlight = false;
+let activeServerInstanceId: string | null = null;
 let audioLayers: AudioLayerState = {
   voice: true,
   item: true,
@@ -1036,6 +1043,51 @@ function restoreLoopbackAfterMicGainEdit(): void {
   micGainLoopbackRestoreState = null;
 }
 
+/** Stops heartbeat timer and clears in-memory heartbeat state. */
+function stopHeartbeat(): void {
+  if (heartbeatTimerId !== null) {
+    window.clearInterval(heartbeatTimerId);
+    heartbeatTimerId = null;
+  }
+  heartbeatLastPongAt = 0;
+}
+
+/** Sends one heartbeat ping packet using reserved negative ids. */
+function sendHeartbeatPing(): void {
+  signaling.send({ type: 'ping', clientSentAt: heartbeatNextPingId });
+  heartbeatNextPingId -= 1;
+}
+
+/** Starts heartbeat timer for stale-connection detection. */
+function startHeartbeat(): void {
+  stopHeartbeat();
+  heartbeatLastPongAt = Date.now();
+  sendHeartbeatPing();
+  heartbeatTimerId = window.setInterval(() => {
+    if (!state.running) return;
+    const now = Date.now();
+    if (now - heartbeatLastPongAt > HEARTBEAT_TIMEOUT_MS) {
+      void reconnectAfterHeartbeatTimeout();
+      return;
+    }
+    sendHeartbeatPing();
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+/** Performs one reconnect attempt when heartbeat timeout indicates stale signaling. */
+async function reconnectAfterHeartbeatTimeout(): Promise<void> {
+  if (reconnectInFlight || !state.running) return;
+  reconnectInFlight = true;
+  stopHeartbeat();
+  updateStatus('Connection stale. Reconnecting...');
+  disconnect();
+  try {
+    await connect();
+  } finally {
+    reconnectInFlight = false;
+  }
+}
+
 /** Builds dependencies shared by connect/disconnect flow helpers. */
 function getConnectionFlowDeps(): ConnectFlowDeps {
   return {
@@ -1055,7 +1107,7 @@ function getConnectionFlowDeps(): ConnectFlowDeps {
     mediaStopLocalMedia: () => stopLocalMedia(),
     signalingConnect: (handler) => signaling.connect(handler as (message: IncomingMessage) => Promise<void>),
     signalingDisconnect: () => signaling.disconnect(),
-    onMessage: (message) => onMessage(message as IncomingMessage),
+    onMessage: (message) => onSignalingMessage(message as IncomingMessage),
     worldGridSize,
     persistPlayerPosition,
     peerManagerCleanupAll: () => peerManager.cleanupAll(),
@@ -1074,12 +1126,13 @@ async function connect(): Promise<void> {
 
 /** Tears down active session state, media, peers, and UI back to pre-connect mode. */
 function disconnect(): void {
+  stopHeartbeat();
   runDisconnectFlow(getConnectionFlowDeps());
   pendingEscapeDisconnect = false;
   restoreLoopbackAfterMicGainEdit();
 }
 
-const onMessage = createOnMessageHandler({
+const onAppMessage = createOnMessageHandler({
   getWorldGridSize: () => worldGridSize,
   setWorldGridSize: (size) => {
     worldGridSize = size;
@@ -1130,6 +1183,29 @@ const onMessage = createOnMessageHandler({
     void audio.playSpatialSample(url, { x: x - state.player.x, y: y - state.player.y }, 1);
   },
 });
+
+/** Handles signaling packets with heartbeat/restart metadata before app-level dispatch. */
+async function onSignalingMessage(message: IncomingMessage): Promise<void> {
+  if (message.type === 'pong' && message.clientSentAt < 0) {
+    heartbeatLastPongAt = Date.now();
+    return;
+  }
+  let restartAnnouncement: string | null = null;
+  if (message.type === 'welcome') {
+    const incomingInstanceId = String(message.serverInfo?.instanceId ?? '').trim() || null;
+    const incomingVersion = String(message.serverInfo?.version ?? '').trim() || 'unknown';
+    if (activeServerInstanceId && incomingInstanceId && activeServerInstanceId !== incomingInstanceId) {
+      restartAnnouncement = `Server restarted, version ${incomingVersion}.`;
+    }
+    activeServerInstanceId = incomingInstanceId;
+    startHeartbeat();
+  }
+  await onAppMessage(message);
+  if (restartAnnouncement) {
+    updateStatus(restartAnnouncement);
+    audio.sfxUiConfirm();
+  }
+}
 
 /** Toggles local microphone track mute state. */
 function toggleMute(): void {

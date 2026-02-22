@@ -34,6 +34,12 @@ export const welcomeMessageSchema = z.object({
       gridSize: z.number().int().positive(),
     })
     .optional(),
+  serverInfo: z
+    .object({
+      instanceId: z.string(),
+      version: z.string().optional(),
+    })
+    .optional(),
   uiDefinitions: z
     .object({
       itemTypeOrder: z.array(z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget'])),

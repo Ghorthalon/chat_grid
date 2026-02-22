@@ -8,12 +8,14 @@
 4. Server sends `welcome` with users/items snapshot.
 5. Client:
    - applies `welcome.worldConfig.gridSize` for authoritative grid bounds/rendering
+   - records `welcome.serverInfo` (`instanceId`, `version`) for restart detection
    - applies `welcome.uiDefinitions` for item menus/properties/options
    - sends initial `update_position`
    - sends initial `update_nickname`
    - creates peer runtimes for known users
    - syncs item runtimes (`radio`, `emit`)
    - applies audio layer state
+   - starts signaling heartbeat monitor
    - starts game loop
 
 ## Main Loop
@@ -38,12 +40,22 @@ Core incoming message effects:
 - `item_remove`: remove item and cleanup runtimes.
 - `item_action_result`: success/error status for actions.
 - `item_use_sound`: play one-shot spatial sample (world layer gated).
+- `pong`:
+  - positive `clientSentAt`: user ping response (`P` command)
+  - negative `clientSentAt`: internal heartbeat response
+
+## Stale Connection Recovery
+
+- While running, client sends heartbeat `ping` every 10 seconds.
+- If no heartbeat `pong` is observed for 25 seconds, client auto-reconnects.
+- If reconnect lands on a different `welcome.serverInfo.instanceId`, client announces server restart/version.
 
 ## Disconnect/Cleanup
 
 On disconnect:
 
 - Close signaling.
+- Stop heartbeat monitor.
 - Stop local media tracks.
 - Cleanup peers and all audio runtimes.
 - Reset UI/mode state and lists.

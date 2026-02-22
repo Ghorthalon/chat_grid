@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version as package_version
 import json
 import logging
 import ssl
@@ -88,6 +89,11 @@ class SignalingServer:
         self.item_service = ItemService(state_file=state_file)
         self.item_last_use_ms: dict[str, int] = {}
         self.grid_size = max(1, grid_size)
+        self.instance_id = str(uuid.uuid4())
+        try:
+            self.server_version = package_version("chgrid-server")
+        except PackageNotFoundError:
+            self.server_version = "unknown"
 
     @property
     def items(self) -> dict[str, WorldItem]:
@@ -263,6 +269,7 @@ class SignalingServer:
             items=[item.model_dump(exclude_none=True) for item in self.items.values()],
             worldConfig={"gridSize": self.grid_size},
             uiDefinitions=self._build_ui_definitions(),
+            serverInfo={"instanceId": self.instance_id, "version": self.server_version},
         )
         await self._send(client.websocket, packet)
 
