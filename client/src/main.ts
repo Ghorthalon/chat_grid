@@ -1376,34 +1376,33 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
     case 'calibrateMicrophone':
       void calibrateMicInputGain();
       return;
-    case 'useItemOrUsersSummary':
-      if (shiftKey) {
-        const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((p) => p.nickname)];
-        const label = allUsers.length === 1 ? 'user' : 'users';
-        updateStatus(`${allUsers.length} ${label}: ${allUsers.join(', ')}`);
-        audio.sfxUiBlip();
+    case 'useItem': {
+      const carried = getCarriedItem();
+      if (carried) {
+        useItem(carried);
         return;
       }
-      {
-        const carried = getCarriedItem();
-        if (carried) {
-          useItem(carried);
-          return;
-        }
-        const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-        const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
-        if (usable.length === 0) {
-          updateStatus('No usable items here.');
-          audio.sfxUiCancel();
-          return;
-        }
-        if (usable.length === 1) {
-          useItem(usable[0]);
-          return;
-        }
-        beginItemSelection('use', usable);
+      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
+      const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
+      if (usable.length === 0) {
+        updateStatus('No usable items here.');
+        audio.sfxUiCancel();
         return;
       }
+      if (usable.length === 1) {
+        useItem(usable[0]);
+        return;
+      }
+      beginItemSelection('use', usable);
+      return;
+    }
+    case 'speakUsers': {
+      const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((p) => p.nickname)];
+      const label = allUsers.length === 1 ? 'user' : 'users';
+      updateStatus(`${allUsers.length} ${label}: ${allUsers.join(', ')}`);
+      audio.sfxUiBlip();
+      return;
+    }
     case 'addItem': {
       const itemTypeSequence = getItemTypeSequence();
       if (itemTypeSequence.length === 0) {

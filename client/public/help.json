@@ -33,7 +33,7 @@
           "description": "List users; Enter teleports to that user"
         },
         {
-          "keys": "Shift+U",
+          "keys": "U",
           "description": "Speak connected users"
         },
         {
@@ -82,7 +82,7 @@
           "description": "Delete item"
         },
         {
-          "keys": "U",
+          "keys": "Enter",
           "description": "Use item"
         }
       ]
@@ -132,7 +132,7 @@
         },
         {
           "keys": "V",
-          "description": "Set microphone gain"
+          "description": "Set mic volume"
         },
         {
           "keys": "Shift+V",

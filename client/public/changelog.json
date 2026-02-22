@@ -5,7 +5,9 @@
       "items": [
         "Added support for Dropbox links and HTTP streams for item sounds and radio stations.",
         "You will no longer repeatedly hit walls.",
-        "Added user volume control and calibration."
+        "Added user volume control and calibration.",
+        "Added up/down arrows and page up/page down for numeric field adjustment.",
+        "Moved Use item to Enter Key instead of u, moved speak users to U from Shift U."
       ]
     },
     {
