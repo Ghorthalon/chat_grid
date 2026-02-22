@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 
 /**
  * Lightweight audio/media proxy for Chat Grid radio streams.
@@ -21,7 +20,7 @@ header('Access-Control-Allow-Headers: Range');
 /**
  * PHP-version-safe suffix check (avoid str_ends_with dependency).
  */
-function host_matches_suffix(string $host, string $suffix): bool
+function host_matches_suffix($host, $suffix)
 {
     if ($suffix === '') {
         return false;
@@ -87,10 +86,14 @@ if ($host === 'localhost' || $host === '127.0.0.1' || $host === '::1') {
  */
 $allowlistEnv = getenv('CHGRID_MEDIA_PROXY_ALLOWLIST');
 if ($allowlistEnv !== false && trim($allowlistEnv) !== '') {
-    $allowlist = array_values(array_filter(array_map(
-        static fn(string $v): string => strtolower(trim($v)),
-        explode(',', (string) $allowlistEnv)
-    )));
+    $allowlist = array();
+    $rawAllowlist = explode(',', (string) $allowlistEnv);
+    foreach ($rawAllowlist as $entry) {
+        $normalized = strtolower(trim((string) $entry));
+        if ($normalized !== '') {
+            $allowlist[] = $normalized;
+        }
+    }
     $allowed = false;
     foreach ($allowlist as $suffix) {
         if ($suffix === '') {
@@ -161,7 +164,7 @@ curl_setopt_array($ch, [
         'Accept: */*',
         'Connection: keep-alive',
     ],
-    CURLOPT_HEADERFUNCTION => static function ($curl, $headerLine) use (&$upstreamHeaders, &$statusCode, &$sentContentType): int {
+    CURLOPT_HEADERFUNCTION => function ($curl, $headerLine) use (&$upstreamHeaders, &$statusCode, &$sentContentType) {
         $trimmed = trim($headerLine);
         $length = strlen($headerLine);
         if ($trimmed === '') {
@@ -199,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'HEAD') {
 /**
  * Emit downstream headers exactly once (before body bytes).
  */
-$emitHeaders = static function () use (&$headersSent, &$statusCode, &$upstreamHeaders, &$sentContentType, $ch): void {
+$emitHeaders = function () use (&$headersSent, &$statusCode, &$upstreamHeaders, &$sentContentType, $ch) {
     if ($headersSent) {
         return;
     }
@@ -235,7 +238,7 @@ $emitHeaders = static function () use (&$headersSent, &$statusCode, &$upstreamHe
 };
 
 // Stream output incrementally.
-curl_setopt($ch, CURLOPT_WRITEFUNCTION, static function ($curl, $chunk) use ($emitHeaders): int {
+curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($curl, $chunk) use ($emitHeaders) {
     $emitHeaders();
     $len = strlen($chunk);
     if ($len > 0) {
