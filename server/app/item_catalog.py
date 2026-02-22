@@ -8,7 +8,7 @@ from typing import Literal, cast
 from .items import clock, radio
 from .items.registry import ITEM_MODULES, ITEM_TYPE_ORDER
 
-ItemType = Literal["radio_station", "dice", "wheel", "clock"]
+ItemType = Literal["radio_station", "dice", "wheel", "clock", "widget"]
 ITEM_TYPE_SEQUENCE: tuple[ItemType, ...] = cast(tuple[ItemType, ...], ITEM_TYPE_ORDER)
 ITEM_TYPE_LABELS: dict[ItemType, str] = {item_type: ITEM_MODULES[item_type].LABEL for item_type in ITEM_TYPE_SEQUENCE}
 ITEM_TYPE_EDITABLE_PROPERTIES: dict[ItemType, tuple[str, ...]] = {

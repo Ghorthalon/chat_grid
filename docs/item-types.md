@@ -110,6 +110,35 @@ This is behavior-focused documentation for item types and their defaults.
 - `timeZone`: one of `CLOCK_TIME_ZONE_OPTIONS` in `server/app/item_catalog.py`
 - `use24Hour`: boolean or on/off style input
 
+## `widget`
+
+### Defaults
+- Title: `widget`
+- Params:
+  - `enabled=true`
+  - `directional=false`
+  - `facing=0`
+  - `emitRange=15`
+  - `useSound=""`
+  - `emitSound=""`
+- Global:
+  - `useSound=none`
+  - `emitSound=none`
+  - `useCooldownMs=1000`
+  - `emitRange=15`
+  - `directional=false`
+
+### Use
+- `use` toggles `enabled` on/off and plays `useSound` when configured.
+
+### Validation
+- `enabled`: boolean or on/off style input
+- `directional`: boolean or on/off style input
+- `facing`: number `0..360` with `0.1` precision
+- `emitRange`: integer `1..20`
+- `useSound`: empty, filename (assumed under `sounds/`), or full URL
+- `emitSound`: empty, filename (assumed under `sounds/`), or full URL
+
 ## Adding A New Item Type (Registry V1)
 
 Item types are currently code-registered on both server and client. Server item logic is split per item module and wired through one registry.

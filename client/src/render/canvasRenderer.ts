@@ -91,13 +91,23 @@ export class CanvasRenderer {
           ? '#f97316'
           : item.type === 'clock'
             ? '#86efac'
-            : '#60a5fa';
+            : item.type === 'widget'
+              ? '#22d3ee'
+              : '#60a5fa';
     this.ctx.fillRect(drawX, drawY, this.squarePixelSize, this.squarePixelSize);
     this.ctx.fillStyle = '#111827';
     this.ctx.font = 'bold 12px Courier New';
     this.ctx.textAlign = 'center';
     this.ctx.fillText(
-      item.type === 'radio_station' ? 'R' : item.type === 'wheel' ? 'W' : item.type === 'clock' ? 'C' : 'D',
+      item.type === 'radio_station'
+        ? 'R'
+        : item.type === 'wheel'
+          ? 'W'
+          : item.type === 'clock'
+            ? 'C'
+            : item.type === 'widget'
+              ? 'B'
+              : 'D',
       drawX + this.squarePixelSize / 2,
       drawY + 13,
     );

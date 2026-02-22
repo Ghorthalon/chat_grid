@@ -65,7 +65,9 @@ export class ItemEmitRuntime {
     if (!audioCtx) return;
 
     for (const item of items) {
-      const soundUrl = this.resolveSoundUrl(String(item.emitSound ?? '').trim());
+      const emitSound = String(item.params.emitSound ?? item.emitSound ?? '').trim();
+      const enabled = item.params.enabled !== false;
+      const soundUrl = enabled ? this.resolveSoundUrl(emitSound) : '';
       if (!soundUrl || item.carrierId) {
         this.cleanup(item.id);
         continue;

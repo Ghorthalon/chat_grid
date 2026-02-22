@@ -242,3 +242,62 @@ async def test_failed_wheel_use_does_not_consume_cooldown(monkeypatch: pytest.Mo
     item.params["spaces"] = "a,b,c"
     await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
     assert send_payloads[-1].ok is True
+
+
+@pytest.mark.asyncio
+async def test_widget_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=6)
+    server.clients[ws] = client
+    item = server.item_service.default_item(client, "widget")
+    server.item_service.add_item(item)
+
+    send_payloads: list[object] = []
+    broadcast_payloads: list[object] = []
+    now_ms = 50_000
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server.item_service, "now_ms", lambda: now_ms)
+
+    await server._handle_message(
+        client,
+        json.dumps(
+            {
+                "type": "item_update",
+                "itemId": item.id,
+                "params": {
+                    "directional": True,
+                    "facing": 123.4,
+                    "emitRange": 7,
+                    "useSound": "ping.ogg",
+                    "emitSound": "https://example.com/ambient.ogg",
+                },
+            }
+        ),
+    )
+    assert send_payloads[-1].ok is True
+    assert item.params.get("directional") is True
+    assert item.params.get("facing") == 123.4
+    assert item.params.get("emitRange") == 7
+    assert item.params.get("useSound") == "sounds/ping.ogg"
+    assert item.params.get("emitSound") == "https://example.com/ambient.ogg"
+
+    await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
+    assert send_payloads[-1].ok is True
+    assert item.params.get("enabled") is False
+    assert any(getattr(packet, "type", "") == "item_use_sound" for packet in broadcast_payloads)
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"emitRange": 21}}),
+    )
+    assert send_payloads[-1].ok is False
+    assert "emitrange must be between 1 and 20" in send_payloads[-1].message.lower()

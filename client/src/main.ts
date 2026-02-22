@@ -531,7 +531,7 @@ function getItemSpatialConfig(item: WorldItem): { range: number; directional: bo
   const rawGlobalRange = Number(global.emitRange);
   const rawRange = Number.isFinite(rawParamRange) && rawParamRange > 0 ? rawParamRange : rawGlobalRange;
   const range = Number.isFinite(rawRange) && rawRange > 0 ? rawRange : 15;
-  const directional = global.directional === true;
+  const directional = typeof item.params.directional === 'boolean' ? item.params.directional : global.directional === true;
   const rawFacing = Number(item.params.facing ?? 0);
   const facingDeg = Number.isFinite(rawFacing) ? normalizeDegrees(rawFacing) : 0;
   return { range, directional, facingDeg };
@@ -694,6 +694,14 @@ function applyTextInputEdit(code: string, key: string, maxLength: number, ctrlKe
 }
 
 function getItemPropertyValue(item: WorldItem, key: string): string {
+  const toSoundDisplayName = (rawValue: unknown): string => {
+    const raw = String(rawValue ?? '').trim();
+    if (!raw) return 'none';
+    if (raw.toLowerCase() === 'none') return 'none';
+    const withoutQuery = raw.split('?')[0].split('#')[0];
+    const segments = withoutQuery.split('/').filter((part) => part.length > 0);
+    return segments[segments.length - 1] ?? raw;
+  };
   if (key === 'title') return item.title;
   if (key === 'type') return item.type;
   if (key === 'x') return String(item.x);
@@ -704,9 +712,15 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
   if (key === 'createdAt') return formatTimestampMs(item.createdAt);
   if (key === 'updatedAt') return formatTimestampMs(item.updatedAt);
   if (key === 'capabilities') return item.capabilities.join(', ') || 'none';
-  if (key === 'useSound') return item.useSound ?? 'none';
-  if (key === 'emitSound') return item.emitSound ?? 'none';
+  if (key === 'useSound') return toSoundDisplayName(item.params.useSound ?? item.useSound);
+  if (key === 'emitSound') return toSoundDisplayName(item.params.emitSound ?? item.emitSound);
   if (key === 'enabled') return item.params.enabled === false ? 'off' : 'on';
+  if (key === 'directional') {
+    if (typeof item.params.directional === 'boolean') {
+      return item.params.directional ? 'on' : 'off';
+    }
+    return getItemTypeGlobalProperties(item.type).directional === true ? 'on' : 'off';
+  }
   if (key === 'timeZone') return String(item.params.timeZone ?? getDefaultClockTimeZone());
   if (key === 'use24Hour') return item.params.use24Hour === true ? 'on' : 'off';
   if (key === 'channel') return normalizeRadioChannel(item.params.channel);
@@ -2033,6 +2047,13 @@ function handleItemPropertiesModeInput(code: string, key: string): void {
       audio.sfxUiBlip();
       return;
     }
+    if (key === 'directional') {
+      const nextDirectional = item.params.directional !== true;
+      signaling.send({ type: 'item_update', itemId, params: { directional: nextDirectional } });
+      updateStatus(`directional: ${nextDirectional ? 'on' : 'off'}`);
+      audio.sfxUiBlip();
+      return;
+    }
     if (key === 'use24Hour') {
       const nextUse24Hour = item.params.use24Hour !== true;
       signaling.send({ type: 'item_update', itemId, params: { use24Hour: nextUse24Hour } });
@@ -2108,6 +2129,15 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
       }
       const enabled = ['on', 'true', '1', 'yes'].includes(normalized);
       signaling.send({ type: 'item_update', itemId, params: { enabled } });
+    } else if (propertyKey === 'directional') {
+      const normalized = value.toLowerCase();
+      if (!['on', 'off', 'true', 'false', '1', '0', 'yes', 'no'].includes(normalized)) {
+        updateStatus('directional must be on or off.');
+        audio.sfxUiCancel();
+        return;
+      }
+      const directional = ['on', 'true', '1', 'yes'].includes(normalized);
+      signaling.send({ type: 'item_update', itemId, params: { directional } });
     } else if (propertyKey === 'volume') {
       const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
       if (!parsed.ok) {
@@ -2148,6 +2178,8 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
         return;
       }
       signaling.send({ type: 'item_update', itemId, params: { emitRange: parsed.value } });
+    } else if (propertyKey === 'useSound' || propertyKey === 'emitSound') {
+      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: value } });
     } else if (propertyKey === 'spaces') {
       const spaces = value
         .split(',')

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const itemSchema = z.object({
   id: z.string(),
-  type: z.enum(['radio_station', 'dice', 'wheel', 'clock']),
+  type: z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget']),
   title: z.string(),
   x: z.number().int(),
   y: z.number().int(),
@@ -36,10 +36,10 @@ export const welcomeMessageSchema = z.object({
     .optional(),
   uiDefinitions: z
     .object({
-      itemTypeOrder: z.array(z.enum(['radio_station', 'dice', 'wheel', 'clock'])),
+      itemTypeOrder: z.array(z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget'])),
       itemTypes: z.array(
         z.object({
-          type: z.enum(['radio_station', 'dice', 'wheel', 'clock']),
+          type: z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget']),
           label: z.string().optional(),
           tooltip: z.string().optional(),
           editableProperties: z.array(z.string()),
@@ -166,7 +166,7 @@ export type OutgoingMessage =
   | { type: 'update_nickname'; nickname: string }
   | { type: 'chat_message'; message: string }
   | { type: 'ping'; clientSentAt: number }
-  | { type: 'item_add'; itemType: 'radio_station' | 'dice' | 'wheel' | 'clock' }
+  | { type: 'item_add'; itemType: 'radio_station' | 'dice' | 'wheel' | 'clock' | 'widget' }
   | { type: 'item_pickup'; itemId: string }
   | { type: 'item_drop'; itemId: string; x: number; y: number }
   | { type: 'item_delete'; itemId: string }

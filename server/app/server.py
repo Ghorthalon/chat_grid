@@ -117,6 +117,20 @@ class SignalingServer:
 
         return "radio" if item.type == "radio_station" else item.type
 
+    @staticmethod
+    def _resolve_item_use_sound(item: WorldItem) -> str | None:
+        """Resolve one-shot use sound, preferring per-item param override."""
+
+        param_sound = item.params.get("useSound")
+        if isinstance(param_sound, str):
+            token = param_sound.strip()
+            if token:
+                return token
+            return None
+        if isinstance(item.useSound, str) and item.useSound.strip():
+            return item.useSound.strip()
+        return None
+
     def _is_in_bounds(self, x: int, y: int) -> bool:
         """Check whether a coordinate is inside server-authoritative world bounds."""
 
@@ -590,12 +604,13 @@ class SignalingServer:
                 BroadcastChatMessagePacket(type="chat_message", message=use_result.others_message, system=True),
                 exclude=client.websocket,
             )
-            if item.useSound:
+            use_sound = self._resolve_item_use_sound(item)
+            if use_sound:
                 await self._broadcast(
                     ItemUseSoundPacket(
                         type="item_use_sound",
                         itemId=item.id,
-                        sound=item.useSound,
+                        sound=use_sound,
                         x=item.x,
                         y=item.y,
                     )

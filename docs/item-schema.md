@@ -5,7 +5,7 @@
 ```json
 {
   "id": "string",
-  "type": "radio_station | dice | wheel | clock",
+  "type": "radio_station | dice | wheel | clock | widget",
   "title": "string",
   "x": 0,
   "y": 0,
@@ -24,17 +24,17 @@
 - `useSound`: optional client-played one-shot sound when item `use` succeeds; global item field and not user-editable in V1.
 - `emitSound`: optional continuously-looping spatial sound emitted from the item on the grid; global item field and not user-editable in V1.
 - `capabilities`, `useSound`, and `emitSound` are derived from global item-type definitions at runtime (not stored per-instance in persisted state).
-- `useCooldownMs`: global per item type (`radio_station=1000`, `dice=1000`, `wheel=4000`, `clock=1000`), not per-instance editable.
-- `emitRange`: global spatial range default per item type (`radio_station=20`, `dice=15`, `wheel=15`, `clock=10`).
+- `useCooldownMs`: global per item type (`radio_station=1000`, `dice=1000`, `wheel=4000`, `clock=1000`, `widget=1000`), not per-instance editable.
+- `emitRange`: global spatial range default per item type (`radio_station=20`, `dice=15`, `wheel=15`, `clock=10`, `widget=15`).
   - `radio_station` can override this per instance via `params.emitRange` (`5..20`).
-- `directional`: global directional attenuation flag per item type (`radio_station=true`, others `false`), not per-instance editable.
+- `directional`: global directional attenuation flag per item type (`radio_station=true`, others `false`); `widget` can override per instance via `params.directional`.
 
 ## Persisted Item State (`server/runtime/items.json`)
 
 ```json
 {
   "id": "string",
-  "type": "radio_station | dice | wheel | clock",
+  "type": "radio_station | dice | wheel | clock | widget",
   "title": "string",
   "x": 0,
   "y": 0,
@@ -127,6 +127,26 @@
   `Pacific/Honolulu`, `Pacific/Kiritimati`, `Pacific/Noumea`, `Pacific/Pago_Pago`, `UTC`.
 - `use24Hour`: boolean (or `on/off` in updates), default `false`.
 - Global defaults: `useSound=none`, `emitSound=sounds/clock.ogg`.
+
+### `widget`
+
+```json
+{
+  "enabled": true,
+  "directional": false,
+  "facing": 0,
+  "emitRange": 15,
+  "useSound": "",
+  "emitSound": ""
+}
+```
+
+- `enabled`: boolean (or `on/off` in updates), default `true`.
+- `directional`: boolean (or `on/off` in updates), default `false`.
+- `facing`: number, range `0-360`, precision `0.1`.
+- `emitRange`: integer, range `1-20`, default `15`.
+- `useSound`: empty, filename (assumed under `sounds/`), or full URL.
+- `emitSound`: empty, filename (assumed under `sounds/`), or full URL.
 
 ## Packet Shapes
 

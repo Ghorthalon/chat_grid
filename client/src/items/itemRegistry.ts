@@ -45,13 +45,14 @@ const DEFAULT_CLOCK_TIME_ZONE_OPTIONS = [
   'UTC',
 ] as const;
 
-const DEFAULT_ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel'];
+const DEFAULT_ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel', 'widget'];
 
 const DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
   radio_station: ['title', 'streamUrl', 'enabled', 'channel', 'volume', 'effect', 'effectValue', 'facing', 'emitRange'],
   dice: ['title', 'sides', 'number'],
   wheel: ['title', 'spaces'],
   clock: ['title', 'timeZone', 'use24Hour'],
+  widget: ['title', 'enabled', 'directional', 'facing', 'emitRange', 'useSound', 'emitSound'],
 };
 
 const DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, string | number | boolean>> = {
@@ -59,6 +60,7 @@ const DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, strin
   dice: { useSound: 'sounds/roll.ogg', emitSound: 'none', useCooldownMs: 1000, emitRange: 15, directional: false },
   wheel: { useSound: 'sounds/spin.ogg', emitSound: 'none', useCooldownMs: 4000, emitRange: 15, directional: false },
   clock: { useSound: 'none', emitSound: 'sounds/clock.ogg', useCooldownMs: 1000, emitRange: 10, directional: false },
+  widget: { useSound: 'none', emitSound: 'none', useCooldownMs: 1000, emitRange: 15, directional: false },
 };
 
 export type ItemPropertyValueType = 'boolean' | 'text' | 'number' | 'list' | 'sound';
@@ -92,6 +94,7 @@ let itemTypeLabels: Record<ItemType, string> = {
   dice: 'dice',
   wheel: 'wheel',
   clock: 'clock',
+  widget: 'widget',
 };
 let itemTypeTooltips: Partial<Record<ItemType, string>> = {};
 let itemTypeEditableProperties: Record<ItemType, string[]> = {
@@ -99,12 +102,14 @@ let itemTypeEditableProperties: Record<ItemType, string[]> = {
   dice: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.dice],
   wheel: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.wheel],
   clock: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.clock],
+  widget: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.widget],
 };
 let itemTypeGlobalProperties: Record<ItemType, Record<string, string | number | boolean>> = {
   radio_station: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.radio_station },
   dice: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.dice },
   wheel: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.wheel },
   clock: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.clock },
+  widget: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.widget },
 };
 let optionItemPropertyValues: Partial<Record<string, string[]>> = {
   effect: EFFECT_SEQUENCE.map((effect) => effect.id),
@@ -188,6 +193,8 @@ export function itemTypeLabel(type: ItemType): string {
 export function itemPropertyLabel(key: string): string {
   if (key === 'use24Hour') return 'use 24 hour format';
   if (key === 'emitRange') return 'emit range';
+  if (key === 'useSound') return 'use sound';
+  if (key === 'emitSound') return 'emit sound';
   return key;
 }
 
