@@ -1,6 +1,12 @@
 {
   "sections": [
     {
+      "date": "February 22, 2026",
+      "items": [
+        "Added directional audio support, used now for the Radio item type."
+      ]
+    },
+    {
       "date": "February 21, 2026",
       "items": [
         "Added audio layers to toggle voice, item sounds, media, and world (other users).",
