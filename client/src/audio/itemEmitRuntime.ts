@@ -45,23 +45,13 @@ function setElementPreservesPitch(element: HTMLAudioElement, enabled: boolean): 
   if ('webkitPreservesPitch' in target) target.webkitPreservesPitch = enabled;
 }
 
-function setElementPlaybackRate(element: HTMLAudioElement, playbackRate: number, reverse: boolean): void {
-  const targetRate = reverse ? -Math.abs(playbackRate) : Math.abs(playbackRate);
-  element.playbackRate = targetRate;
-  // Most browsers reject negative playbackRate for media elements; fall back gracefully.
-  if (reverse && element.playbackRate >= 0) {
-    element.playbackRate = Math.abs(playbackRate);
-  }
-}
-
-function resolveEmitRates(item: WorldItem): { playbackRate: number; preservePitch: boolean; reverse: boolean } {
+function resolveEmitRates(item: WorldItem): { playbackRate: number; preservePitch: boolean } {
   const globals = getItemTypeGlobalProperties(item.type);
   const speed = resolveEmitPlaybackRate(item.params.emitSoundSpeed ?? globals.emitSoundSpeed ?? 50);
   const tempo = resolveEmitPlaybackRate(item.params.emitSoundTempo ?? globals.emitSoundTempo ?? 50);
-  const reverse = item.params.emitSoundReverse === true || (item.params.emitSoundReverse === undefined && globals.emitSoundReverse === true);
   const playbackRate = Math.max(0.25, Math.min(4, speed * tempo));
   const preservePitch = Math.abs(speed - 1) < 0.001;
-  return { playbackRate, preservePitch, reverse };
+  return { playbackRate, preservePitch };
 }
 
 export class ItemEmitRuntime {
@@ -143,7 +133,7 @@ export class ItemEmitRuntime {
       const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
       const initialRates = resolveEmitRates(item);
       setElementPreservesPitch(element, initialRates.preservePitch);
-      setElementPlaybackRate(element, initialRates.playbackRate, initialRates.reverse);
+      element.playbackRate = initialRates.playbackRate;
       if (this.audio.supportsStereoPanner()) {
         panner = audioCtx.createStereoPanner();
         gain.connect(panner).connect(audioCtx.destination);
@@ -184,11 +174,8 @@ export class ItemEmitRuntime {
       const nextRates = resolveEmitRates(item);
       setElementPreservesPitch(output.element, nextRates.preservePitch);
       const nextPlaybackRate = nextRates.playbackRate;
-      const absCurrentRate = Math.abs(output.element.playbackRate);
-      const shouldReverse = nextRates.reverse;
-      const isReverseNow = output.element.playbackRate < 0;
-      if (Math.abs(absCurrentRate - nextPlaybackRate) > 0.001 || isReverseNow !== shouldReverse) {
-        setElementPlaybackRate(output.element, nextPlaybackRate, shouldReverse);
+      if (Math.abs(output.element.playbackRate - nextPlaybackRate) > 0.001) {
+        output.element.playbackRate = nextPlaybackRate;
       }
       const spatialConfig = this.getSpatialConfig(item);
       const mix = resolveSpatialMix({
