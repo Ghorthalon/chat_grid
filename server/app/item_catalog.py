@@ -16,7 +16,7 @@ ITEM_TYPE_LABELS: dict[ItemType, str] = {
 RADIO_EFFECT_OPTIONS: tuple[str, ...] = ("reverb", "echo", "flanger", "high_pass", "low_pass", "off")
 RADIO_CHANNEL_OPTIONS: tuple[str, ...] = ("stereo", "mono", "left", "right")
 ITEM_TYPE_EDITABLE_PROPERTIES: dict[ItemType, tuple[str, ...]] = {
-    "radio_station": ("title", "streamUrl", "enabled", "channel", "volume", "effect", "effectValue", "facing"),
+    "radio_station": ("title", "streamUrl", "enabled", "channel", "volume", "effect", "effectValue", "facing", "emitRange"),
     "dice": ("title", "sides", "number"),
     "wheel": ("title", "spaces"),
     "clock": ("title", "timeZone", "use24Hour"),
@@ -86,7 +86,16 @@ ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
         capabilities=("editable", "carryable", "deletable", "usable"),
         use_sound=None,
         emit_sound=None,
-        default_params={"streamUrl": "", "enabled": True, "channel": "stereo", "volume": 50, "effect": "off", "effectValue": 50, "facing": 0},
+        default_params={
+            "streamUrl": "",
+            "enabled": True,
+            "channel": "stereo",
+            "volume": 50,
+            "effect": "off",
+            "effectValue": 50,
+            "facing": 0,
+            "emitRange": 20,
+        },
         emit_range=20,
         directional=True,
     ),

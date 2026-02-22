@@ -112,6 +112,14 @@ def _validate_radio_update(item: WorldItem, next_params: dict) -> dict:
     if not (0 <= facing <= 360):
         raise ValueError("facing must be between 0 and 360.")
     next_params["facing"] = round(facing, 1)
+
+    try:
+        emit_range = int(next_params.get("emitRange", item.params.get("emitRange", 20)))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("emitRange must be an integer between 5 and 20.") from exc
+    if not (5 <= emit_range <= 20):
+        raise ValueError("emitRange must be between 5 and 20.")
+    next_params["emitRange"] = emit_range
     return next_params
 
 

@@ -48,7 +48,7 @@ const DEFAULT_CLOCK_TIME_ZONE_OPTIONS = [
 const DEFAULT_ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel'];
 
 const DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
-  radio_station: ['title', 'streamUrl', 'enabled', 'channel', 'volume', 'effect', 'effectValue', 'facing'],
+  radio_station: ['title', 'streamUrl', 'enabled', 'channel', 'volume', 'effect', 'effectValue', 'facing', 'emitRange'],
   dice: ['title', 'sides', 'number'],
   wheel: ['title', 'spaces'],
   clock: ['title', 'timeZone', 'use24Hour'],
@@ -131,6 +131,7 @@ export function itemTypeLabel(type: ItemType): string {
 
 export function itemPropertyLabel(key: string): string {
   if (key === 'use24Hour') return 'use 24 hour format';
+  if (key === 'emitRange') return 'emit range';
   return key;
 }
 

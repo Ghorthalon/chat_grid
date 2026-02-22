@@ -26,6 +26,7 @@ This is behavior-focused documentation for item types and their defaults.
   - `effect="off"`
   - `effectValue=50`
   - `facing=0`
+  - `emitRange=20`
 - Global:
   - `useSound=none`
   - `emitSound=none`
@@ -42,6 +43,7 @@ This is behavior-focused documentation for item types and their defaults.
 - `effect`: `reverb | echo | flanger | high_pass | low_pass | off`
 - `effectValue`: number `0..100` with `0.1` precision
 - `facing`: number `0..360` with `0.1` precision
+- `emitRange`: integer `5..20`
 
 ## `dice`
 

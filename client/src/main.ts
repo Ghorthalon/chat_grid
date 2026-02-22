@@ -525,7 +525,9 @@ function itemLabel(item: WorldItem): string {
 
 function getItemSpatialConfig(item: WorldItem): { range: number; directional: boolean; facingDeg: number } {
   const global = getItemTypeGlobalProperties(item.type);
-  const rawRange = Number(global.emitRange);
+  const rawParamRange = Number(item.params.emitRange);
+  const rawGlobalRange = Number(global.emitRange);
+  const rawRange = Number.isFinite(rawParamRange) && rawParamRange > 0 ? rawParamRange : rawGlobalRange;
   const range = Number.isFinite(rawRange) && rawRange > 0 ? rawRange : 15;
   const directional = global.directional === true;
   const rawFacing = Number(item.params.facing ?? 0);
@@ -712,6 +714,11 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
     const parsed = Number(item.params.facing ?? 0);
     if (!Number.isFinite(parsed)) return '0';
     return String(Math.round(normalizeDegrees(parsed) * 10) / 10);
+  }
+  if (key === 'emitRange') {
+    const parsed = Number(item.params.emitRange ?? getItemTypeGlobalProperties(item.type)?.emitRange ?? 15);
+    if (!Number.isFinite(parsed)) return '15';
+    return String(Math.round(parsed));
   }
   const globalValue = getItemTypeGlobalProperties(item.type)?.[key];
   if (globalValue !== undefined) return String(globalValue);
@@ -2008,6 +2015,14 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
         return;
       }
       signaling.send({ type: 'item_update', itemId, params: { facing: Math.round(parsed * 10) / 10 } });
+    } else if (propertyKey === 'emitRange') {
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 5 || parsed > 20) {
+        updateStatus('emit range must be an integer between 5 and 20.');
+        audio.sfxUiCancel();
+        return;
+      }
+      signaling.send({ type: 'item_update', itemId, params: { emitRange: parsed } });
     } else if (propertyKey === 'spaces') {
       const spaces = value
         .split(',')
