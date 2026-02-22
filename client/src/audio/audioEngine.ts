@@ -204,6 +204,18 @@ export class AudioEngine {
     return this.loopbackEnabled;
   }
 
+  /** Returns current loopback monitor state. */
+  isLoopbackEnabled(): boolean {
+    return this.loopbackEnabled;
+  }
+
+  /** Sets loopback monitor state directly. */
+  setLoopbackEnabled(enabled: boolean): boolean {
+    this.loopbackEnabled = enabled;
+    this.rebuildOutboundEffectGraph();
+    return this.loopbackEnabled;
+  }
+
   async attachRemoteStream(
     peer: SpatialPeerRuntime,
     stream: MediaStream,

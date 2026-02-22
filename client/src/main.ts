@@ -191,6 +191,7 @@ const itemEmitRuntime = new ItemEmitRuntime(audio, resolveIncomingSoundUrl, getI
 let internalClipboardText = '';
 let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
+let micGainLoopbackRestoreState: boolean | null = null;
 let helpViewerLines: string[] = [];
 let helpViewerIndex = 0;
 let audioLayers: AudioLayerState = {
@@ -1026,6 +1027,15 @@ function describeMediaError(error: unknown): string {
   return mediaSession.describeMediaError(error);
 }
 
+/** Restores loopback state captured when entering microphone gain edit mode. */
+function restoreLoopbackAfterMicGainEdit(): void {
+  if (micGainLoopbackRestoreState === null) {
+    return;
+  }
+  audio.setLoopbackEnabled(micGainLoopbackRestoreState);
+  micGainLoopbackRestoreState = null;
+}
+
 /** Builds dependencies shared by connect/disconnect flow helpers. */
 function getConnectionFlowDeps(): ConnectFlowDeps {
   return {
@@ -1066,6 +1076,7 @@ async function connect(): Promise<void> {
 function disconnect(): void {
   runDisconnectFlow(getConnectionFlowDeps());
   pendingEscapeDisconnect = false;
+  restoreLoopbackAfterMicGainEdit();
 }
 
 const onMessage = createOnMessageHandler({
@@ -1199,6 +1210,8 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       state.nicknameInput = formatSteppedNumber(audio.getOutboundInputGain(), MIC_INPUT_GAIN_STEP);
       state.cursorPos = state.nicknameInput.length;
       replaceTextOnNextType = true;
+      micGainLoopbackRestoreState = audio.isLoopbackEnabled();
+      audio.setLoopbackEnabled(true);
       updateStatus(`Set microphone gain: ${state.nicknameInput}`);
       audio.sfxUiBlip();
       return;
@@ -1522,6 +1535,7 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
     state.nicknameInput = formatSteppedNumber(next, MIC_INPUT_GAIN_STEP);
     state.cursorPos = state.nicknameInput.length;
     replaceTextOnNextType = false;
+    audio.setOutboundInputGain(next);
     updateStatus(state.nicknameInput);
     if (Math.abs(next - base) < 1e-9 || Math.abs(next - attempted) > 1e-9) {
       audio.sfxUiCancel();
@@ -1549,6 +1563,7 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
     persistMicInputGain(applied);
     state.mode = 'normal';
     replaceTextOnNextType = false;
+    restoreLoopbackAfterMicGainEdit();
     updateStatus(`Microphone gain set to ${formatSteppedNumber(applied, MIC_INPUT_GAIN_STEP)}.`);
     audio.sfxUiConfirm();
     return;
@@ -1557,6 +1572,7 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
   if (editAction === 'cancel') {
     state.mode = 'normal';
     replaceTextOnNextType = false;
+    restoreLoopbackAfterMicGainEdit();
     updateStatus('Cancelled.');
     audio.sfxUiCancel();
     return;
