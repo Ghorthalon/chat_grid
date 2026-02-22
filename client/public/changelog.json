@@ -1,7 +1,7 @@
 {
   "sections": [
     {
-      "date": "February 22, 2026",
+      "date": "February 21, 2026",
       "items": [
         "Added directional audio support, used now for the Radio item type."
       ]
