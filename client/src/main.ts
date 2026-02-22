@@ -29,7 +29,8 @@ import {
   shouldReplaceCurrentText,
 } from './input/textInput';
 import { resolveMainModeCommand } from './input/mainCommandRouter';
-import { cycleIndex, findNextIndexByInitial } from './input/listNavigation';
+import { handleListControlKey } from './input/listController';
+import { getEditSessionAction } from './input/editSession';
 import { formatSteppedNumber, snapNumberToStep } from './input/numeric';
 import { type IncomingMessage, type OutgoingMessage } from './network/protocol';
 import { SignalingClient } from './network/signalingClient';
@@ -1786,7 +1787,8 @@ function handleHelpViewModeInput(code: string): void {
 }
 
 function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void {
-  if (code === 'Enter') {
+  const editAction = getEditSessionAction(code);
+  if (editAction === 'submit') {
     const message = state.nicknameInput.trim();
     if (message.length > 0) {
       signaling.send({ type: 'chat_message', message });
@@ -1802,7 +1804,7 @@ function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void 
     return;
   }
 
-  if (code === 'Escape') {
+  if (editAction === 'cancel') {
     state.mode = 'normal';
     state.nicknameInput = '';
     state.cursorPos = 0;
@@ -1833,7 +1835,8 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
     return;
   }
 
-  if (code === 'Enter') {
+  const editAction = getEditSessionAction(code);
+  if (editAction === 'submit') {
     const value = Number(state.nicknameInput.trim());
     if (!Number.isFinite(value)) {
       updateStatus(`Volume must be between ${MIC_CALIBRATION_MIN_GAIN} and ${MIC_CALIBRATION_MAX_GAIN}.`);
@@ -1855,7 +1858,7 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
     return;
   }
 
-  if (code === 'Escape') {
+  if (editAction === 'cancel') {
     state.mode = 'normal';
     replaceTextOnNextType = false;
     updateStatus('Cancelled.');
@@ -1867,27 +1870,15 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
 }
 
 function handleEffectSelectModeInput(code: string, key: string): void {
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.effectSelectIndex = cycleIndex(state.effectSelectIndex, EFFECT_SEQUENCE.length, code === 'ArrowDown' ? 'next' : 'prev');
+  const control = handleListControlKey(code, key, EFFECT_SEQUENCE, state.effectSelectIndex, (effect) => effect.label);
+  if (control.type === 'move') {
+    state.effectSelectIndex = control.index;
     updateStatus(EFFECT_SEQUENCE[state.effectSelectIndex].label);
     audio.sfxUiBlip();
     return;
   }
 
-  const nextByInitial = findNextIndexByInitial(
-    EFFECT_SEQUENCE,
-    state.effectSelectIndex,
-    key,
-    (effect) => effect.label,
-  );
-  if (nextByInitial >= 0) {
-    state.effectSelectIndex = nextByInitial;
-    updateStatus(EFFECT_SEQUENCE[state.effectSelectIndex].label);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     const selected = EFFECT_SEQUENCE[state.effectSelectIndex];
     const effect = audio.setOutboundEffect(selected.id);
     state.mode = 'normal';
@@ -1896,7 +1887,7 @@ function handleEffectSelectModeInput(code: string, key: string): void {
     return;
   }
 
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'normal';
     updateStatus('Cancelled.');
     audio.sfxUiCancel();
@@ -1909,33 +1900,21 @@ function handleListModeInput(code: string, key: string): void {
     return;
   }
 
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.listIndex = cycleIndex(state.listIndex, state.sortedPeerIds.length, code === 'ArrowDown' ? 'next' : 'prev');
+  const control = handleListControlKey(code, key, state.sortedPeerIds, state.listIndex, (peerId) => state.peers.get(peerId)?.nickname ?? '');
+  if (control.type === 'move') {
+    state.listIndex = control.index;
     const peer = state.peers.get(state.sortedPeerIds[state.listIndex]);
     if (!peer) return;
     updateStatus(
       `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
     );
-    return;
-  }
-  const nextByInitial = findNextIndexByInitial(
-    state.sortedPeerIds,
-    state.listIndex,
-    key,
-    (peerId) => state.peers.get(peerId)?.nickname ?? '',
-  );
-  if (nextByInitial >= 0) {
-    state.listIndex = nextByInitial;
-    const peer = state.peers.get(state.sortedPeerIds[state.listIndex]);
-    if (!peer) return;
-    updateStatus(
-      `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
-    );
-    audio.sfxUiBlip();
+    if (control.reason === 'initial') {
+      audio.sfxUiBlip();
+    }
     return;
   }
 
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     const peer = state.peers.get(state.sortedPeerIds[state.listIndex]);
     if (!peer) return;
     if (state.player.x === peer.x && state.player.y === peer.y) {
@@ -1952,7 +1931,7 @@ function handleListModeInput(code: string, key: string): void {
     return;
   }
 
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'normal';
     updateStatus('Exit list mode.');
     audio.sfxUiCancel();
@@ -1964,35 +1943,24 @@ function handleListItemsModeInput(code: string, key: string): void {
     state.mode = 'normal';
     return;
   }
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.itemListIndex = cycleIndex(state.itemListIndex, state.sortedItemIds.length, code === 'ArrowDown' ? 'next' : 'prev');
+
+  const control = handleListControlKey(code, key, state.sortedItemIds, state.itemListIndex, (itemId) => {
+    const item = state.items.get(itemId);
+    return item ? itemLabel(item) : '';
+  });
+  if (control.type === 'move') {
+    state.itemListIndex = control.index;
     const item = state.items.get(state.sortedItemIds[state.itemListIndex]);
     if (!item) return;
     updateStatus(
       `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
     );
+    if (control.reason === 'initial') {
+      audio.sfxUiBlip();
+    }
     return;
   }
-  const nextByInitial = findNextIndexByInitial(
-    state.sortedItemIds,
-    state.itemListIndex,
-    key,
-    (itemId) => {
-      const item = state.items.get(itemId);
-      return item ? itemLabel(item) : '';
-    },
-  );
-  if (nextByInitial >= 0) {
-    state.itemListIndex = nextByInitial;
-    const item = state.items.get(state.sortedItemIds[state.itemListIndex]);
-    if (!item) return;
-    updateStatus(
-      `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
-    );
-    audio.sfxUiBlip();
-    return;
-  }
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     const item = state.items.get(state.sortedItemIds[state.itemListIndex]);
     if (!item) return;
     if (state.player.x === item.x && state.player.y === item.y) {
@@ -2008,7 +1976,7 @@ function handleListItemsModeInput(code: string, key: string): void {
     updateStatus(`Moved to ${itemLabel(item)}.`);
     return;
   }
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'normal';
     updateStatus('Exit item list mode.');
     audio.sfxUiCancel();
@@ -2023,20 +1991,9 @@ function handleAddItemModeInput(code: string, key: string): void {
     audio.sfxUiCancel();
     return;
   }
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.addItemTypeIndex = cycleIndex(state.addItemTypeIndex, itemTypeSequence.length, code === 'ArrowDown' ? 'next' : 'prev');
-    updateStatus(`${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
-    audio.sfxUiBlip();
-    return;
-  }
-  const nextByInitial = findNextIndexByInitial(
-    itemTypeSequence,
-    state.addItemTypeIndex,
-    key,
-    (itemType) => itemTypeLabel(itemType),
-  );
-  if (nextByInitial >= 0) {
-    state.addItemTypeIndex = nextByInitial;
+  const control = handleListControlKey(code, key, itemTypeSequence, state.addItemTypeIndex, (itemType) => itemTypeLabel(itemType));
+  if (control.type === 'move') {
+    state.addItemTypeIndex = control.index;
     updateStatus(`${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
     audio.sfxUiBlip();
     return;
@@ -2048,12 +2005,12 @@ function handleAddItemModeInput(code: string, key: string): void {
     audio.sfxUiBlip();
     return;
   }
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     signaling.send({ type: 'item_add', itemType: itemTypeSequence[state.addItemTypeIndex] });
     state.mode = 'normal';
     return;
   }
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'normal';
     updateStatus('Cancelled.');
     audio.sfxUiCancel();
@@ -2066,8 +2023,12 @@ function handleSelectItemModeInput(code: string, key: string): void {
     state.selectionContext = null;
     return;
   }
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.selectedItemIndex = cycleIndex(state.selectedItemIndex, state.selectedItemIds.length, code === 'ArrowDown' ? 'next' : 'prev');
+  const control = handleListControlKey(code, key, state.selectedItemIds, state.selectedItemIndex, (itemId) => {
+    const item = state.items.get(itemId);
+    return item ? itemLabel(item) : '';
+  });
+  if (control.type === 'move') {
+    state.selectedItemIndex = control.index;
     const current = state.items.get(state.selectedItemIds[state.selectedItemIndex]);
     if (current) {
       updateStatus(itemLabel(current));
@@ -2075,25 +2036,7 @@ function handleSelectItemModeInput(code: string, key: string): void {
     }
     return;
   }
-  const nextByInitial = findNextIndexByInitial(
-    state.selectedItemIds,
-    state.selectedItemIndex,
-    key,
-    (itemId) => {
-      const item = state.items.get(itemId);
-      return item ? itemLabel(item) : '';
-    },
-  );
-  if (nextByInitial >= 0) {
-    state.selectedItemIndex = nextByInitial;
-    const current = state.items.get(state.selectedItemIds[state.selectedItemIndex]);
-    if (current) {
-      updateStatus(itemLabel(current));
-      audio.sfxUiBlip();
-    }
-    return;
-  }
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     const selected = state.items.get(state.selectedItemIds[state.selectedItemIndex]);
     if (!selected) {
       state.mode = 'normal';
@@ -2125,7 +2068,7 @@ function handleSelectItemModeInput(code: string, key: string): void {
     }
     return;
   }
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'normal';
     state.selectionContext = null;
     updateStatus('Cancelled.');
@@ -2152,11 +2095,12 @@ function handleItemPropertiesModeInput(code: string, key: string): void {
     audio.sfxUiCancel();
     return;
   }
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.itemPropertyIndex = cycleIndex(state.itemPropertyIndex, state.itemPropertyKeys.length, code === 'ArrowDown' ? 'next' : 'prev');
-    const key = state.itemPropertyKeys[state.itemPropertyIndex];
-    const value = getItemPropertyValue(item, key);
-    updateStatus(`${itemPropertyLabel(key)}: ${value}`);
+  const control = handleListControlKey(code, key, state.itemPropertyKeys, state.itemPropertyIndex, (propertyKey) => propertyKey);
+  if (control.type === 'move') {
+    state.itemPropertyIndex = control.index;
+    const selectedKey = state.itemPropertyKeys[state.itemPropertyIndex];
+    const value = getItemPropertyValue(item, selectedKey);
+    updateStatus(`${itemPropertyLabel(selectedKey)}: ${value}`);
     audio.sfxUiBlip();
     return;
   }
@@ -2166,21 +2110,7 @@ function handleItemPropertiesModeInput(code: string, key: string): void {
     audio.sfxUiBlip();
     return;
   }
-  const nextByInitial = findNextIndexByInitial(
-    state.itemPropertyKeys,
-    state.itemPropertyIndex,
-    key,
-    (propertyKey) => propertyKey,
-  );
-  if (nextByInitial >= 0) {
-    state.itemPropertyIndex = nextByInitial;
-    const selectedKey = state.itemPropertyKeys[state.itemPropertyIndex];
-    const value = getItemPropertyValue(item, selectedKey);
-    updateStatus(`${itemPropertyLabel(selectedKey)}: ${value}`);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     const key = state.itemPropertyKeys[state.itemPropertyIndex];
     if (!isItemPropertyEditable(item, key)) {
       updateStatus(`${itemPropertyLabel(key)} is not editable.`);
@@ -2228,7 +2158,7 @@ function handleItemPropertiesModeInput(code: string, key: string): void {
     audio.sfxUiBlip();
     return;
   }
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'normal';
     state.selectedItemId = null;
     state.itemPropertyKeys = [];
@@ -2290,8 +2220,35 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
       return;
     }
   }
-  if (code === 'Enter') {
+  const editAction = getEditSessionAction(code);
+  if (editAction === 'submit') {
     const value = state.nicknameInput.trim();
+    const sendItemParams = (params: Record<string, unknown>): void => {
+      signaling.send({ type: 'item_update', itemId, params });
+    };
+    const parseToggleValue = (raw: string, field: string): { ok: true; value: boolean } | { ok: false } => {
+      const normalized = raw.toLowerCase();
+      if (!['on', 'off', 'true', 'false', '1', '0', 'yes', 'no'].includes(normalized)) {
+        updateStatus(`${field} must be on or off.`);
+        audio.sfxUiCancel();
+        return { ok: false };
+      }
+      return { ok: true, value: ['on', 'true', '1', 'yes'].includes(normalized) };
+    };
+    const submitNumericParam = (
+      targetKey: string,
+      requireInteger: boolean,
+      transform?: (num: number) => number,
+    ): boolean => {
+      const parsed = validateNumericItemPropertyInput(item, targetKey, value, requireInteger);
+      if (!parsed.ok) {
+        updateStatus(parsed.message);
+        audio.sfxUiCancel();
+        return false;
+      }
+      sendItemParams({ [targetKey]: transform ? transform(parsed.value) : parsed.value });
+      return true;
+    };
     if (propertyKey === 'title') {
       if (!value) {
         updateStatus('Value is required.');
@@ -2300,57 +2257,25 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
       }
       signaling.send({ type: 'item_update', itemId, title: value });
     } else if (propertyKey === 'streamUrl') {
-      signaling.send({ type: 'item_update', itemId, params: { streamUrl: value } });
-    } else if (propertyKey === 'enabled') {
-      const normalized = value.toLowerCase();
-      if (!['on', 'off', 'true', 'false', '1', '0', 'yes', 'no'].includes(normalized)) {
-        updateStatus('enabled must be on or off.');
-        audio.sfxUiCancel();
+      sendItemParams({ streamUrl: value });
+    } else if (propertyKey === 'enabled' || propertyKey === 'directional') {
+      const toggle = parseToggleValue(value, propertyKey);
+      if (!toggle.ok) {
         return;
       }
-      const enabled = ['on', 'true', '1', 'yes'].includes(normalized);
-      signaling.send({ type: 'item_update', itemId, params: { enabled } });
-    } else if (propertyKey === 'directional') {
-      const normalized = value.toLowerCase();
-      if (!['on', 'off', 'true', 'false', '1', '0', 'yes', 'no'].includes(normalized)) {
-        updateStatus('directional must be on or off.');
-        audio.sfxUiCancel();
+      sendItemParams({ [propertyKey]: toggle.value });
+    } else if (
+      propertyKey === 'mediaVolume' ||
+      propertyKey === 'emitVolume' ||
+      propertyKey === 'emitSoundSpeed' ||
+      propertyKey === 'emitSoundTempo' ||
+      propertyKey === 'emitRange' ||
+      propertyKey === 'sides' ||
+      propertyKey === 'number'
+    ) {
+      if (!submitNumericParam(propertyKey, true)) {
         return;
       }
-      const directional = ['on', 'true', '1', 'yes'].includes(normalized);
-      signaling.send({ type: 'item_update', itemId, params: { directional } });
-    } else if (propertyKey === 'mediaVolume') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, params: { mediaVolume: parsed.value } });
-    } else if (propertyKey === 'emitVolume') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, params: { emitVolume: parsed.value } });
-    } else if (propertyKey === 'emitSoundSpeed') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, params: { emitSoundSpeed: parsed.value } });
-    } else if (propertyKey === 'emitSoundTempo') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, params: { emitSoundTempo: parsed.value } });
     } else if (propertyKey === 'mediaEffect' || propertyKey === 'emitEffect') {
       const normalized = value.trim().toLowerCase() as EffectId;
       if (!EFFECT_IDS.has(normalized)) {
@@ -2358,33 +2283,17 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
         audio.sfxUiCancel();
         return;
       }
-      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: normalized } });
+      sendItemParams({ [propertyKey]: normalized });
     } else if (propertyKey === 'mediaEffectValue' || propertyKey === 'emitEffectValue') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, false);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
+      if (!submitNumericParam(propertyKey, false, (num) => clampEffectLevel(num))) {
         return;
       }
-      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: clampEffectLevel(parsed.value) } });
     } else if (propertyKey === 'facing') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, false);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
+      if (!submitNumericParam(propertyKey, false)) {
         return;
       }
-      signaling.send({ type: 'item_update', itemId, params: { facing: parsed.value } });
-    } else if (propertyKey === 'emitRange') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, params: { emitRange: parsed.value } });
     } else if (propertyKey === 'useSound' || propertyKey === 'emitSound') {
-      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: value } });
+      sendItemParams({ [propertyKey]: value });
     } else if (propertyKey === 'spaces') {
       const spaces = value
         .split(',')
@@ -2405,22 +2314,14 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
         audio.sfxUiCancel();
         return;
       }
-      signaling.send({ type: 'item_update', itemId, params: { spaces: spaces.join(', ') } });
-    } else if (propertyKey === 'sides' || propertyKey === 'number') {
-      const parsed = validateNumericItemPropertyInput(item, propertyKey, value, true);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: parsed.value } });
+      sendItemParams({ spaces: spaces.join(', ') });
     }
     state.mode = 'itemProperties';
     state.editingPropertyKey = null;
     replaceTextOnNextType = false;
     return;
   }
-  if (code === 'Escape') {
+  if (editAction === 'cancel') {
     state.mode = 'itemProperties';
     state.editingPropertyKey = null;
     replaceTextOnNextType = false;
@@ -2442,30 +2343,21 @@ function handleItemPropertyOptionSelectModeInput(code: string, key: string): voi
     return;
   }
 
-  if (code === 'ArrowDown' || code === 'ArrowUp') {
-    state.itemPropertyOptionIndex = cycleIndex(
-      state.itemPropertyOptionIndex,
-      state.itemPropertyOptionValues.length,
-      code === 'ArrowDown' ? 'next' : 'prev',
-    );
-    updateStatus(state.itemPropertyOptionValues[state.itemPropertyOptionIndex]);
-    audio.sfxUiBlip();
-    return;
-  }
-  const nextByInitial = findNextIndexByInitial(
+  const control = handleListControlKey(
+    code,
+    key,
     state.itemPropertyOptionValues,
     state.itemPropertyOptionIndex,
-    key,
     (value) => value,
   );
-  if (nextByInitial >= 0) {
-    state.itemPropertyOptionIndex = nextByInitial;
+  if (control.type === 'move') {
+    state.itemPropertyOptionIndex = control.index;
     updateStatus(state.itemPropertyOptionValues[state.itemPropertyOptionIndex]);
     audio.sfxUiBlip();
     return;
   }
 
-  if (code === 'Enter') {
+  if (control.type === 'select') {
     const selectedValue = state.itemPropertyOptionValues[state.itemPropertyOptionIndex];
     signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: selectedValue } });
     state.mode = 'itemProperties';
@@ -2475,7 +2367,7 @@ function handleItemPropertyOptionSelectModeInput(code: string, key: string): voi
     return;
   }
 
-  if (code === 'Escape') {
+  if (control.type === 'cancel') {
     state.mode = 'itemProperties';
     state.editingPropertyKey = null;
     state.itemPropertyOptionValues = [];
@@ -2486,7 +2378,8 @@ function handleItemPropertyOptionSelectModeInput(code: string, key: string): voi
 }
 
 function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): void {
-  if (code === 'Enter') {
+  const editAction = getEditSessionAction(code);
+  if (editAction === 'submit') {
     const clean = sanitizeName(state.nicknameInput);
     if (clean) {
       const payload: OutgoingMessage = { type: 'update_nickname', nickname: clean };
@@ -2501,7 +2394,7 @@ function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): v
     return;
   }
 
-  if (code === 'Escape') {
+  if (editAction === 'cancel') {
     state.mode = 'normal';
     replaceTextOnNextType = false;
     updateStatus('Cancelled.');
