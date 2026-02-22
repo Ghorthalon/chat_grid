@@ -178,7 +178,7 @@ let outputMode = localStorage.getItem(AUDIO_OUTPUT_MODE_STORAGE_KEY) === 'mono' 
 let connecting = false;
 const messageBuffer: string[] = [];
 let messageCursor = -1;
-const radioRuntime = new RadioStationRuntime(audio, getItemSpatialConfig);
+const radioRuntime = new RadioStationRuntime(audio, getItemSpatialConfig, (message) => updateStatus(message));
 const itemEmitRuntime = new ItemEmitRuntime(audio, resolveIncomingSoundUrl, getItemSpatialConfig);
 let internalClipboardText = '';
 let replaceTextOnNextType = false;
@@ -627,21 +627,6 @@ function pasteIntoActiveTextInput(raw: string): boolean {
   state.cursorPos = result.newCursorPos;
   replaceTextOnNextType = result.replaceTextOnNextType;
   return true;
-}
-
-async function handlePasteShortcut(): Promise<void> {
-  let pasted = internalClipboardText;
-  try {
-    const clipboardText = await navigator.clipboard?.readText();
-    if (typeof clipboardText === 'string') {
-      pasted = clipboardText;
-      internalClipboardText = clipboardText;
-    }
-  } catch {
-    // Clipboard read can fail without user gesture/permissions; fallback to internal clipboard.
-  }
-  if (!pasteIntoActiveTextInput(pasted)) return;
-  updateStatus('pasted');
 }
 
 function isTextEditingMode(mode: typeof state.mode): boolean {
@@ -2398,7 +2383,8 @@ function setupInputHandlers(): void {
     if (event.altKey) return;
     if (event.ctrlKey && !isTextEditingMode(state.mode)) return;
 
-    if (state.mode !== 'normal' || !code.startsWith('Arrow')) {
+    const isNativePasteShortcut = event.ctrlKey && isTextEditingMode(state.mode) && code === 'KeyV';
+    if ((state.mode !== 'normal' || !code.startsWith('Arrow')) && !isNativePasteShortcut) {
       event.preventDefault();
     }
 
@@ -2418,10 +2404,6 @@ function setupInputHandlers(): void {
         state.cursorPos = 0;
         replaceTextOnNextType = false;
         updateStatus('cut');
-        return;
-      }
-      if (code === 'KeyV') {
-        void handlePasteShortcut();
         return;
       }
     }
