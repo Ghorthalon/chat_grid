@@ -754,11 +754,29 @@ function inferItemPropertyValueType(item: WorldItem, key: string): string | unde
   return 'text';
 }
 
+function getFallbackInspectPropertyTooltip(key: string): string | undefined {
+  if (key === 'type') return 'The item type identifier.';
+  if (key === 'x') return 'X coordinate on the grid.';
+  if (key === 'y') return 'Y coordinate on the grid.';
+  if (key === 'carrierId') return 'Current carrier user id, or none when on the ground.';
+  if (key === 'version') return 'Server version for this item, incremented after each update.';
+  if (key === 'createdBy') return 'User id of who created this item.';
+  if (key === 'createdAt') return 'Timestamp when this item was created.';
+  if (key === 'updatedAt') return 'Timestamp when this item was last updated.';
+  if (key === 'capabilities') return 'Server-declared actions supported by this item.';
+  if (key === 'useSound') return 'One-shot sound played when use succeeds.';
+  if (key === 'emitSound') return 'Looping emitted sound source for this item.';
+  if (key === 'useCooldownMs') return 'Global cooldown in milliseconds between uses.';
+  if (key === 'directional') return 'Whether emitted audio favors item facing direction.';
+  return undefined;
+}
+
 function describeItemPropertyHelp(item: WorldItem, key: string): string {
   const metadata = getItemPropertyMetadata(item.type, key);
   const parts: string[] = [];
-  if (metadata?.tooltip) {
-    parts.push(metadata.tooltip);
+  const tooltip = metadata?.tooltip ?? getFallbackInspectPropertyTooltip(key);
+  if (tooltip) {
+    parts.push(tooltip);
   } else {
     parts.push('No tooltip available.');
   }
