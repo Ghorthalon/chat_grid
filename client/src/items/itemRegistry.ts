@@ -2,7 +2,7 @@ import { EFFECT_SEQUENCE } from '../audio/effects';
 import { RADIO_CHANNEL_OPTIONS } from '../audio/radioStationRuntime';
 import { type ItemType, type WorldItem } from '../state/gameState';
 
-export const CLOCK_TIME_ZONE_OPTIONS = [
+const DEFAULT_CLOCK_TIME_ZONE_OPTIONS = [
   'America/Anchorage',
   'America/Argentina/Buenos_Aires',
   'America/Chicago',
@@ -45,43 +45,88 @@ export const CLOCK_TIME_ZONE_OPTIONS = [
   'UTC',
 ] as const;
 
-export const ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel'];
+const DEFAULT_ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel'];
 
-const ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
+const DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
   radio_station: ['title', 'streamUrl', 'enabled', 'channel', 'volume', 'effect', 'effectValue'],
   dice: ['title', 'sides', 'number'],
   wheel: ['title', 'spaces'],
   clock: ['title', 'timeZone', 'use24Hour'],
 };
 
-export const ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, string | number | boolean>> = {
+const DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, string | number | boolean>> = {
   radio_station: { useSound: 'none', emitSound: 'none', useCooldownMs: 1000 },
   dice: { useSound: 'sounds/roll.ogg', emitSound: 'none', useCooldownMs: 1000 },
   wheel: { useSound: 'sounds/spin.ogg', emitSound: 'none', useCooldownMs: 4000 },
   clock: { useSound: 'none', emitSound: 'sounds/clock.ogg', useCooldownMs: 1000 },
 };
 
-export const EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
-  Array.from(
-    new Set(
-      Object.values(ITEM_TYPE_EDITABLE_PROPERTIES).flatMap((keys) => keys),
-    ),
-  ),
-);
-
-const OPTION_ITEM_PROPERTY_VALUES: Partial<Record<string, string[]>> = {
-  effect: EFFECT_SEQUENCE.map((effect) => effect.id),
-  channel: [...RADIO_CHANNEL_OPTIONS],
-  timeZone: [...CLOCK_TIME_ZONE_OPTIONS],
+type UiDefinitionsPayload = {
+  itemTypeOrder?: ItemType[];
+  itemTypes?: Array<{
+    type: ItemType;
+    label?: string;
+    editableProperties?: string[];
+    propertyOptions?: Record<string, string[]>;
+    globalProperties?: Record<string, unknown>;
+  }>;
 };
 
+let itemTypeSequence: ItemType[] = [...DEFAULT_ITEM_TYPE_SEQUENCE];
+let itemTypeLabels: Record<ItemType, string> = {
+  radio_station: 'radio',
+  dice: 'dice',
+  wheel: 'wheel',
+  clock: 'clock',
+};
+let itemTypeEditableProperties: Record<ItemType, string[]> = {
+  radio_station: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.radio_station],
+  dice: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.dice],
+  wheel: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.wheel],
+  clock: [...DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES.clock],
+};
+let itemTypeGlobalProperties: Record<ItemType, Record<string, string | number | boolean>> = {
+  radio_station: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.radio_station },
+  dice: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.dice },
+  wheel: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.wheel },
+  clock: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.clock },
+};
+let optionItemPropertyValues: Partial<Record<string, string[]>> = {
+  effect: EFFECT_SEQUENCE.map((effect) => effect.id),
+  channel: [...RADIO_CHANNEL_OPTIONS],
+  timeZone: [...DEFAULT_CLOCK_TIME_ZONE_OPTIONS],
+};
+
+export let EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
+  Object.values(itemTypeEditableProperties).flatMap((keys) => keys),
+);
+
+function rebuildEditablePropertyKeySet(): void {
+  EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(Object.values(itemTypeEditableProperties).flatMap((keys) => keys));
+}
+
+export function getClockTimeZoneOptions(): string[] {
+  return [...(optionItemPropertyValues.timeZone ?? DEFAULT_CLOCK_TIME_ZONE_OPTIONS)];
+}
+
+export function getDefaultClockTimeZone(): string {
+  return getClockTimeZoneOptions()[0] ?? 'America/Detroit';
+}
+
+export function getItemTypeSequence(): ItemType[] {
+  return [...itemTypeSequence];
+}
+
+export function getItemTypeGlobalProperties(itemType: ItemType): Record<string, string | number | boolean> {
+  return itemTypeGlobalProperties[itemType] ?? {};
+}
+
 export function getItemPropertyOptionValues(key: string): string[] | undefined {
-  return OPTION_ITEM_PROPERTY_VALUES[key];
+  return optionItemPropertyValues[key];
 }
 
 export function itemTypeLabel(type: ItemType): string {
-  if (type === 'radio_station') return 'radio';
-  return type;
+  return itemTypeLabels[type] ?? type;
 }
 
 export function itemPropertyLabel(key: string): string {
@@ -90,7 +135,7 @@ export function itemPropertyLabel(key: string): string {
 }
 
 export function getEditableItemPropertyKeys(item: WorldItem): string[] {
-  return [...(ITEM_TYPE_EDITABLE_PROPERTIES[item.type] ?? ['title'])];
+  return [...(itemTypeEditableProperties[item.type] ?? ['title'])];
 }
 
 export function getInspectItemPropertyKeys(item: WorldItem): string[] {
@@ -124,7 +169,7 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
     allKeys.push(key);
   }
 
-  const globalKeys = Object.keys(ITEM_TYPE_GLOBAL_PROPERTIES[item.type] ?? {}).sort((a, b) => a.localeCompare(b));
+  const globalKeys = Object.keys(itemTypeGlobalProperties[item.type] ?? {}).sort((a, b) => a.localeCompare(b));
   for (const key of globalKeys) {
     if (seen.has(key)) continue;
     seen.add(key);
@@ -132,4 +177,57 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
   }
 
   return allKeys;
+}
+
+export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload | undefined): void {
+  if (!uiDefinitions) return;
+
+  if (Array.isArray(uiDefinitions.itemTypeOrder) && uiDefinitions.itemTypeOrder.length > 0) {
+    itemTypeSequence = uiDefinitions.itemTypeOrder.filter((entry) => typeof entry === 'string') as ItemType[];
+  }
+
+  if (!Array.isArray(uiDefinitions.itemTypes) || uiDefinitions.itemTypes.length === 0) {
+    rebuildEditablePropertyKeySet();
+    return;
+  }
+
+  const nextLabels = { ...itemTypeLabels };
+  const nextEditable = { ...itemTypeEditableProperties };
+  const nextGlobals = { ...itemTypeGlobalProperties };
+  const nextOptions: Partial<Record<string, string[]>> = { ...optionItemPropertyValues };
+
+  for (const definition of uiDefinitions.itemTypes) {
+    if (!definition || typeof definition.type !== 'string') continue;
+    const itemType = definition.type as ItemType;
+    if (typeof definition.label === 'string' && definition.label.trim()) {
+      nextLabels[itemType] = definition.label.trim();
+    }
+    if (Array.isArray(definition.editableProperties) && definition.editableProperties.length > 0) {
+      nextEditable[itemType] = definition.editableProperties.filter((entry) => typeof entry === 'string');
+    }
+    if (definition.globalProperties && typeof definition.globalProperties === 'object') {
+      const normalized: Record<string, string | number | boolean> = {};
+      for (const [key, raw] of Object.entries(definition.globalProperties)) {
+        if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+          normalized[key] = raw;
+        }
+      }
+      nextGlobals[itemType] = normalized;
+    }
+    if (definition.propertyOptions && typeof definition.propertyOptions === 'object') {
+      for (const [propertyKey, values] of Object.entries(definition.propertyOptions)) {
+        if (!Array.isArray(values) || values.length === 0) continue;
+        const normalizedValues = values.filter((entry) => typeof entry === 'string');
+        if (normalizedValues.length > 0) {
+          nextOptions[propertyKey] = normalizedValues;
+        }
+      }
+    }
+  }
+
+  itemTypeLabels = nextLabels;
+  itemTypeEditableProperties = nextEditable;
+  itemTypeGlobalProperties = nextGlobals;
+  optionItemPropertyValues = nextOptions;
+  rebuildEditablePropertyKeySet();
 }

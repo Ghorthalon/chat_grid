@@ -32,10 +32,11 @@ import {
   type WorldItem,
 } from './state/gameState';
 import {
-  CLOCK_TIME_ZONE_OPTIONS,
+  applyServerItemUiDefinitions,
   EDITABLE_ITEM_PROPERTY_KEYS,
-  ITEM_TYPE_GLOBAL_PROPERTIES,
-  ITEM_TYPE_SEQUENCE,
+  getDefaultClockTimeZone,
+  getItemTypeGlobalProperties,
+  getItemTypeSequence,
   getEditableItemPropertyKeys,
   getInspectItemPropertyKeys,
   getItemPropertyOptionValues,
@@ -159,6 +160,7 @@ const WALL_SOUND_URL = withBase('sounds/wall.ogg');
 const state = createInitialState();
 const renderer = new CanvasRenderer(dom.canvas);
 const audio = new AudioEngine();
+let worldGridSize = GRID_SIZE;
 let localStream: MediaStream | null = null;
 let outboundStream: MediaStream | null = null;
 let statusTimeout: number | null = null;
@@ -690,12 +692,12 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
   if (key === 'useSound') return item.useSound ?? 'none';
   if (key === 'emitSound') return item.emitSound ?? 'none';
   if (key === 'enabled') return item.params.enabled === false ? 'off' : 'on';
-  if (key === 'timeZone') return String(item.params.timeZone ?? CLOCK_TIME_ZONE_OPTIONS[0]);
+  if (key === 'timeZone') return String(item.params.timeZone ?? getDefaultClockTimeZone());
   if (key === 'use24Hour') return item.params.use24Hour === true ? 'on' : 'off';
   if (key === 'channel') return normalizeRadioChannel(item.params.channel);
   if (key === 'effect') return normalizeRadioEffect(item.params.effect);
   if (key === 'effectValue') return String(normalizeRadioEffectValue(item.params.effectValue));
-  const globalValue = ITEM_TYPE_GLOBAL_PROPERTIES[item.type]?.[key];
+  const globalValue = getItemTypeGlobalProperties(item.type)?.[key];
   if (globalValue !== undefined) return String(globalValue);
   return String(item.params[key] ?? '');
 }
@@ -753,7 +755,7 @@ function handleMovement(): void {
 
   const nextX = state.player.x + dx;
   const nextY = state.player.y + dy;
-  if (nextX < 0 || nextY < 0 || nextX >= GRID_SIZE || nextY >= GRID_SIZE) {
+  if (nextX < 0 || nextY < 0 || nextX >= worldGridSize || nextY >= worldGridSize) {
     state.player.lastMoveTime = now;
     void audio.playSample(WALL_SOUND_URL, 1);
     return;
@@ -861,8 +863,8 @@ async function connect(): Promise<void> {
     return;
   }
 
-  state.player.x = Math.floor(Math.random() * GRID_SIZE);
-  state.player.y = Math.floor(Math.random() * GRID_SIZE);
+  state.player.x = Math.floor(Math.random() * worldGridSize);
+  state.player.y = Math.floor(Math.random() * worldGridSize);
   const storedPosition = localStorage.getItem('spatialChatPosition');
   if (storedPosition) {
     try {
@@ -870,7 +872,7 @@ async function connect(): Promise<void> {
       if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
         const x = Math.floor(parsed.x as number);
         const y = Math.floor(parsed.y as number);
-        if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+        if (x >= 0 && x < worldGridSize && y >= 0 && y < worldGridSize) {
           state.player.x = x;
           state.player.y = y;
         }
@@ -959,9 +961,17 @@ function disconnect(): void {
 async function onMessage(message: IncomingMessage): Promise<void> {
   switch (message.type) {
     case 'welcome':
+      if (message.worldConfig?.gridSize && Number.isInteger(message.worldConfig.gridSize) && message.worldConfig.gridSize > 0) {
+        worldGridSize = message.worldConfig.gridSize;
+      }
+      renderer.setGridSize(worldGridSize);
+      applyServerItemUiDefinitions(message.uiDefinitions);
+      state.addItemTypeIndex = 0;
       state.player.id = message.id;
       state.running = true;
       connecting = false;
+      state.player.x = Math.max(0, Math.min(worldGridSize - 1, state.player.x));
+      state.player.y = Math.max(0, Math.min(worldGridSize - 1, state.player.y));
       dom.nicknameContainer.classList.add('hidden');
       dom.connectButton.classList.add('hidden');
       dom.disconnectButton.classList.remove('hidden');
@@ -1258,8 +1268,15 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
   }
 
   if (code === 'KeyA') {
+    const itemTypeSequence = getItemTypeSequence();
+    if (itemTypeSequence.length === 0) {
+      updateStatus('No item types available.');
+      audio.sfxUiCancel();
+      return;
+    }
+    state.addItemTypeIndex = Math.max(0, Math.min(state.addItemTypeIndex, itemTypeSequence.length - 1));
     state.mode = 'addItem';
-    updateStatus(`Add item: ${itemTypeLabel(ITEM_TYPE_SEQUENCE[state.addItemTypeIndex])}.`);
+    updateStatus(`Add item: ${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
     audio.sfxUiBlip();
     return;
   }
@@ -1702,29 +1719,36 @@ function handleListItemsModeInput(code: string, key: string): void {
 }
 
 function handleAddItemModeInput(code: string, key: string): void {
+  const itemTypeSequence = getItemTypeSequence();
+  if (itemTypeSequence.length === 0) {
+    state.mode = 'normal';
+    updateStatus('No item types available.');
+    audio.sfxUiCancel();
+    return;
+  }
   if (code === 'ArrowDown' || code === 'ArrowUp') {
     state.addItemTypeIndex =
       code === 'ArrowDown'
-        ? (state.addItemTypeIndex + 1) % ITEM_TYPE_SEQUENCE.length
-        : (state.addItemTypeIndex - 1 + ITEM_TYPE_SEQUENCE.length) % ITEM_TYPE_SEQUENCE.length;
-    updateStatus(`${itemTypeLabel(ITEM_TYPE_SEQUENCE[state.addItemTypeIndex])}.`);
+        ? (state.addItemTypeIndex + 1) % itemTypeSequence.length
+        : (state.addItemTypeIndex - 1 + itemTypeSequence.length) % itemTypeSequence.length;
+    updateStatus(`${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
     audio.sfxUiBlip();
     return;
   }
   const nextByInitial = findNextIndexByInitial(
-    ITEM_TYPE_SEQUENCE,
+    itemTypeSequence,
     state.addItemTypeIndex,
     key,
     (itemType) => itemTypeLabel(itemType),
   );
   if (nextByInitial >= 0) {
     state.addItemTypeIndex = nextByInitial;
-    updateStatus(`${itemTypeLabel(ITEM_TYPE_SEQUENCE[state.addItemTypeIndex])}.`);
+    updateStatus(`${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
     audio.sfxUiBlip();
     return;
   }
   if (code === 'Enter') {
-    signaling.send({ type: 'item_add', itemType: ITEM_TYPE_SEQUENCE[state.addItemTypeIndex] });
+    signaling.send({ type: 'item_add', itemType: itemTypeSequence[state.addItemTypeIndex] });
     state.mode = 'normal';
     return;
   }

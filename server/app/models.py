@@ -101,6 +101,8 @@ class WelcomePacket(BasePacket):
     id: str
     users: list[RemoteUser]
     items: list[dict] | None = None
+    worldConfig: dict | None = None
+    uiDefinitions: dict | None = None
 
 
 class UserLeftPacket(BasePacket):

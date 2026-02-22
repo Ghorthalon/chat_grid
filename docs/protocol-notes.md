@@ -18,7 +18,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 
 ## Server -> Client
 
-- `welcome`: initial snapshot with users/items.
+- `welcome`: initial snapshot with users/items plus server UI/world metadata.
 - `signal`: forwarded WebRTC offer/answer/ICE.
 - `update_position`, `update_nickname`, `user_left`: presence updates.
 - `chat_message`: system and user chat stream.
@@ -34,6 +34,17 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `item_upsert` is full-state replacement for one item, not partial patch.
 - `item_action_result` messages are intended for direct screen-reader/user status feedback.
 - `item_use_sound` contains absolute item world coordinates (`x`, `y`) and sound path.
+
+## Welcome Metadata
+
+- `welcome.worldConfig.gridSize`: server-authoritative grid size used by clients for bounds/drawing.
+- `welcome.uiDefinitions`: server-provided item UI definitions:
+  - `itemTypeOrder`: add-item menu order
+  - `itemTypes[].editableProperties`: editable property keys by item type
+  - `itemTypes[].propertyOptions`: menu options for property keys (for example clock `timeZone`)
+  - `itemTypes[].globalProperties`: non-editable global values (`useSound`, `emitSound`, `useCooldownMs`)
+
+- Clients keep local fallback defaults but should prefer server-provided metadata when present.
 
 ## Validation Boundaries
 

@@ -7,6 +7,8 @@
 3. Client connects signaling websocket.
 4. Server sends `welcome` with users/items snapshot.
 5. Client:
+   - applies `welcome.worldConfig.gridSize` for authoritative grid bounds/rendering
+   - applies `welcome.uiDefinitions` for item menus/properties/options
    - sends initial `update_position`
    - sends initial `update_nickname`
    - creates peer runtimes for known users

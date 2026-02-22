@@ -2,7 +2,8 @@ import { GRID_SIZE, type GameState, type PeerState, type WorldItem } from '../st
 
 export class CanvasRenderer {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly squarePixelSize: number;
+  private squarePixelSize: number;
+  private gridSize: number;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -10,14 +11,21 @@ export class CanvasRenderer {
       throw new Error('Unable to create 2D context');
     }
     this.ctx = ctx;
-    this.squarePixelSize = canvas.width / GRID_SIZE;
+    this.gridSize = GRID_SIZE;
+    this.squarePixelSize = canvas.width / this.gridSize;
+  }
+
+  setGridSize(gridSize: number): void {
+    if (!Number.isInteger(gridSize) || gridSize <= 0) return;
+    this.gridSize = gridSize;
+    this.squarePixelSize = this.canvas.width / this.gridSize;
   }
 
   draw(state: GameState): void {
     const { ctx } = this;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.strokeStyle = '#374151';
-    for (let i = 0; i <= GRID_SIZE; i += 1) {
+    for (let i = 0; i <= this.gridSize; i += 1) {
       ctx.beginPath();
       ctx.moveTo(i * this.squarePixelSize, 0);
       ctx.lineTo(i * this.squarePixelSize, this.canvas.height);

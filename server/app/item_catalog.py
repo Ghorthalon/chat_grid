@@ -6,6 +6,21 @@ from dataclasses import dataclass
 from typing import Literal
 
 ItemType = Literal["radio_station", "dice", "wheel", "clock"]
+ITEM_TYPE_SEQUENCE: tuple[ItemType, ...] = ("clock", "dice", "radio_station", "wheel")
+ITEM_TYPE_LABELS: dict[ItemType, str] = {
+    "radio_station": "radio",
+    "dice": "dice",
+    "wheel": "wheel",
+    "clock": "clock",
+}
+RADIO_EFFECT_OPTIONS: tuple[str, ...] = ("reverb", "echo", "flanger", "high_pass", "low_pass", "off")
+RADIO_CHANNEL_OPTIONS: tuple[str, ...] = ("stereo", "mono", "left", "right")
+ITEM_TYPE_EDITABLE_PROPERTIES: dict[ItemType, tuple[str, ...]] = {
+    "radio_station": ("title", "streamUrl", "enabled", "channel", "volume", "effect", "effectValue"),
+    "dice": ("title", "sides", "number"),
+    "wheel": ("title", "spaces"),
+    "clock": ("title", "timeZone", "use24Hour"),
+}
 CLOCK_DEFAULT_TIME_ZONE = "America/Detroit"
 CLOCK_TIME_ZONE_OPTIONS: tuple[str, ...] = (
     "America/Anchorage",
@@ -95,6 +110,12 @@ ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
     ),
 }
 
+ITEM_PROPERTY_OPTIONS: dict[str, tuple[str, ...]] = {
+    "effect": RADIO_EFFECT_OPTIONS,
+    "channel": RADIO_CHANNEL_OPTIONS,
+    "timeZone": CLOCK_TIME_ZONE_OPTIONS,
+}
+
 
 def get_item_definition(item_type: ItemType) -> ItemDefinition:
     """Return catalog definition for a known item type."""
@@ -110,3 +131,14 @@ def get_item_use_cooldown_ms(item_type: ItemType) -> int:
     if isinstance(cooldown_ms, int) and cooldown_ms > 0:
         return cooldown_ms
     return 1000
+
+
+def get_item_global_properties(item_type: ItemType) -> dict[str, str | int]:
+    """Return non-editable global properties exposed in UI metadata."""
+
+    definition = get_item_definition(item_type)
+    return {
+        "useSound": definition.use_sound or "none",
+        "emitSound": definition.emit_sound or "none",
+        "useCooldownMs": get_item_use_cooldown_ms(item_type),
+    }

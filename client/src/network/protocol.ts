@@ -29,6 +29,25 @@ export const welcomeMessageSchema = z.object({
     }),
   ),
   items: z.array(itemSchema).optional(),
+  worldConfig: z
+    .object({
+      gridSize: z.number().int().positive(),
+    })
+    .optional(),
+  uiDefinitions: z
+    .object({
+      itemTypeOrder: z.array(z.enum(['radio_station', 'dice', 'wheel', 'clock'])),
+      itemTypes: z.array(
+        z.object({
+          type: z.enum(['radio_station', 'dice', 'wheel', 'clock']),
+          label: z.string().optional(),
+          editableProperties: z.array(z.string()),
+          propertyOptions: z.record(z.string(), z.array(z.string())).optional(),
+          globalProperties: z.record(z.string(), z.unknown()).optional(),
+        }),
+      ),
+    })
+    .optional(),
 });
 
 export const signalMessageSchema = z.object({

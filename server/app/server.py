@@ -18,7 +18,16 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from .client import ClientConnection
 from .config import load_config
-from .item_catalog import CLOCK_DEFAULT_TIME_ZONE, CLOCK_TIME_ZONE_OPTIONS, get_item_use_cooldown_ms
+from .item_catalog import (
+    CLOCK_DEFAULT_TIME_ZONE,
+    CLOCK_TIME_ZONE_OPTIONS,
+    ITEM_PROPERTY_OPTIONS,
+    ITEM_TYPE_EDITABLE_PROPERTIES,
+    ITEM_TYPE_LABELS,
+    ITEM_TYPE_SEQUENCE,
+    get_item_global_properties,
+    get_item_use_cooldown_ms,
+)
 from .item_type_handlers import get_item_type_handler
 from .item_service import ItemService
 from .models import (
@@ -236,8 +245,35 @@ class SignalingServer:
             id=client.id,
             users=users,
             items=[item.model_dump(exclude_none=True) for item in self.items.values()],
+            worldConfig={"gridSize": self.grid_size},
+            uiDefinitions=self._build_ui_definitions(),
         )
         await self._send(client.websocket, packet)
+
+    def _build_ui_definitions(self) -> dict:
+        """Build server-owned UI definitions for item/menu rendering."""
+
+        item_types: list[dict] = []
+        for item_type in ITEM_TYPE_SEQUENCE:
+            editable = list(ITEM_TYPE_EDITABLE_PROPERTIES.get(item_type, ("title",)))
+            property_options: dict[str, list[str]] = {}
+            for key in editable:
+                options = ITEM_PROPERTY_OPTIONS.get(key)
+                if options:
+                    property_options[key] = list(options)
+            item_types.append(
+                {
+                    "type": item_type,
+                    "label": ITEM_TYPE_LABELS.get(item_type, item_type),
+                    "editableProperties": editable,
+                    "propertyOptions": property_options,
+                    "globalProperties": get_item_global_properties(item_type),
+                }
+            )
+        return {
+            "itemTypeOrder": list(ITEM_TYPE_SEQUENCE),
+            "itemTypes": item_types,
+        }
 
     async def _broadcast_wheel_result_after_delay(
         self,
