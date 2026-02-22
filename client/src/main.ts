@@ -33,6 +33,7 @@ import { handleListControlKey } from './input/listController';
 import { getEditSessionAction } from './input/editSession';
 import { formatSteppedNumber, snapNumberToStep } from './input/numeric';
 import { type IncomingMessage, type OutgoingMessage } from './network/protocol';
+import { createOnMessageHandler } from './network/messageHandlers';
 import { SignalingClient } from './network/signalingClient';
 import { CanvasRenderer } from './render/canvasRenderer';
 import {
@@ -57,6 +58,8 @@ import {
   getItemTypeTooltip,
   itemTypeLabel,
 } from './items/itemRegistry';
+import { createItemPropertyEditor } from './items/itemPropertyEditor';
+import { setupUiHandlers as setupDomUiHandlers } from './ui/domBindings';
 import { PeerManager } from './webrtc/peerManager';
 
 const EFFECT_LEVELS_STORAGE_KEY = 'chatGridEffectLevels';
@@ -1236,195 +1239,56 @@ function disconnect(): void {
   }
 }
 
-async function onMessage(message: IncomingMessage): Promise<void> {
-  switch (message.type) {
-    case 'welcome':
-      if (message.worldConfig?.gridSize && Number.isInteger(message.worldConfig.gridSize) && message.worldConfig.gridSize > 0) {
-        worldGridSize = message.worldConfig.gridSize;
-      }
-      renderer.setGridSize(worldGridSize);
-      applyServerItemUiDefinitions(message.uiDefinitions);
-      state.addItemTypeIndex = 0;
-      state.player.id = message.id;
-      state.running = true;
-      connecting = false;
-      state.player.x = Math.max(0, Math.min(worldGridSize - 1, state.player.x));
-      state.player.y = Math.max(0, Math.min(worldGridSize - 1, state.player.y));
-      dom.nicknameContainer.classList.add('hidden');
-      dom.connectButton.classList.add('hidden');
-      dom.disconnectButton.classList.remove('hidden');
-      dom.focusGridButton.classList.remove('hidden');
-      dom.canvas.classList.remove('hidden');
-      dom.instructions.classList.remove('hidden');
-      dom.canvas.focus();
-
-      signaling.send({ type: 'update_position', x: state.player.x, y: state.player.y });
-      signaling.send({ type: 'update_nickname', nickname: state.player.nickname });
-
-      for (const user of message.users) {
-        state.peers.set(user.id, { ...user });
-        await peerManager.createOrGetPeer(user.id, true, user);
-      }
-      state.items.clear();
-      for (const item of message.items || []) {
-        state.items.set(item.id, {
-          ...item,
-          carrierId: item.carrierId ?? null,
-        });
-      }
-      await radioRuntime.sync(state.items.values());
-      await itemEmitRuntime.sync(state.items.values());
-      await applyAudioLayerState();
-
-      gameLoop();
-      break;
-
-    case 'signal': {
-      const peer = await peerManager.handleSignal(message);
-      if (!state.peers.has(peer.id)) {
-        state.peers.set(peer.id, {
-          id: peer.id,
-          nickname: sanitizeName(peer.nickname) || 'user...',
-          x: peer.x,
-          y: peer.y,
-        });
-      }
-      break;
-    }
-
-    case 'update_position': {
-      const peer = state.peers.get(message.id);
-      const prevX = peer?.x ?? message.x;
-      const prevY = peer?.y ?? message.y;
-      if (peer) {
-        peer.x = message.x;
-        peer.y = message.y;
-      }
-      peerManager.setPeerPosition(message.id, message.x, message.y);
-      if (peer) {
-        const movementDelta = Math.hypot(message.x - prevX, message.y - prevY);
-        const soundUrl = movementDelta > 1.5 ? TELEPORT_SOUND_URL : randomFootstepUrl();
-        if (audioLayers.world) {
-          void audio.playSpatialSample(
-            soundUrl,
-            { x: peer.x - state.player.x, y: peer.y - state.player.y },
-            FOOTSTEP_GAIN,
-          );
-        }
-      }
-      break;
-    }
-
-    case 'update_nickname': {
-      const peer = state.peers.get(message.id);
-      if (peer) {
-        peer.nickname = sanitizeName(message.nickname) || 'user...';
-      }
-      peerManager.setPeerNickname(message.id, sanitizeName(message.nickname) || 'user...');
-      break;
-    }
-
-    case 'user_left': {
-      const peer = state.peers.get(message.id);
-      if (peer) {
-        updateStatus(`${peer.nickname} has left.`);
-      }
-      state.peers.delete(message.id);
-      peerManager.removePeer(message.id);
-      break;
-    }
-
-    case 'chat_message': {
-      if (message.system) {
-        pushChatMessage(message.message);
-        const sound = classifySystemMessageSound(message.message);
-        if (sound) {
-          void audio.playSample(SYSTEM_SOUND_URLS[sound], 1);
-        }
-      } else {
-        const sender = message.senderNickname || 'Unknown';
-        pushChatMessage(`${sender}: ${message.message}`);
-      }
-      break;
-    }
-
-    case 'pong': {
-      const elapsed = Math.max(0, Date.now() - message.clientSentAt);
-      updateStatus(`Ping ${elapsed} ms`);
-      audio.sfxUiBlip();
-      break;
-    }
-
-    case 'nickname_result': {
-      state.player.nickname = sanitizeName(message.effectiveNickname) || 'user...';
-      if (message.accepted) {
-        dom.preconnectNickname.value = state.player.nickname;
-        localStorage.setItem(NICKNAME_STORAGE_KEY, state.player.nickname);
-      } else {
-        pushChatMessage(message.reason || 'Nickname unavailable.');
-        audio.sfxUiCancel();
-      }
-      break;
-    }
-
-    case 'item_upsert': {
-      state.items.set(message.item.id, {
-        ...message.item,
-        carrierId: message.item.carrierId ?? null,
-      });
-      state.carriedItemId = getCarriedItem()?.id ?? null;
-      if (state.mode === 'itemProperties' && state.selectedItemId === message.item.id) {
-        const key = state.itemPropertyKeys[state.itemPropertyIndex];
-        if (key) {
-          updateStatus(`${itemPropertyLabel(key)}: ${getItemPropertyValue(message.item, key)}`);
-        }
-      }
-      await radioRuntime.sync(state.items.values());
-      await itemEmitRuntime.sync(state.items.values());
-      break;
-    }
-
-    case 'item_remove': {
-      state.items.delete(message.itemId);
-      state.carriedItemId = getCarriedItem()?.id ?? null;
-      radioRuntime.cleanup(message.itemId);
-      itemEmitRuntime.cleanup(message.itemId);
-      break;
-    }
-
-    case 'item_action_result': {
-      if (message.ok) {
-        if (message.action === 'use') {
-          pushChatMessage(message.message);
-          const item = message.itemId ? state.items.get(message.itemId) : null;
-          if (!item?.useSound && item) {
-            audio.sfxLocate({ x: item.x - state.player.x, y: item.y - state.player.y });
-          }
-        } else if (message.action !== 'update') {
-          pushChatMessage(message.message);
-          audio.sfxUiConfirm();
-        }
-      } else {
-        pushChatMessage(message.message);
-        audio.sfxUiCancel();
-      }
-      break;
-    }
-
-    case 'item_use_sound': {
-      const soundUrl = resolveIncomingSoundUrl(message.sound);
-      if (!soundUrl) break;
-      if (audioLayers.world) {
-        void audio.playSpatialSample(
-          soundUrl,
-          { x: message.x - state.player.x, y: message.y - state.player.y },
-          1,
-        );
-      }
-      break;
-    }
-  }
-}
+const onMessage = createOnMessageHandler({
+  getWorldGridSize: () => worldGridSize,
+  setWorldGridSize: (size) => {
+    worldGridSize = size;
+  },
+  setConnecting: (value) => {
+    connecting = value;
+  },
+  rendererSetGridSize: (size) => renderer.setGridSize(size),
+  applyServerItemUiDefinitions: (defs) => applyServerItemUiDefinitions(defs as Parameters<typeof applyServerItemUiDefinitions>[0]),
+  state,
+  dom,
+  signalingSend: (message) => signaling.send(message as OutgoingMessage),
+  peerManager,
+  radioRuntime,
+  itemEmitRuntime,
+  applyAudioLayerState,
+  gameLoop,
+  sanitizeName,
+  randomFootstepUrl,
+  playRemoteSpatialStepOrTeleport: (url, peerX, peerY) => {
+    void audio.playSpatialSample(
+      url,
+      { x: peerX - state.player.x, y: peerY - state.player.y },
+      FOOTSTEP_GAIN,
+    );
+  },
+  TELEPORT_SOUND_URL,
+  audioLayers,
+  pushChatMessage,
+  classifySystemMessageSound,
+  SYSTEM_SOUND_URLS,
+  playSample: (url, gain = 1) => {
+    void audio.playSample(url, gain);
+  },
+  updateStatus,
+  audioUiBlip: () => audio.sfxUiBlip(),
+  audioUiConfirm: () => audio.sfxUiConfirm(),
+  audioUiCancel: () => audio.sfxUiCancel(),
+  NICKNAME_STORAGE_KEY,
+  getCarriedItemId: () => getCarriedItem()?.id ?? null,
+  itemPropertyLabel,
+  getItemPropertyValue,
+  getItemById: (itemId) => state.items.get(itemId),
+  playLocateToneAt: (x, y) => audio.sfxLocate({ x: x - state.player.x, y: y - state.player.y }),
+  resolveIncomingSoundUrl,
+  playIncomingItemUseSound: (url, x, y) => {
+    void audio.playSpatialSample(url, { x: x - state.player.x, y: y - state.player.y }, 1);
+  },
+});
 
 function toggleMute(): void {
   state.isMuted = !state.isMuted;
@@ -2076,306 +1940,28 @@ function handleSelectItemModeInput(code: string, key: string): void {
   }
 }
 
-function handleItemPropertiesModeInput(code: string, key: string): void {
-  const itemId = state.selectedItemId;
-  if (!itemId) {
-    state.mode = 'normal';
-    state.editingPropertyKey = null;
-    state.itemPropertyOptionValues = [];
-    state.itemPropertyOptionIndex = 0;
-    return;
-  }
-  const item = state.items.get(itemId);
-  if (!item) {
-    state.mode = 'normal';
-    state.editingPropertyKey = null;
-    state.itemPropertyOptionValues = [];
-    state.itemPropertyOptionIndex = 0;
-    updateStatus('Item no longer exists.');
-    audio.sfxUiCancel();
-    return;
-  }
-  const control = handleListControlKey(code, key, state.itemPropertyKeys, state.itemPropertyIndex, (propertyKey) => propertyKey);
-  if (control.type === 'move') {
-    state.itemPropertyIndex = control.index;
-    const selectedKey = state.itemPropertyKeys[state.itemPropertyIndex];
-    const value = getItemPropertyValue(item, selectedKey);
-    updateStatus(`${itemPropertyLabel(selectedKey)}: ${value}`);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (code === 'Space') {
-    const selectedKey = state.itemPropertyKeys[state.itemPropertyIndex];
-    updateStatus(describeItemPropertyHelp(item, selectedKey));
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const key = state.itemPropertyKeys[state.itemPropertyIndex];
-    if (!isItemPropertyEditable(item, key)) {
-      updateStatus(`${itemPropertyLabel(key)} is not editable.`);
-      audio.sfxUiCancel();
-      return;
-    }
-    if (key === 'enabled') {
-      const nextEnabled = item.params.enabled === false;
-      signaling.send({ type: 'item_update', itemId, params: { enabled: nextEnabled } });
-      updateStatus(`enabled: ${nextEnabled ? 'on' : 'off'}`);
-      audio.sfxUiBlip();
-      return;
-    }
-    if (key === 'directional') {
-      const nextDirectional = item.params.directional !== true;
-      signaling.send({ type: 'item_update', itemId, params: { directional: nextDirectional } });
-      updateStatus(`directional: ${nextDirectional ? 'on' : 'off'}`);
-      audio.sfxUiBlip();
-      return;
-    }
-    if (key === 'use24Hour') {
-      const nextUse24Hour = item.params.use24Hour !== true;
-      signaling.send({ type: 'item_update', itemId, params: { use24Hour: nextUse24Hour } });
-      updateStatus(`${itemPropertyLabel(key)}: ${nextUse24Hour ? 'on' : 'off'}`);
-      audio.sfxUiBlip();
-      return;
-    }
-    if (getItemPropertyOptionValues(key)) {
-      openItemPropertyOptionSelect(item, key);
-      return;
-    }
-    state.mode = 'itemPropertyEdit';
-    state.editingPropertyKey = key;
-    state.nicknameInput =
-      key === 'title'
-        ? item.title
-        : key === 'enabled'
-          ? item.params.enabled === false
-            ? 'off'
-            : 'on'
-          : String(item.params[key] ?? '');
-    state.cursorPos = state.nicknameInput.length;
-    replaceTextOnNextType = true;
-    updateStatus(`Edit ${itemPropertyLabel(key)}: ${state.nicknameInput}`);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'normal';
-    state.selectedItemId = null;
-    state.itemPropertyKeys = [];
-    state.itemPropertyIndex = 0;
-    state.editingPropertyKey = null;
-    state.itemPropertyOptionValues = [];
-    state.itemPropertyOptionIndex = 0;
-    updateStatus('Closed item properties.');
-    audio.sfxUiCancel();
-  }
-}
-
-function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boolean): void {
-  const itemId = state.selectedItemId;
-  const propertyKey = state.editingPropertyKey;
-  if (!itemId || !propertyKey) {
-    state.mode = 'normal';
-    return;
-  }
-  const item = state.items.get(itemId);
-  if (!item) {
-    state.mode = 'normal';
-    state.editingPropertyKey = null;
-    updateStatus('Item no longer exists.');
-    audio.sfxUiCancel();
-    return;
-  }
-  if (code === 'ArrowUp' || code === 'ArrowDown') {
-    const metadata = getItemPropertyMetadata(item.type, propertyKey);
-    if (metadata?.valueType === 'number') {
-      const range = metadata.range;
-      const step = range?.step && range.step > 0 ? range.step : 1;
-      const min = range?.min;
-      const max = range?.max;
-      const rawCurrent = Number(state.nicknameInput.trim());
-      const paramCurrent = Number(item.params[propertyKey]);
-      const currentValue = Number.isFinite(rawCurrent)
-        ? rawCurrent
-        : Number.isFinite(paramCurrent)
-          ? paramCurrent
-          : Number.isFinite(min)
-            ? min
-            : 0;
-      const delta = code === 'ArrowUp' ? step : -step;
-      const anchor = Number.isFinite(min) ? min : 0;
-      const attempted = snapNumberToStep(currentValue + delta, step, anchor);
-      let nextValue = attempted;
-      if (Number.isFinite(min)) nextValue = Math.max(min, nextValue);
-      if (Number.isFinite(max)) nextValue = Math.min(max, nextValue);
-      state.nicknameInput = formatSteppedNumber(nextValue, step);
-      state.cursorPos = state.nicknameInput.length;
-      replaceTextOnNextType = false;
-      updateStatus(state.nicknameInput);
-      if (Math.abs(nextValue - currentValue) < 1e-9 || Math.abs(nextValue - attempted) > 1e-9) {
-        audio.sfxUiCancel();
-      } else {
-        audio.sfxUiBlip();
-      }
-      return;
-    }
-  }
-  const editAction = getEditSessionAction(code);
-  if (editAction === 'submit') {
-    const value = state.nicknameInput.trim();
-    const sendItemParams = (params: Record<string, unknown>): void => {
-      signaling.send({ type: 'item_update', itemId, params });
-    };
-    const parseToggleValue = (raw: string, field: string): { ok: true; value: boolean } | { ok: false } => {
-      const normalized = raw.toLowerCase();
-      if (!['on', 'off', 'true', 'false', '1', '0', 'yes', 'no'].includes(normalized)) {
-        updateStatus(`${field} must be on or off.`);
-        audio.sfxUiCancel();
-        return { ok: false };
-      }
-      return { ok: true, value: ['on', 'true', '1', 'yes'].includes(normalized) };
-    };
-    const submitNumericParam = (
-      targetKey: string,
-      requireInteger: boolean,
-      transform?: (num: number) => number,
-    ): boolean => {
-      const parsed = validateNumericItemPropertyInput(item, targetKey, value, requireInteger);
-      if (!parsed.ok) {
-        updateStatus(parsed.message);
-        audio.sfxUiCancel();
-        return false;
-      }
-      sendItemParams({ [targetKey]: transform ? transform(parsed.value) : parsed.value });
-      return true;
-    };
-    if (propertyKey === 'title') {
-      if (!value) {
-        updateStatus('Value is required.');
-        audio.sfxUiCancel();
-        return;
-      }
-      signaling.send({ type: 'item_update', itemId, title: value });
-    } else if (propertyKey === 'streamUrl') {
-      sendItemParams({ streamUrl: value });
-    } else if (propertyKey === 'enabled' || propertyKey === 'directional') {
-      const toggle = parseToggleValue(value, propertyKey);
-      if (!toggle.ok) {
-        return;
-      }
-      sendItemParams({ [propertyKey]: toggle.value });
-    } else if (
-      propertyKey === 'mediaVolume' ||
-      propertyKey === 'emitVolume' ||
-      propertyKey === 'emitSoundSpeed' ||
-      propertyKey === 'emitSoundTempo' ||
-      propertyKey === 'emitRange' ||
-      propertyKey === 'sides' ||
-      propertyKey === 'number'
-    ) {
-      if (!submitNumericParam(propertyKey, true)) {
-        return;
-      }
-    } else if (propertyKey === 'mediaEffect' || propertyKey === 'emitEffect') {
-      const normalized = value.trim().toLowerCase() as EffectId;
-      if (!EFFECT_IDS.has(normalized)) {
-        updateStatus(`${itemPropertyLabel(propertyKey)} must be one of: ${EFFECT_SEQUENCE.map((effect) => effect.id).join(', ')}.`);
-        audio.sfxUiCancel();
-        return;
-      }
-      sendItemParams({ [propertyKey]: normalized });
-    } else if (propertyKey === 'mediaEffectValue' || propertyKey === 'emitEffectValue') {
-      if (!submitNumericParam(propertyKey, false, (num) => clampEffectLevel(num))) {
-        return;
-      }
-    } else if (propertyKey === 'facing') {
-      if (!submitNumericParam(propertyKey, false)) {
-        return;
-      }
-    } else if (propertyKey === 'useSound' || propertyKey === 'emitSound') {
-      sendItemParams({ [propertyKey]: value });
-    } else if (propertyKey === 'spaces') {
-      const spaces = value
-        .split(',')
-        .map((token) => token.trim())
-        .filter((token) => token.length > 0);
-      if (spaces.length === 0) {
-        updateStatus('spaces must include at least one comma-delimited value.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (spaces.length > 100) {
-        updateStatus('spaces supports up to 100 values.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (spaces.some((token) => token.length > 80)) {
-        updateStatus('each space must be 80 chars or less.');
-        audio.sfxUiCancel();
-        return;
-      }
-      sendItemParams({ spaces: spaces.join(', ') });
-    }
-    state.mode = 'itemProperties';
-    state.editingPropertyKey = null;
-    replaceTextOnNextType = false;
-    return;
-  }
-  if (editAction === 'cancel') {
-    state.mode = 'itemProperties';
-    state.editingPropertyKey = null;
-    replaceTextOnNextType = false;
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-    return;
-  }
-  applyTextInputEdit(code, key, 500, ctrlKey, true);
-}
-
-function handleItemPropertyOptionSelectModeInput(code: string, key: string): void {
-  const itemId = state.selectedItemId;
-  const propertyKey = state.editingPropertyKey;
-  if (!itemId || !propertyKey || state.itemPropertyOptionValues.length === 0) {
-    state.mode = 'itemProperties';
-    state.editingPropertyKey = null;
-    state.itemPropertyOptionValues = [];
-    state.itemPropertyOptionIndex = 0;
-    return;
-  }
-
-  const control = handleListControlKey(
-    code,
-    key,
-    state.itemPropertyOptionValues,
-    state.itemPropertyOptionIndex,
-    (value) => value,
-  );
-  if (control.type === 'move') {
-    state.itemPropertyOptionIndex = control.index;
-    updateStatus(state.itemPropertyOptionValues[state.itemPropertyOptionIndex]);
-    audio.sfxUiBlip();
-    return;
-  }
-
-  if (control.type === 'select') {
-    const selectedValue = state.itemPropertyOptionValues[state.itemPropertyOptionIndex];
-    signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: selectedValue } });
-    state.mode = 'itemProperties';
-    state.editingPropertyKey = null;
-    state.itemPropertyOptionValues = [];
-    state.itemPropertyOptionIndex = 0;
-    return;
-  }
-
-  if (control.type === 'cancel') {
-    state.mode = 'itemProperties';
-    state.editingPropertyKey = null;
-    state.itemPropertyOptionValues = [];
-    state.itemPropertyOptionIndex = 0;
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-  }
-}
+const itemPropertyEditor = createItemPropertyEditor({
+  state,
+  signalingSend: (message) => signaling.send(message as OutgoingMessage),
+  getItemPropertyValue,
+  itemPropertyLabel,
+  isItemPropertyEditable,
+  getItemPropertyOptionValues,
+  openItemPropertyOptionSelect,
+  describeItemPropertyHelp,
+  getItemPropertyMetadata,
+  validateNumericItemPropertyInput,
+  clampEffectLevel,
+  effectIds: EFFECT_IDS as Set<string>,
+  effectSequenceIdsCsv: EFFECT_SEQUENCE.map((effect) => effect.id).join(', '),
+  applyTextInputEdit,
+  setReplaceTextOnNextType: (value) => {
+    replaceTextOnNextType = value;
+  },
+  updateStatus,
+  sfxUiBlip: () => audio.sfxUiBlip(),
+  sfxUiCancel: () => audio.sfxUiCancel(),
+});
 
 function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): void {
   const editAction = getEditSessionAction(code);
@@ -2472,11 +2058,11 @@ function setupInputHandlers(): void {
     } else if (state.mode === 'selectItem') {
       handleSelectItemModeInput(code, event.key);
     } else if (state.mode === 'itemProperties') {
-      handleItemPropertiesModeInput(code, event.key);
+      itemPropertyEditor.handleItemPropertiesModeInput(code, event.key);
     } else if (state.mode === 'itemPropertyEdit') {
-      handleItemPropertyEditModeInput(code, event.key, event.ctrlKey);
+      itemPropertyEditor.handleItemPropertyEditModeInput(code, event.key, event.ctrlKey);
     } else if (state.mode === 'itemPropertyOptionSelect') {
-      handleItemPropertyOptionSelectModeInput(code, event.key);
+      itemPropertyEditor.handleItemPropertyOptionSelectModeInput(code, event.key);
     } else {
       handleNormalModeInput(code, event.shiftKey);
     }
@@ -2564,92 +2150,36 @@ function closeSettings(): void {
 }
 
 function setupUiHandlers(): void {
-  const persistOnUnload = (): void => {
-    if (!state.running) return;
-    persistPlayerPosition();
-  };
-  window.addEventListener('pagehide', persistOnUnload);
-  window.addEventListener('beforeunload', persistOnUnload);
-
-  dom.connectButton.addEventListener('click', () => {
-    void connect();
-  });
-  dom.preconnectNickname.addEventListener('input', () => {
-    updateConnectAvailability();
-  });
-  dom.preconnectNickname.addEventListener('change', () => {
-    const clean = sanitizeName(dom.preconnectNickname.value);
-    dom.preconnectNickname.value = clean;
-    if (clean) {
-      localStorage.setItem(NICKNAME_STORAGE_KEY, clean);
-    } else {
-      localStorage.removeItem(NICKNAME_STORAGE_KEY);
-    }
-    updateConnectAvailability();
-  });
-  dom.preconnectNickname.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !dom.connectButton.disabled) {
-      event.preventDefault();
-      void connect();
-    }
-  });
-
-  dom.disconnectButton.addEventListener('click', () => {
-    disconnect();
-  });
-
-  dom.focusGridButton.addEventListener('click', () => {
-    dom.canvas.focus();
-    updateStatus('Chat Grid focused.');
-    audio.sfxUiBlip();
-  });
-
-  dom.settingsButton.addEventListener('click', () => {
-    openSettings();
-  });
-
-  dom.closeSettingsButton.addEventListener('click', () => {
-    closeSettings();
-  });
-
-  dom.audioInputSelect.addEventListener('change', (event) => {
-    const target = event.target as HTMLSelectElement;
-    if (!target.value) return;
-    preferredInputDeviceId = target.value;
-    preferredInputDeviceName = target.selectedOptions[0]?.text || preferredInputDeviceName;
-    localStorage.setItem(AUDIO_INPUT_STORAGE_KEY, preferredInputDeviceId);
-    localStorage.setItem(AUDIO_INPUT_NAME_STORAGE_KEY, preferredInputDeviceName);
-    updateDeviceSummary();
-    void setupLocalMedia(target.value);
-  });
-
-  dom.audioOutputSelect.addEventListener('change', (event) => {
-    const target = event.target as HTMLSelectElement;
-    preferredOutputDeviceId = target.value;
-    preferredOutputDeviceName = target.selectedOptions[0]?.text || preferredOutputDeviceName;
-    localStorage.setItem(AUDIO_OUTPUT_STORAGE_KEY, preferredOutputDeviceId);
-    localStorage.setItem(AUDIO_OUTPUT_NAME_STORAGE_KEY, preferredOutputDeviceName);
-    updateDeviceSummary();
-    void peerManager.setOutputDevice(preferredOutputDeviceId);
-  });
-
-  dom.settingsModal.addEventListener('keydown', (event) => {
-    if (event.key !== 'Tab') return;
-    const focusable = Array.from(dom.settingsModal.querySelectorAll<HTMLElement>('select, button'));
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    if (event.shiftKey && document.activeElement === first) {
-      last.focus();
-      event.preventDefault();
-      return;
-    }
-
-    if (!event.shiftKey && document.activeElement === last) {
-      first.focus();
-      event.preventDefault();
-    }
+  setupDomUiHandlers({
+    dom,
+    sanitizeName,
+    nicknameStorageKey: NICKNAME_STORAGE_KEY,
+    updateConnectAvailability,
+    connect,
+    disconnect,
+    openSettings,
+    closeSettings,
+    updateStatus,
+    sfxUiBlip: () => audio.sfxUiBlip(),
+    setupLocalMedia,
+    setPreferredInput: (id, name) => {
+      preferredInputDeviceId = id;
+      preferredInputDeviceName = name || preferredInputDeviceName;
+      localStorage.setItem(AUDIO_INPUT_STORAGE_KEY, preferredInputDeviceId);
+      localStorage.setItem(AUDIO_INPUT_NAME_STORAGE_KEY, preferredInputDeviceName);
+    },
+    setPreferredOutput: (id, name) => {
+      preferredOutputDeviceId = id;
+      preferredOutputDeviceName = name || preferredOutputDeviceName;
+      localStorage.setItem(AUDIO_OUTPUT_STORAGE_KEY, preferredOutputDeviceId);
+      localStorage.setItem(AUDIO_OUTPUT_NAME_STORAGE_KEY, preferredOutputDeviceName);
+    },
+    updateDeviceSummary,
+    setOutputDevice: (id) => peerManager.setOutputDevice(id),
+    persistOnUnload: () => {
+      if (!state.running) return;
+      persistPlayerPosition();
+    },
   });
 }
 
