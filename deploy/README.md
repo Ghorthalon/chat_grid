@@ -130,7 +130,40 @@ sudo /usr/local/cpanel/scripts/restartsrv_httpd
 Usage example in Chat Grid:
 - `https://bestmidi.com/listen/8000/stream`
 
-## 8) GitHub-based update flow (`bestmidi`)
+## 8) PHP media proxy (Dropbox + HTTP stream passthrough)
+
+`deploy/php/media_proxy.php` is a lightweight same-origin proxy for stream URLs.
+
+It is auto-copied to your publish dir by `deploy_client.sh` (and `up.sh`), so after deploy it should be available at:
+
+- `https://bestmidi.com/chgrid/media_proxy.php`
+
+Use in Chat Grid `streamUrl`:
+
+```text
+https://bestmidi.com/chgrid/media_proxy.php?url=<urlencoded-upstream-url>
+```
+
+Examples:
+
+- Dropbox:
+  `https://bestmidi.com/chgrid/media_proxy.php?url=https%3A%2F%2Fwww.dropbox.com%2Fscl%2Ffi%2Fa7s3n15bgj043rr54k3n9%2FMario-Hold-Music.mp3%3Frlkey%3Ddfr3dybr7s7nndudag0k8xflc%26dl%3D1`
+- HTTP stream:
+  `https://bestmidi.com/chgrid/media_proxy.php?url=http%3A%2F%2Fstream.rpgamers.net%3A8000%2Frpgn`
+
+Troubleshooting checks:
+
+```bash
+curl -I "https://bestmidi.com/chgrid/media_proxy.php?url=https%3A%2F%2Fwww.dropbox.com%2Fscl%2Ffi%2Fa7s3n15bgj043rr54k3n9%2FMario-Hold-Music.mp3%3Frlkey%3Ddfr3dybr7s7nndudag0k8xflc%26dl%3D1"
+curl -I "https://bestmidi.com/chgrid/media_proxy.php?url=http%3A%2F%2Fstream.rpgamers.net%3A8000%2Frpgn"
+```
+
+Optional hardening:
+
+- Set env var `CHGRID_MEDIA_PROXY_ALLOWLIST` (comma-separated hosts/suffixes) in Apache/PHP-FPM.
+  - Example: `dropbox.com,dropboxusercontent.com,stream.rpgamers.net`
+
+## 9) GitHub-based update flow (`bestmidi`)
 
 Initial clone (one time):
 
@@ -171,7 +204,7 @@ Notes:
 - For HTTPS GitHub auth, use your GitHub username plus a Personal Access Token (PAT) as the password.
 - SSH key passphrases are only used for `git@github.com:` remotes, not `https://` remotes.
 
-## 9) Save GitHub PAT for HTTPS pulls/pushes
+## 10) Save GitHub PAT for HTTPS pulls/pushes
 
 Persistent storage (simple, plaintext in `~/.git-credentials`):
 

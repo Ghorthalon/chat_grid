@@ -5,6 +5,7 @@ REPO_ROOT="${1:-/home/bestmidi/chgrid}"
 PUBLISH_DIR="${2:-/home/bestmidi/public_html/chgrid}"
 BASE_PATH="${3:-/chgrid/}"
 CLIENT_DIR="$REPO_ROOT/client"
+PHP_PROXY_DIR="$REPO_ROOT/deploy/php"
 
 if [[ ! -d "$CLIENT_DIR" ]]; then
   echo "error: client directory not found: $CLIENT_DIR" >&2
@@ -22,6 +23,10 @@ VITE_BASE_PATH="$BASE_PATH" npm run build
 
 mkdir -p "$PUBLISH_DIR"
 rsync -a --delete dist/ "$PUBLISH_DIR/"
+
+if [[ -d "$PHP_PROXY_DIR" ]]; then
+  rsync -a "$PHP_PROXY_DIR/" "$PUBLISH_DIR/"
+fi
 
 echo "client deploy complete: $PUBLISH_DIR"
 echo "client base path: $BASE_PATH"
