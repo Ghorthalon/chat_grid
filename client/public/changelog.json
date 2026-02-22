@@ -3,6 +3,7 @@
     {
       "date": "February 21, 2026",
       "items": [
+        "Added tooltips for items and item properties. Press space from the Add Item or properties menus.",
         "Added directional audio support, used now for the Radio item type.",
         "Added audio layers to toggle voice, item sounds, media, and world (other users).",
         "Added new item type clock.",
