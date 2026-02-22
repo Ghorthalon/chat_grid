@@ -573,7 +573,13 @@ function navigateChatBuffer(target: 'prev' | 'next' | 'first' | 'last'): void {
   }
 
   updateStatus(messageBuffer[messageCursor]);
-  audio.sfxUiBlip();
+  if (target === 'prev' || target === 'next') {
+    const atStart = messageCursor === 0;
+    const atEnd = messageCursor === messageBuffer.length - 1;
+    if (atStart || atEnd) {
+      audio.sfxUiBlip();
+    }
+  }
 }
 
 /** Updates compact input/output device summary labels in the pre-connect UI. */
@@ -1288,7 +1294,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       const next = audio.adjustMasterVolume(step);
       persistMasterVolume(next);
       updateStatus(`Master volume ${next}`);
-      audio.sfxUiBlip();
+      audio.sfxEffectLevel(next === 50);
       return;
     }
     case 'openEffectSelect': {
