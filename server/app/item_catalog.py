@@ -131,14 +131,23 @@ ITEM_PROPERTY_OPTIONS: dict[str, tuple[str, ...]] = {
 }
 
 ITEM_TYPE_TOOLTIPS: dict[ItemType, str] = {
-    "radio_station": "Streams audio from a URL and can emit directional sound on the grid.",
-    "dice": "Roll one or more dice and report each value plus total.",
-    "wheel": "Spin a wheel from a comma-delimited list of spaces.",
-    "clock": "Speaks the current time using its configured timezone and format.",
+    "radio_station": "Can play stations from the Internet. Tune multiple to the same station and they will sync up.",
+    "dice": "Great for drinking games or boredom.",
+    "wheel": "Spin to win fabulous prizes.",
+    "clock": "It tells the time. What did you think it did?",
+}
+
+GLOBAL_ITEM_PROPERTY_METADATA: dict[str, dict[str, object]] = {
+    "useSound": {"valueType": "sound", "tooltip": "One-shot sound played when this item is used successfully."},
+    "emitSound": {"valueType": "sound", "tooltip": "Looping sound emitted from this item on the grid."},
+    "useCooldownMs": {"valueType": "number", "tooltip": "Global cooldown in milliseconds between uses for this item type."},
+    "emitRange": {"valueType": "number", "tooltip": "Maximum distance in squares where emitted audio can be heard."},
+    "directional": {"valueType": "boolean", "tooltip": "Whether emitted audio favors the item's facing direction."},
 }
 
 ITEM_TYPE_PROPERTY_METADATA: dict[ItemType, dict[str, dict[str, object]]] = {
     "radio_station": {
+        **GLOBAL_ITEM_PROPERTY_METADATA,
         "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item."},
         "streamUrl": {"valueType": "text", "tooltip": "Audio stream URL used by this radio."},
         "enabled": {"valueType": "boolean", "tooltip": "Turns playback on or off for this radio."},
@@ -166,6 +175,7 @@ ITEM_TYPE_PROPERTY_METADATA: dict[ItemType, dict[str, dict[str, object]]] = {
         },
     },
     "dice": {
+        **GLOBAL_ITEM_PROPERTY_METADATA,
         "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item."},
         "sides": {
             "valueType": "number",
@@ -179,6 +189,7 @@ ITEM_TYPE_PROPERTY_METADATA: dict[ItemType, dict[str, dict[str, object]]] = {
         },
     },
     "wheel": {
+        **GLOBAL_ITEM_PROPERTY_METADATA,
         "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item."},
         "spaces": {
             "valueType": "text",
@@ -186,6 +197,7 @@ ITEM_TYPE_PROPERTY_METADATA: dict[ItemType, dict[str, dict[str, object]]] = {
         },
     },
     "clock": {
+        **GLOBAL_ITEM_PROPERTY_METADATA,
         "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item."},
         "timeZone": {"valueType": "list", "tooltip": "Timezone used when the clock speaks time."},
         "use24Hour": {"valueType": "boolean", "tooltip": "Use 24 hour format instead of AM/PM."},
