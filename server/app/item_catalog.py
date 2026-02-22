@@ -3,23 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
-from .items import clock, dice, radio, wheel
+from .items import clock, radio
+from .items.registry import ITEM_MODULES, ITEM_TYPE_ORDER
 
 ItemType = Literal["radio_station", "dice", "wheel", "clock"]
-ITEM_TYPE_SEQUENCE: tuple[ItemType, ...] = ("clock", "dice", "radio_station", "wheel")
-ITEM_TYPE_LABELS: dict[ItemType, str] = {
-    "radio_station": radio.LABEL,
-    "dice": dice.LABEL,
-    "wheel": wheel.LABEL,
-    "clock": clock.LABEL,
-}
+ITEM_TYPE_SEQUENCE: tuple[ItemType, ...] = cast(tuple[ItemType, ...], ITEM_TYPE_ORDER)
+ITEM_TYPE_LABELS: dict[ItemType, str] = {item_type: ITEM_MODULES[item_type].LABEL for item_type in ITEM_TYPE_SEQUENCE}
 ITEM_TYPE_EDITABLE_PROPERTIES: dict[ItemType, tuple[str, ...]] = {
-    "radio_station": radio.EDITABLE_PROPERTIES,
-    "dice": dice.EDITABLE_PROPERTIES,
-    "wheel": wheel.EDITABLE_PROPERTIES,
-    "clock": clock.EDITABLE_PROPERTIES,
+    item_type: ITEM_MODULES[item_type].EDITABLE_PROPERTIES for item_type in ITEM_TYPE_SEQUENCE
 }
 
 CLOCK_DEFAULT_TIME_ZONE = clock.DEFAULT_TIME_ZONE
@@ -68,46 +61,17 @@ def _build_definition(
 
 
 ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
-    "radio_station": _build_definition(
-        default_title=radio.DEFAULT_TITLE,
-        capabilities=radio.CAPABILITIES,
-        use_sound=radio.USE_SOUND,
-        emit_sound=radio.EMIT_SOUND,
-        default_params=radio.DEFAULT_PARAMS,
-        use_cooldown_ms=radio.USE_COOLDOWN_MS,
-        emit_range=radio.EMIT_RANGE,
-        directional=radio.DIRECTIONAL,
-    ),
-    "dice": _build_definition(
-        default_title=dice.DEFAULT_TITLE,
-        capabilities=dice.CAPABILITIES,
-        use_sound=dice.USE_SOUND,
-        emit_sound=dice.EMIT_SOUND,
-        default_params=dice.DEFAULT_PARAMS,
-        use_cooldown_ms=dice.USE_COOLDOWN_MS,
-        emit_range=dice.EMIT_RANGE,
-        directional=dice.DIRECTIONAL,
-    ),
-    "wheel": _build_definition(
-        default_title=wheel.DEFAULT_TITLE,
-        capabilities=wheel.CAPABILITIES,
-        use_sound=wheel.USE_SOUND,
-        emit_sound=wheel.EMIT_SOUND,
-        default_params=wheel.DEFAULT_PARAMS,
-        use_cooldown_ms=wheel.USE_COOLDOWN_MS,
-        emit_range=wheel.EMIT_RANGE,
-        directional=wheel.DIRECTIONAL,
-    ),
-    "clock": _build_definition(
-        default_title=clock.DEFAULT_TITLE,
-        capabilities=clock.CAPABILITIES,
-        use_sound=clock.USE_SOUND,
-        emit_sound=clock.EMIT_SOUND,
-        default_params=clock.DEFAULT_PARAMS,
-        use_cooldown_ms=clock.USE_COOLDOWN_MS,
-        emit_range=clock.EMIT_RANGE,
-        directional=clock.DIRECTIONAL,
-    ),
+    item_type: _build_definition(
+        default_title=ITEM_MODULES[item_type].DEFAULT_TITLE,
+        capabilities=ITEM_MODULES[item_type].CAPABILITIES,
+        use_sound=ITEM_MODULES[item_type].USE_SOUND,
+        emit_sound=ITEM_MODULES[item_type].EMIT_SOUND,
+        default_params=ITEM_MODULES[item_type].DEFAULT_PARAMS,
+        use_cooldown_ms=ITEM_MODULES[item_type].USE_COOLDOWN_MS,
+        emit_range=ITEM_MODULES[item_type].EMIT_RANGE,
+        directional=ITEM_MODULES[item_type].DIRECTIONAL,
+    )
+    for item_type in ITEM_TYPE_SEQUENCE
 }
 
 ITEM_PROPERTY_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -117,10 +81,7 @@ ITEM_PROPERTY_OPTIONS: dict[str, tuple[str, ...]] = {
 }
 
 ITEM_TYPE_TOOLTIPS: dict[ItemType, str] = {
-    "radio_station": radio.TOOLTIP,
-    "dice": dice.TOOLTIP,
-    "wheel": wheel.TOOLTIP,
-    "clock": clock.TOOLTIP,
+    item_type: ITEM_MODULES[item_type].TOOLTIP for item_type in ITEM_TYPE_SEQUENCE
 }
 
 GLOBAL_ITEM_PROPERTY_METADATA: dict[str, dict[str, object]] = {
@@ -132,10 +93,7 @@ GLOBAL_ITEM_PROPERTY_METADATA: dict[str, dict[str, object]] = {
 }
 
 ITEM_TYPE_PROPERTY_METADATA: dict[ItemType, dict[str, dict[str, object]]] = {
-    "radio_station": {**GLOBAL_ITEM_PROPERTY_METADATA, **radio.PROPERTY_METADATA},
-    "dice": {**GLOBAL_ITEM_PROPERTY_METADATA, **dice.PROPERTY_METADATA},
-    "wheel": {**GLOBAL_ITEM_PROPERTY_METADATA, **wheel.PROPERTY_METADATA},
-    "clock": {**GLOBAL_ITEM_PROPERTY_METADATA, **clock.PROPERTY_METADATA},
+    item_type: {**GLOBAL_ITEM_PROPERTY_METADATA, **ITEM_MODULES[item_type].PROPERTY_METADATA} for item_type in ITEM_TYPE_SEQUENCE
 }
 
 
@@ -166,4 +124,3 @@ def get_item_global_properties(item_type: ItemType) -> dict[str, str | int | boo
         "emitRange": definition.emit_range if isinstance(definition.emit_range, int) and definition.emit_range > 0 else 15,
         "directional": bool(definition.directional),
     }
-

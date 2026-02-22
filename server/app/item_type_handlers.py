@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from .item_catalog import ItemType
-from .items import clock, dice, radio, wheel
+from .items.registry import ITEM_MODULES
 from .item_types import ItemTypeHandler
 
 ITEM_TYPE_HANDLERS: dict[ItemType, ItemTypeHandler] = {
-    "radio_station": ItemTypeHandler(validate_update=radio.validate_update, use=radio.use_item),
-    "dice": ItemTypeHandler(validate_update=dice.validate_update, use=dice.use_item),
-    "wheel": ItemTypeHandler(validate_update=wheel.validate_update, use=wheel.use_item),
-    "clock": ItemTypeHandler(validate_update=clock.validate_update, use=clock.use_item),
+    item_type: ItemTypeHandler(validate_update=module.validate_update, use=module.use_item)
+    for item_type, module in ITEM_MODULES.items()
 }
 
 
@@ -18,4 +16,3 @@ def get_item_type_handler(item_type: ItemType) -> ItemTypeHandler:
     """Resolve item-type handler from registry."""
 
     return ITEM_TYPE_HANDLERS[item_type]
-
