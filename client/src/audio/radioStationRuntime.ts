@@ -114,7 +114,7 @@ function isDropboxHost(hostname: string): boolean {
   return host.endsWith('dropbox.com') || host.endsWith('dropboxusercontent.com');
 }
 
-function shouldProxyStreamUrl(streamUrl: string): boolean {
+export function shouldProxyStreamUrl(streamUrl: string): boolean {
   try {
     const parsed = new URL(streamUrl);
     if (
@@ -131,7 +131,7 @@ function shouldProxyStreamUrl(streamUrl: string): boolean {
   return false;
 }
 
-function getProxyUrlForStream(streamUrl: string): string {
+export function getProxyUrlForStream(streamUrl: string): string {
   const normalizedBase = APP_BASE_PATH.endsWith('/') ? APP_BASE_PATH : `${APP_BASE_PATH}/`;
   const proxy = new URL(`${normalizedBase}media_proxy.php`, window.location.origin);
   proxy.searchParams.set('url', streamUrl);

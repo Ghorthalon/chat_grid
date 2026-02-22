@@ -6,7 +6,14 @@ import {
   clampEffectLevel,
   type EffectId,
 } from './audio/effects';
-import { RadioStationRuntime, normalizeRadioChannel, normalizeRadioEffect, normalizeRadioEffectValue } from './audio/radioStationRuntime';
+import {
+  RadioStationRuntime,
+  getProxyUrlForStream,
+  normalizeRadioChannel,
+  normalizeRadioEffect,
+  normalizeRadioEffectValue,
+  shouldProxyStreamUrl,
+} from './audio/radioStationRuntime';
 import { ItemEmitRuntime } from './audio/itemEmitRuntime';
 import { normalizeDegrees } from './audio/spatial';
 import {
@@ -466,7 +473,10 @@ function classifySystemMessageSound(message: string): keyof typeof SYSTEM_SOUND_
 function resolveIncomingSoundUrl(url: string): string {
   const raw = String(url || '').trim();
   if (!raw) return '';
-  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  if (/^https?:/i.test(raw)) {
+    return shouldProxyStreamUrl(raw) ? getProxyUrlForStream(raw) : raw;
+  }
+  if (/^(data:|blob:)/i.test(raw)) return raw;
   if (raw.startsWith('/sounds/')) {
     return withBase(raw.slice(1));
   }
