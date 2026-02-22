@@ -102,6 +102,7 @@ export function mapTextInputKey(code: string, key: string): string {
   return key;
 }
 
+/** Returns whether a character should be treated as part of a word for Ctrl+Arrow navigation. */
 function isWordCharacter(ch: string): boolean {
   return /[A-Za-z0-9_'\u2019]/.test(ch);
 }
@@ -121,6 +122,7 @@ export function moveCursorWordRight(text: string, cursorPos: number): number {
   return pos;
 }
 
+/** Returns the contiguous word under the current cursor index, or null when none. */
 function wordAtCursor(text: string, cursorPos: number): string | null {
   if (cursorPos < 0 || cursorPos >= text.length || !isWordCharacter(text[cursorPos])) {
     return null;

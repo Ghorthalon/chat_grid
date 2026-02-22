@@ -169,6 +169,7 @@ dom.appVersion.textContent = APP_VERSION
   ? `Another AI experiment with Jage. Version ${APP_VERSION}`
   : 'Another AI experiment with Jage. Version unknown';
 const APP_BASE_URL = import.meta.env.BASE_URL || '/';
+/** Resolves an app-relative path against the configured Vite base path. */
 function withBase(path: string): string {
   const normalizedBase = APP_BASE_URL.endsWith('/') ? APP_BASE_URL : `${APP_BASE_URL}/`;
   return `${normalizedBase}${path.replace(/^\/+/, '')}`;
@@ -237,6 +238,7 @@ loadMicInputGain();
 void loadHelp();
 void loadChangelog();
 
+/** Fetches a required DOM element and casts it to the requested element type. */
 function requiredById<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) {
@@ -245,6 +247,7 @@ function requiredById<T extends HTMLElement>(id: string): T {
   return found as T;
 }
 
+/** Returns the configured display timezone when valid, otherwise the default fallback. */
 function resolveDisplayTimeZone(): string {
   const configured = String(window.CHGRID_TIME_ZONE ?? '').trim();
   if (configured) {
@@ -258,6 +261,7 @@ function resolveDisplayTimeZone(): string {
   return DEFAULT_DISPLAY_TIME_ZONE;
 }
 
+/** Formats epoch milliseconds as `YYYY-MM-DD HH:mm` in the configured display timezone. */
 function formatTimestampMs(value: unknown): string {
   const raw = Number(value);
   if (!Number.isFinite(raw)) {
@@ -280,6 +284,7 @@ function formatTimestampMs(value: unknown): string {
   return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}`;
 }
 
+/** Toggles updates panel visibility and syncs associated ARIA state. */
 function setUpdatesExpanded(expanded: boolean): void {
   dom.updatesToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   dom.updatesToggle.textContent = expanded ? 'Hide updates' : 'Show updates';
@@ -287,6 +292,7 @@ function setUpdatesExpanded(expanded: boolean): void {
   dom.updatesPanel.classList.toggle('hidden', !expanded);
 }
 
+/** Renders help sections into the footer help container and builds linearized viewer lines. */
 function renderHelp(help: HelpData): void {
   const lines: string[] = [];
   dom.instructions.innerHTML = '';
@@ -312,6 +318,7 @@ function renderHelp(help: HelpData): void {
   helpViewerIndex = 0;
 }
 
+/** Loads runtime help content from `help.json` and applies it when available. */
 async function loadHelp(): Promise<void> {
   try {
     const response = await fetch(withBase('help.json'), { cache: 'no-store' });
@@ -328,6 +335,7 @@ async function loadHelp(): Promise<void> {
   }
 }
 
+/** Renders changelog sections into the collapsible updates panel. */
 function renderChangelog(changelog: ChangelogData): void {
   dom.updatesPanel.innerHTML = '';
   for (const section of changelog.sections) {
@@ -345,6 +353,7 @@ function renderChangelog(changelog: ChangelogData): void {
   }
 }
 
+/** Loads changelog entries from `changelog.json` and wires the panel toggle button. */
 async function loadChangelog(): Promise<void> {
   try {
     const response = await fetch(withBase('changelog.json'), { cache: 'no-store' });
@@ -368,6 +377,7 @@ async function loadChangelog(): Promise<void> {
   }
 }
 
+/** Announces status text via ARIA with brief de-duplication and auto-clear timing. */
 function updateStatus(message: string): void {
   const normalized = String(message)
     .replace(/\s*\n+\s*/g, ' ')
@@ -394,10 +404,12 @@ function updateStatus(message: string): void {
   }, 4000);
 }
 
+/** Sanitizes user nicknames to printable/safe characters and enforces max length. */
 function sanitizeName(value: string): string {
   return value.replace(/[\u0000-\u001F\u007F<>]/g, '').trim().slice(0, NICKNAME_MAX_LENGTH);
 }
 
+/** Enables/disables the connect button based on state and nickname validity. */
 function updateConnectAvailability(): void {
   if (state.running) {
     dom.connectButton.disabled = true;
@@ -407,6 +419,7 @@ function updateConnectAvailability(): void {
   dom.connectButton.disabled = connecting || !hasNickname;
 }
 
+/** Restores persisted outbound effect levels from local storage. */
 function loadEffectLevels(): void {
   const raw = localStorage.getItem(EFFECT_LEVELS_STORAGE_KEY);
   if (!raw) return;
@@ -420,10 +433,12 @@ function loadEffectLevels(): void {
   }
 }
 
+/** Persists current outbound effect levels to local storage. */
 function persistEffectLevels(): void {
   localStorage.setItem(EFFECT_LEVELS_STORAGE_KEY, JSON.stringify(audio.getEffectLevels()));
 }
 
+/** Restores local audio-layer toggles and applies initial voice-layer state. */
 function loadAudioLayerState(): void {
   const raw = localStorage.getItem(AUDIO_LAYER_STATE_STORAGE_KEY);
   if (raw) {
@@ -442,15 +457,18 @@ function loadAudioLayerState(): void {
   audio.setVoiceLayerEnabled(audioLayers.voice);
 }
 
+/** Persists current audio-layer toggles to local storage. */
 function persistAudioLayerState(): void {
   localStorage.setItem(AUDIO_LAYER_STATE_STORAGE_KEY, JSON.stringify(audioLayers));
 }
 
+/** Clamps microphone input gain to the supported calibration bounds. */
 function clampMicInputGain(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.max(MIC_CALIBRATION_MIN_GAIN, Math.min(MIC_CALIBRATION_MAX_GAIN, value));
 }
 
+/** Loads persisted microphone input gain and applies default when missing. */
 function loadMicInputGain(): void {
   const raw = localStorage.getItem(MIC_INPUT_GAIN_STORAGE_KEY);
   if (!raw) {
@@ -461,10 +479,12 @@ function loadMicInputGain(): void {
   audio.setOutboundInputGain(clampMicInputGain(parsed));
 }
 
+/** Persists microphone input gain to local storage. */
 function persistMicInputGain(value: number): void {
   localStorage.setItem(MIC_INPUT_GAIN_STORAGE_KEY, String(value));
 }
 
+/** Applies current layer toggles to peer voice, media streams, and item emitters. */
 async function applyAudioLayerState(): Promise<void> {
   audio.setVoiceLayerEnabled(audioLayers.voice);
   if (audioLayers.voice) {
@@ -476,6 +496,7 @@ async function applyAudioLayerState(): Promise<void> {
   await itemEmitRuntime.setLayerEnabled(audioLayers.item, state.items.values());
 }
 
+/** Toggles a single audio layer and applies the change immediately. */
 function toggleAudioLayer(layer: keyof AudioLayerState): void {
   audioLayers = { ...audioLayers, [layer]: !audioLayers[layer] };
   persistAudioLayerState();
@@ -484,6 +505,7 @@ function toggleAudioLayer(layer: keyof AudioLayerState): void {
   audio.sfxUiBlip();
 }
 
+/** Appends a chat/system line to the bounded status history buffer. */
 function pushChatMessage(message: string): void {
   messageBuffer.push(message);
   if (messageBuffer.length > 300) {
@@ -493,6 +515,7 @@ function pushChatMessage(message: string): void {
   updateStatus(message);
 }
 
+/** Classifies a system chat line into a corresponding notification sound, when applicable. */
 function classifySystemMessageSound(message: string): keyof typeof SYSTEM_SOUND_URLS | null {
   const normalized = message.trim().toLowerCase();
   if (!normalized) return null;
@@ -508,6 +531,7 @@ function classifySystemMessageSound(message: string): keyof typeof SYSTEM_SOUND_
   return null;
 }
 
+/** Resolves incoming sound references to playable URLs, including proxy routing when needed. */
 function resolveIncomingSoundUrl(url: string): string {
   const raw = String(url || '').trim();
   if (!raw) return '';
@@ -524,6 +548,7 @@ function resolveIncomingSoundUrl(url: string): string {
   return raw;
 }
 
+/** Navigates buffered chat lines and speaks the selected entry. */
 function navigateChatBuffer(target: 'prev' | 'next' | 'first' | 'last'): void {
   if (messageBuffer.length === 0) {
     updateStatus('No chat messages.');
@@ -545,6 +570,7 @@ function navigateChatBuffer(target: 'prev' | 'next' | 'first' | 'last'): void {
   audio.sfxUiBlip();
 }
 
+/** Updates compact input/output device summary labels in the pre-connect UI. */
 function updateDeviceSummary(): void {
   if (preferredInputDeviceId) {
     const text = dom.audioInputSelect.selectedOptions[0]?.text || preferredInputDeviceName || 'Saved microphone';
@@ -563,16 +589,19 @@ function updateDeviceSummary(): void {
   }
 }
 
+/** Returns peer nicknames currently occupying the given grid cell. */
 function getPeerNamesAtPosition(x: number, y: number): string[] {
   return Array.from(state.peers.values())
     .filter((peer) => peer.x === x && peer.y === y)
     .map((peer) => peer.nickname);
 }
 
+/** Returns a user-facing item label including type information. */
 function itemLabel(item: WorldItem): string {
   return `${item.title} (${itemTypeLabel(item.type)})`;
 }
 
+/** Resolves effective spatial audio configuration for an item, with global fallbacks. */
 function getItemSpatialConfig(item: WorldItem): { range: number; directional: boolean; facingDeg: number } {
   const global = getItemTypeGlobalProperties(item.type);
   const rawParamRange = Number(item.params.emitRange);
@@ -585,6 +614,7 @@ function getItemSpatialConfig(item: WorldItem): { range: number; directional: bo
   return { range, directional, facingDeg };
 }
 
+/** Enters help-view mode and announces the first help line. */
 function openHelpViewer(): void {
   if (helpViewerLines.length === 0) {
     updateStatus('Help unavailable.');
@@ -597,15 +627,18 @@ function openHelpViewer(): void {
   audio.sfxUiBlip();
 }
 
+/** Returns non-carried items occupying a given grid position. */
 function getItemsAtPosition(x: number, y: number): WorldItem[] {
   return Array.from(state.items.values()).filter((item) => !item.carrierId && item.x === x && item.y === y);
 }
 
+/** Returns the item currently carried by the local player, if any. */
 function getCarriedItem(): WorldItem | null {
   if (!state.player.id) return null;
   return Array.from(state.items.values()).find((item) => item.carrierId === state.player.id) || null;
 }
 
+/** Opens the shared item-selection flow for the provided context and items. */
 function beginItemSelection(context: 'pickup' | 'delete' | 'edit' | 'use' | 'inspect', items: WorldItem[]): void {
   if (items.length === 0) {
     updateStatus('No items available.');
@@ -620,6 +653,7 @@ function beginItemSelection(context: 'pickup' | 'delete' | 'edit' | 'use' | 'ins
   audio.sfxUiBlip();
 }
 
+/** Opens item property browsing/editing mode for one item. */
 function beginItemProperties(item: WorldItem, showAll = false): void {
   state.selectedItemId = item.id;
   state.mode = 'itemProperties';
@@ -638,10 +672,12 @@ function beginItemProperties(item: WorldItem, showAll = false): void {
   audio.sfxUiBlip();
 }
 
+/** Sends an item-use request for the selected item. */
 function useItem(item: WorldItem): void {
   signaling.send({ type: 'item_use', itemId: item.id });
 }
 
+/** Opens option-list selection mode for list-based item properties. */
 function openItemPropertyOptionSelect(item: WorldItem, key: string): void {
   const options = getItemPropertyOptionValues(key);
   if (!options || options.length === 0) {
@@ -657,6 +693,7 @@ function openItemPropertyOptionSelect(item: WorldItem, key: string): void {
   audio.sfxUiBlip();
 }
 
+/** Returns the active text-input max length for the current UI mode, if applicable. */
 function textInputMaxLengthForMode(mode: typeof state.mode): number | null {
   if (mode === 'nickname') return NICKNAME_MAX_LENGTH;
   if (mode === 'chat') return 500;
@@ -665,6 +702,7 @@ function textInputMaxLengthForMode(mode: typeof state.mode): number | null {
   return null;
 }
 
+/** Applies pasted text into whichever mode currently owns the shared text edit buffer. */
 function pasteIntoActiveTextInput(raw: string): boolean {
   const maxLength = textInputMaxLengthForMode(state.mode);
   if (maxLength === null) {
@@ -678,10 +716,12 @@ function pasteIntoActiveTextInput(raw: string): boolean {
   return true;
 }
 
+/** Whether the current mode uses the shared single-line text editing pipeline. */
 function isTextEditingMode(mode: typeof state.mode): boolean {
   return mode === 'nickname' || mode === 'chat' || mode === 'itemPropertyEdit' || mode === 'micGainEdit';
 }
 
+/** Applies keyboard edits to the shared text buffer and emits cursor/deletion speech hints. */
 function applyTextInputEdit(code: string, key: string, maxLength: number, ctrlKey = false, allowReplaceOnNextType = false): void {
   if (ctrlKey && code === 'KeyA') {
     replaceTextOnNextType = true;
@@ -731,6 +771,7 @@ function applyTextInputEdit(code: string, key: string, maxLength: number, ctrlKe
   }
 }
 
+/** Returns a formatted display value for an item property key, with per-key normalization. */
 function getItemPropertyValue(item: WorldItem, key: string): string {
   const toSoundDisplayName = (rawValue: unknown): string => {
     const raw = String(rawValue ?? '').trim();
@@ -783,6 +824,7 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
   return '';
 }
 
+/** Infers value type for item-property help when metadata is missing. */
 function inferItemPropertyValueType(item: WorldItem, key: string): string | undefined {
   if (key === 'useSound' || key === 'emitSound') return 'sound';
   if (key === 'enabled' || key === 'use24Hour' || key === 'directional') return 'boolean';
@@ -814,6 +856,7 @@ function inferItemPropertyValueType(item: WorldItem, key: string): string | unde
   return 'text';
 }
 
+/** Provides tooltip fallbacks for inspect-only/system item properties. */
 function getFallbackInspectPropertyTooltip(key: string): string | undefined {
   if (key === 'type') return 'The item type identifier.';
   if (key === 'x') return 'X coordinate on the grid.';
@@ -831,10 +874,12 @@ function getFallbackInspectPropertyTooltip(key: string): string | undefined {
   return undefined;
 }
 
+/** Returns whether a property is editable for the given item type. */
 function isItemPropertyEditable(item: WorldItem, key: string): boolean {
   return getEditableItemPropertyKeys(item).includes(key);
 }
 
+/** Builds spoken tooltip/help text for the current item property row. */
 function describeItemPropertyHelp(item: WorldItem, key: string): string {
   const metadata = getItemPropertyMetadata(item.type, key);
   const parts: string[] = [];
@@ -868,6 +913,7 @@ function describeItemPropertyHelp(item: WorldItem, key: string): string {
   return parts.join(' ');
 }
 
+/** Validates and normalizes numeric item-property edits using metadata ranges/steps. */
 function validateNumericItemPropertyInput(
   item: WorldItem,
   key: string,
@@ -896,10 +942,12 @@ function validateNumericItemPropertyInput(
   return { ok: true, value: parsed };
 }
 
+/** Returns singular/plural square wording for distance announcements. */
 function squareWord(distance: number): string {
   return distance === 1 ? 'square' : 'squares';
 }
 
+/** Builds a spoken distance+direction phrase between two grid coordinates. */
 function distanceDirectionPhrase(px: number, py: number, tx: number, ty: number): string {
   const distance = Math.round(Math.hypot(tx - px, ty - py));
   const direction = getDirection(px, py, tx, ty);
@@ -907,6 +955,7 @@ function distanceDirectionPhrase(px: number, py: number, tx: number, ty: number)
   return `${distance} ${squareWord(distance)} ${direction}`;
 }
 
+/** Persists current local player coordinates for reconnect/refresh restore. */
 function persistPlayerPosition(): void {
   try {
     localStorage.setItem(
@@ -918,10 +967,12 @@ function persistPlayerPosition(): void {
   }
 }
 
+/** Picks one random footstep sample URL. */
 function randomFootstepUrl(): string {
   return FOOTSTEP_SOUND_URLS[Math.floor(Math.random() * FOOTSTEP_SOUND_URLS.length)];
 }
 
+/** Main animation/update loop for movement, spatial audio, and rendering. */
 function gameLoop(): void {
   if (!state.running) return;
   handleMovement();
@@ -933,6 +984,7 @@ function gameLoop(): void {
   requestAnimationFrame(gameLoop);
 }
 
+/** Applies held-arrow movement with bounds checks, tile cues, and server position sync. */
 function handleMovement(): void {
   if (state.mode !== 'normal') return;
   const now = Date.now();
@@ -986,6 +1038,7 @@ function handleMovement(): void {
   }
 }
 
+/** Checks microphone permission state when Permissions API support is available. */
 async function checkMicPermission(): Promise<boolean> {
   const permissionApi = navigator.permissions;
   if (!permissionApi?.query) return true;
@@ -997,6 +1050,7 @@ async function checkMicPermission(): Promise<boolean> {
   }
 }
 
+/** Starts local microphone capture and rebuilds the outbound track pipeline. */
 async function setupLocalMedia(audioDeviceId = ''): Promise<void> {
   stopLocalMedia();
 
@@ -1023,6 +1077,7 @@ async function setupLocalMedia(audioDeviceId = ''): Promise<void> {
   await peerManager.replaceOutgoingTrack(outboundStream);
 }
 
+/** Runs a short RMS sample to estimate and apply a usable microphone input gain. */
 async function calibrateMicInputGain(): Promise<void> {
   if (calibratingMicInput) {
     updateStatus('Mic calibration already running.');
@@ -1102,6 +1157,7 @@ async function calibrateMicInputGain(): Promise<void> {
   audio.sfxUiConfirm();
 }
 
+/** Stops local capture tracks and clears outbound stream references. */
 function stopLocalMedia(): void {
   if (localStream) {
     localStream.getTracks().forEach((track) => track.stop());
@@ -1110,6 +1166,7 @@ function stopLocalMedia(): void {
   outboundStream = null;
 }
 
+/** Maps browser media/capture errors to user-facing remediation text. */
 function describeMediaError(error: unknown): string {
   if (error instanceof DOMException) {
     if (error.name === 'NotAllowedError') return 'Microphone blocked. Allow mic access in browser site settings.';
@@ -1121,6 +1178,7 @@ function describeMediaError(error: unknown): string {
   return 'Audio setup failed. Check browser permissions and selected input device.';
 }
 
+/** Performs end-to-end connect flow: validation, media setup, then signaling connection. */
 async function connect(): Promise<void> {
   if (connecting || state.running) {
     return;
@@ -1192,6 +1250,7 @@ async function connect(): Promise<void> {
   }
 }
 
+/** Tears down active session state, media, peers, and UI back to pre-connect mode. */
 function disconnect(): void {
   const wasRunning = state.running;
   if (state.running) {
@@ -1290,6 +1349,7 @@ const onMessage = createOnMessageHandler({
   },
 });
 
+/** Toggles local microphone track mute state. */
 function toggleMute(): void {
   state.isMuted = !state.isMuted;
   if (localStream) {
@@ -1299,6 +1359,7 @@ function toggleMute(): void {
   updateStatus(state.isMuted ? 'Muted.' : 'Unmuted.');
 }
 
+/** Handles command-mode keybindings while in main gameplay mode. */
 function handleNormalModeInput(code: string, shiftKey: boolean): void {
   if (code !== 'Escape' && pendingEscapeDisconnect) {
     pendingEscapeDisconnect = false;
@@ -1610,6 +1671,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
   }
 }
 
+/** Handles linear help viewer navigation and exit keys. */
 function handleHelpViewModeInput(code: string): void {
   if (helpViewerLines.length === 0) {
     state.mode = 'normal';
@@ -1649,6 +1711,7 @@ function handleHelpViewModeInput(code: string): void {
   }
 }
 
+/** Handles chat compose mode including submit/cancel and inline editing keys. */
 function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void {
   const editAction = getEditSessionAction(code);
   if (editAction === 'submit') {
@@ -1679,6 +1742,7 @@ function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void 
   applyTextInputEdit(code, key, 500, ctrlKey);
 }
 
+/** Handles direct microphone gain editing mode with keyboard stepping and validation. */
 function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean): void {
   if (code === 'ArrowUp' || code === 'ArrowDown' || code === 'PageUp' || code === 'PageDown') {
     const raw = Number(state.nicknameInput.trim());
@@ -1733,6 +1797,7 @@ function handleMicGainEditModeInput(code: string, key: string, ctrlKey: boolean)
   applyTextInputEdit(code, key, 8, ctrlKey, true);
 }
 
+/** Handles effect menu list navigation and selection. */
 function handleEffectSelectModeInput(code: string, key: string): void {
   const control = handleListControlKey(code, key, EFFECT_SEQUENCE, state.effectSelectIndex, (effect) => effect.label);
   if (control.type === 'move') {
@@ -1758,6 +1823,7 @@ function handleEffectSelectModeInput(code: string, key: string): void {
   }
 }
 
+/** Handles list navigation for nearby/known users and teleport-on-select. */
 function handleListModeInput(code: string, key: string): void {
   if (state.sortedPeerIds.length === 0) {
     state.mode = 'normal';
@@ -1802,6 +1868,7 @@ function handleListModeInput(code: string, key: string): void {
   }
 }
 
+/** Handles item list navigation and teleport-on-select. */
 function handleListItemsModeInput(code: string, key: string): void {
   if (state.sortedItemIds.length === 0) {
     state.mode = 'normal';
@@ -1847,6 +1914,7 @@ function handleListItemsModeInput(code: string, key: string): void {
   }
 }
 
+/** Handles add-item type selection and item-type tooltip readout. */
 function handleAddItemModeInput(code: string, key: string): void {
   const itemTypeSequence = getItemTypeSequence();
   if (itemTypeSequence.length === 0) {
@@ -1881,6 +1949,7 @@ function handleAddItemModeInput(code: string, key: string): void {
   }
 }
 
+/** Handles generic selected-item list flow used by pickup/delete/edit/use/inspect contexts. */
 function handleSelectItemModeInput(code: string, key: string): void {
   if (state.selectedItemIds.length === 0) {
     state.mode = 'normal';
@@ -1963,6 +2032,7 @@ const itemPropertyEditor = createItemPropertyEditor({
   sfxUiCancel: () => audio.sfxUiCancel(),
 });
 
+/** Handles nickname edit mode submission/cancel and text editing keys. */
 function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): void {
   const editAction = getEditSessionAction(code);
   if (editAction === 'submit') {
@@ -1991,10 +2061,12 @@ function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): v
   applyTextInputEdit(code, key, NICKNAME_MAX_LENGTH, ctrlKey, true);
 }
 
+/** Returns whether a key code should be treated as a repeat-suppressed typing key. */
 function isTypingKey(code: string): boolean {
   return code.startsWith('Key') || code === 'Space';
 }
 
+/** Wires global keyboard/paste input handlers and routes events by current mode. */
 function setupInputHandlers(): void {
   document.addEventListener('keydown', (event) => {
     const code = event.code;
@@ -2084,6 +2156,7 @@ function setupInputHandlers(): void {
   });
 }
 
+/** Enumerates audio devices, updates selectors, and persists preferred choices. */
 async function populateAudioDevices(): Promise<void> {
   if (!navigator.mediaDevices?.enumerateDevices) {
     return;
@@ -2133,6 +2206,7 @@ async function populateAudioDevices(): Promise<void> {
   }
 }
 
+/** Opens settings modal and focuses device controls. */
 function openSettings(): void {
   lastFocusedElement = document.activeElement;
   dom.settingsModal.classList.remove('hidden');
@@ -2140,6 +2214,7 @@ function openSettings(): void {
   dom.audioInputSelect.focus();
 }
 
+/** Closes settings modal and restores focus back to prior element or game canvas. */
 function closeSettings(): void {
   dom.settingsModal.classList.add('hidden');
   if (lastFocusedElement instanceof HTMLElement) {
@@ -2149,6 +2224,7 @@ function closeSettings(): void {
   }
 }
 
+/** Wires button/form handlers and lifecycle hooks for the main UI shell. */
 function setupUiHandlers(): void {
   setupDomUiHandlers({
     dom,

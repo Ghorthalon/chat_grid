@@ -25,6 +25,7 @@ type EmitSpatialConfig = {
 
 const ITEM_EMIT_BASE_GAIN = 0.3;
 
+/** Maps a 0-100 speed control to playback-rate range used by emitted audio. */
 function resolveEmitPlaybackRate(raw: unknown): number {
   const speed = Number(raw);
   const clamped = Number.isFinite(speed) ? Math.max(0, Math.min(100, speed)) : 50;
@@ -34,6 +35,7 @@ function resolveEmitPlaybackRate(raw: unknown): number {
   return 1 + ((clamped - 50) / 50) * 1;
 }
 
+/** Sets browser-specific preserve-pitch flags when changing element playback rate. */
 function setElementPreservesPitch(element: HTMLAudioElement, enabled: boolean): void {
   const target = element as HTMLAudioElement & {
     preservesPitch?: boolean;
@@ -45,6 +47,7 @@ function setElementPreservesPitch(element: HTMLAudioElement, enabled: boolean): 
   if ('webkitPreservesPitch' in target) target.webkitPreservesPitch = enabled;
 }
 
+/** Resolves effective emit playback/pitch settings from item params with global fallbacks. */
 function resolveEmitRates(item: WorldItem): { playbackRate: number; preservePitch: boolean } {
   const globals = getItemTypeGlobalProperties(item.type);
   const speed = resolveEmitPlaybackRate(item.params.emitSoundSpeed ?? globals.emitSoundSpeed ?? 50);

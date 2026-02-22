@@ -49,3 +49,4 @@
 ## Changelog Policy
 - Footer changelog content is sourced from `client/public/changelog.json`.
 - Do not add or edit changelog lines unless the user explicitly instructs to do so.
+- Within each date section, keep newest items at the top (reverse chronological order for that day).

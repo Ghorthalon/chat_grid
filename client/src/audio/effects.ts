@@ -145,6 +145,7 @@ export function connectEffectChain(
   return runtime;
 }
 
+/** Generates a synthetic impulse buffer used by the reverb convolver effect. */
 function createImpulseResponse(audioCtx: AudioContext, duration: number, decay: number): AudioBuffer {
   const length = Math.floor(audioCtx.sampleRate * duration);
   const impulse = audioCtx.createBuffer(2, length, audioCtx.sampleRate);

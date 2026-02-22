@@ -50,6 +50,7 @@ export function normalizeRadioChannel(channel: unknown): RadioChannelMode {
   return (RADIO_CHANNEL_OPTIONS as readonly string[]).includes(normalized) ? normalized : 'stereo';
 }
 
+/** Connects a shared radio media source according to channel mode. */
 function connectRadioChannelSource(
   audioCtx: AudioContext,
   sharedSource: MediaElementAudioSourceNode,
@@ -109,6 +110,7 @@ function connectRadioChannelSource(
   };
 }
 
+/** Returns whether a hostname belongs to Dropbox domains that need proxy support. */
 function isDropboxHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return host.endsWith('dropbox.com') || host.endsWith('dropboxusercontent.com');
@@ -138,6 +140,7 @@ export function getProxyUrlForStream(streamUrl: string): string {
   return proxy.toString();
 }
 
+/** Appends a cache-buster query parameter to avoid stale stream buffers between sessions. */
 function freshStreamUrl(streamUrl: string): string {
   const playbackSource = shouldProxyStreamUrl(streamUrl) ? getProxyUrlForStream(streamUrl) : streamUrl;
   try {

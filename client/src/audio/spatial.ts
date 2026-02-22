@@ -80,17 +80,20 @@ export function normalizeDegrees(value: number): number {
   return wrapped < 0 ? wrapped + 360 : wrapped;
 }
 
+/** Computes compass bearing from source to listener where 0 is north and 90 is east. */
 function bearingFromSourceToListener(dx: number, dy: number): number {
   // 0 degrees is north (+y), 90 is east (+x), matching screen-reader compass wording.
   const degrees = Math.atan2(dx, dy) * (180 / Math.PI);
   return normalizeDegrees(degrees);
 }
 
+/** Returns shortest absolute angular difference in degrees on a circle. */
 function angularDifferenceDeg(a: number, b: number): number {
   const raw = Math.abs(normalizeDegrees(a) - normalizeDegrees(b));
   return raw > 180 ? 360 - raw : raw;
 }
 
+/** Computes directional attenuation profile based on listener angle vs source facing. */
 function resolveDirectionalProfile(
   dx: number,
   dy: number,

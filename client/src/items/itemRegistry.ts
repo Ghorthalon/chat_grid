@@ -124,10 +124,12 @@ export let EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
   Object.values(itemTypeEditableProperties).flatMap((keys) => keys),
 );
 
+/** Rebuilds the flattened editable-key lookup after item-type definitions are replaced. */
 function rebuildEditablePropertyKeySet(): void {
   EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(Object.values(itemTypeEditableProperties).flatMap((keys) => keys));
 }
 
+/** Normalizes server-provided property metadata into strict client metadata shape. */
 function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefined): Record<string, ItemPropertyMetadata> {
   if (!raw) return {};
   const normalized: Record<string, ItemPropertyMetadata> = {};
@@ -166,38 +168,47 @@ function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefine
   return normalized;
 }
 
+/** Returns current timezone option list used by clock item properties. */
 export function getClockTimeZoneOptions(): string[] {
   return [...(optionItemPropertyValues.timeZone ?? DEFAULT_CLOCK_TIME_ZONE_OPTIONS)];
 }
 
+/** Returns default timezone used by clock items when no override is set. */
 export function getDefaultClockTimeZone(): string {
   return getClockTimeZoneOptions()[0] ?? 'America/Detroit';
 }
 
+/** Returns item-type display order for add-item menus. */
 export function getItemTypeSequence(): ItemType[] {
   return [...itemTypeSequence];
 }
 
+/** Returns global per-type property defaults provided by server/item catalog. */
 export function getItemTypeGlobalProperties(itemType: ItemType): Record<string, string | number | boolean> {
   return itemTypeGlobalProperties[itemType] ?? {};
 }
 
+/** Returns item-type tooltip text, if defined. */
 export function getItemTypeTooltip(itemType: ItemType): string | undefined {
   return itemTypeTooltips[itemType];
 }
 
+/** Returns metadata for a given item property on a specific type. */
 export function getItemPropertyMetadata(itemType: ItemType, key: string): ItemPropertyMetadata | undefined {
   return itemTypePropertyMetadata[itemType]?.[key];
 }
 
+/** Returns option-list values for list-based properties, if defined. */
 export function getItemPropertyOptionValues(key: string): string[] | undefined {
   return optionItemPropertyValues[key];
 }
 
+/** Returns human-facing label for an item type. */
 export function itemTypeLabel(type: ItemType): string {
   return itemTypeLabels[type] ?? type;
 }
 
+/** Returns human-facing label for a property key. */
 export function itemPropertyLabel(key: string): string {
   if (key === 'use24Hour') return 'use 24 hour format';
   if (key === 'emitRange') return 'emit range';
@@ -215,10 +226,12 @@ export function itemPropertyLabel(key: string): string {
   return key;
 }
 
+/** Returns editable properties for one item instance/type. */
 export function getEditableItemPropertyKeys(item: WorldItem): string[] {
   return [...(itemTypeEditableProperties[item.type] ?? ['title'])];
 }
 
+/** Returns inspect-mode property key list (editable first, then system/global extras). */
 export function getInspectItemPropertyKeys(item: WorldItem): string[] {
   const editableKeys = getEditableItemPropertyKeys(item);
   const seen = new Set(editableKeys);
@@ -260,6 +273,7 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
   return allKeys;
 }
 
+/** Applies server-supplied UI/catalog definitions for item types, properties, and options. */
 export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload | undefined): void {
   if (!uiDefinitions) return;
 
