@@ -36,24 +36,24 @@ export type MainModeCommand =
  * Maps raw key events to a semantic command for main mode handling.
  */
 export function resolveMainModeCommand(code: string, shiftKey: boolean): MainModeCommand | null {
-  if (code === 'KeyN') return 'editNickname';
+  if (code === 'KeyN') return shiftKey ? null : 'editNickname';
   if (code === 'KeyM') return shiftKey ? 'toggleOutputMode' : 'toggleMute';
   if (code === 'Digit1') return shiftKey ? 'toggleLoopback' : 'toggleVoiceLayer';
   if (code === 'Digit2') return 'toggleItemLayer';
   if (code === 'Digit3') return 'toggleMediaLayer';
   if (code === 'Digit4') return 'toggleWorldLayer';
-  if (code === 'KeyE') return 'openEffectSelect';
+  if (code === 'KeyE') return shiftKey ? null : 'openEffectSelect';
   if (code === 'Equal' || code === 'NumpadAdd') return 'effectValueUp';
   if (code === 'Minus' || code === 'NumpadSubtract') return 'effectValueDown';
-  if (code === 'KeyC') return 'speakCoordinates';
+  if (code === 'KeyC') return shiftKey ? null : 'speakCoordinates';
   if (code === 'KeyV') return shiftKey ? 'calibrateMicrophone' : 'openMicGainEdit';
   if (code === 'Enter') return 'useItem';
-  if (code === 'KeyU') return 'speakUsers';
-  if (code === 'KeyA') return 'addItem';
+  if (code === 'KeyU') return shiftKey ? null : 'speakUsers';
+  if (code === 'KeyA') return shiftKey ? null : 'addItem';
   if (code === 'KeyI') return 'locateOrListItems';
   if (code === 'KeyD') return 'pickupDropOrDelete';
   if (code === 'KeyO') return 'editOrInspectItem';
-  if (code === 'KeyP') return 'pingServer';
+  if (code === 'KeyP') return shiftKey ? null : 'pingServer';
   if (code === 'KeyL') return 'locateOrListUsers';
   if (code === 'Slash') return shiftKey ? 'openHelp' : 'openChat';
   if (code === 'Comma') return shiftKey ? 'chatFirst' : 'chatPrev';

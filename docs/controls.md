@@ -13,7 +13,7 @@ This document is the authoritative keymap for the client.
 ### Users, Nickname, Chat
 - `L`: Locate nearest user
 - `Shift+L`: List users and teleport to selected user with `Enter`
-- `Shift+U`: Speak connected users
+- `U`: Speak connected users
 - `N`: Edit nickname
 - `/`: Start chat
 - `,` / `.`: Previous/next message
@@ -27,10 +27,12 @@ This document is the authoritative keymap for the client.
 - `Shift+O`: Inspect all item properties
 - `D`: Pick up/drop item
 - `Shift+D`: Delete item
-- `U`: Use item
+- `Enter`: Use item
 
 ### Audio
 - `P`: Ping server
+- `V`: Set microphone gain
+- `Shift+V`: Microphone calibration
 - `M`: Mute/unmute local microphone
 - `Shift+M`: Toggle stereo/mono output
 - `Shift+1` (`!`): Toggle loopback monitor
@@ -49,10 +51,16 @@ This document is the authoritative keymap for the client.
 - `Ctrl+ArrowLeft` / `Ctrl+ArrowRight`: Move cursor by word (notepad-style)
 - `Home` / `End`: Move to start/end
 - `Backspace`: Delete previous character
+- `Delete`: Delete current character
 - `Ctrl+A`: Select all (replace-on-next-type)
 - `Ctrl+C`: Copy current text
 - `Ctrl+X`: Cut current text
 - `Ctrl+V`: Paste
+
+## Numeric Edit Fields
+
+- `ArrowUp` / `ArrowDown`: Step value
+- `PageUp` / `PageDown`: Step by 10 increments
 
 ## Menu/List Navigation Modes
 

@@ -29,6 +29,7 @@ import {
   shouldReplaceCurrentText,
 } from './input/textInput';
 import { resolveMainModeCommand } from './input/mainCommandRouter';
+import { dispatchModeInput } from './input/modeDispatcher';
 import { handleListControlKey } from './input/listController';
 import { getEditSessionAction } from './input/editSession';
 import { formatSteppedNumber, snapNumberToStep } from './input/numeric';
@@ -59,19 +60,14 @@ import {
   itemTypeLabel,
 } from './items/itemRegistry';
 import { createItemPropertyEditor } from './items/itemPropertyEditor';
+import { NICKNAME_STORAGE_KEY, SettingsStore } from './settings/settingsStore';
+import { runConnectFlow, runDisconnectFlow, type ConnectFlowDeps } from './session/connectionFlow';
+import { MediaSession } from './session/mediaSession';
+import { type AudioLayerState } from './types/audio';
 import { setupUiHandlers as setupDomUiHandlers } from './ui/domBindings';
 import { PeerManager } from './webrtc/peerManager';
 
-const EFFECT_LEVELS_STORAGE_KEY = 'chatGridEffectLevels';
-const AUDIO_INPUT_STORAGE_KEY = 'chatGridAudioInputDeviceId';
-const AUDIO_OUTPUT_STORAGE_KEY = 'chatGridAudioOutputDeviceId';
-const AUDIO_INPUT_NAME_STORAGE_KEY = 'chatGridAudioInputDeviceName';
-const AUDIO_OUTPUT_NAME_STORAGE_KEY = 'chatGridAudioOutputDeviceName';
-const AUDIO_OUTPUT_MODE_STORAGE_KEY = 'chatGridAudioOutputMode';
-const AUDIO_LAYER_STATE_STORAGE_KEY = 'chatGridAudioLayers';
-const MIC_INPUT_GAIN_STORAGE_KEY = 'chatGridMicInputGain';
 const DEFAULT_DISPLAY_TIME_ZONE = 'America/Detroit';
-const NICKNAME_STORAGE_KEY = 'spatialChatNickname';
 const NICKNAME_MAX_LENGTH = 32;
 const MIC_CALIBRATION_DURATION_MS = 5000;
 const MIC_CALIBRATION_SAMPLE_INTERVAL_MS = 50;
@@ -156,13 +152,6 @@ type HelpData = {
   sections: HelpSection[];
 };
 
-type AudioLayerState = {
-  voice: boolean;
-  item: boolean;
-  media: boolean;
-  world: boolean;
-};
-
 const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
 const DISPLAY_TIME_ZONE = resolveDisplayTimeZone();
 dom.appVersion.textContent = APP_VERSION
@@ -187,20 +176,14 @@ const WALL_SOUND_URL = withBase('sounds/wall.ogg');
 const state = createInitialState();
 const renderer = new CanvasRenderer(dom.canvas);
 const audio = new AudioEngine();
+const settings = new SettingsStore();
 let worldGridSize = GRID_SIZE;
 let lastWallCollisionDirection: string | null = null;
-let localStream: MediaStream | null = null;
-let outboundStream: MediaStream | null = null;
 let statusTimeout: number | null = null;
 let lastFocusedElement: Element | null = null;
 let lastAnnouncementText = '';
 let lastAnnouncementAt = 0;
-let preferredInputDeviceId = localStorage.getItem(AUDIO_INPUT_STORAGE_KEY) || '';
-let preferredOutputDeviceId = localStorage.getItem(AUDIO_OUTPUT_STORAGE_KEY) || '';
-let preferredInputDeviceName = localStorage.getItem(AUDIO_INPUT_NAME_STORAGE_KEY) || '';
-let preferredOutputDeviceName = localStorage.getItem(AUDIO_OUTPUT_NAME_STORAGE_KEY) || '';
-let outputMode = localStorage.getItem(AUDIO_OUTPUT_MODE_STORAGE_KEY) === 'mono' ? 'mono' : 'stereo';
-let connecting = false;
+let outputMode = settings.loadOutputMode();
 const messageBuffer: string[] = [];
 let messageCursor = -1;
 const radioRuntime = new RadioStationRuntime(audio, getItemSpatialConfig);
@@ -210,7 +193,6 @@ let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
 let helpViewerLines: string[] = [];
 let helpViewerIndex = 0;
-let calibratingMicInput = false;
 let audioLayers: AudioLayerState = {
   voice: true,
   item: true,
@@ -227,9 +209,25 @@ const peerManager = new PeerManager(
   (targetId, payload) => {
     signaling.send({ type: 'signal', targetId, ...payload });
   },
-  () => outboundStream,
+  () => mediaSession.getOutboundStream(),
   updateStatus,
 );
+const mediaSession = new MediaSession({
+  state,
+  audio,
+  peerManager,
+  settings,
+  dom,
+  updateStatus,
+  micCalibrationDurationMs: MIC_CALIBRATION_DURATION_MS,
+  micCalibrationSampleIntervalMs: MIC_CALIBRATION_SAMPLE_INTERVAL_MS,
+  micCalibrationMinGain: MIC_CALIBRATION_MIN_GAIN,
+  micCalibrationMaxGain: MIC_CALIBRATION_MAX_GAIN,
+  micCalibrationTargetRms: MIC_CALIBRATION_TARGET_RMS,
+  micCalibrationActiveRmsThreshold: MIC_CALIBRATION_ACTIVE_RMS_THRESHOLD,
+  micInputGainScaleMultiplier: MIC_INPUT_GAIN_SCALE_MULTIPLIER,
+  micInputGainStep: MIC_INPUT_GAIN_STEP,
+});
 audio.setOutputMode(outputMode);
 
 loadEffectLevels();
@@ -416,50 +414,30 @@ function updateConnectAvailability(): void {
     return;
   }
   const hasNickname = sanitizeName(dom.preconnectNickname.value).length > 0;
-  dom.connectButton.disabled = connecting || !hasNickname;
+  dom.connectButton.disabled = mediaSession.isConnecting() || !hasNickname;
 }
 
 /** Restores persisted outbound effect levels from local storage. */
 function loadEffectLevels(): void {
-  const raw = localStorage.getItem(EFFECT_LEVELS_STORAGE_KEY);
-  if (!raw) return;
-  try {
-    const parsed = JSON.parse(raw) as Partial<
-      Record<'reverb' | 'echo' | 'flanger' | 'high_pass' | 'low_pass' | 'off', number>
-    >;
-    audio.setEffectLevels(parsed);
-  } catch {
-    // Ignore malformed persisted values.
-  }
+  const parsed = settings.loadEffectLevels();
+  if (!parsed) return;
+  audio.setEffectLevels(parsed);
 }
 
 /** Persists current outbound effect levels to local storage. */
 function persistEffectLevels(): void {
-  localStorage.setItem(EFFECT_LEVELS_STORAGE_KEY, JSON.stringify(audio.getEffectLevels()));
+  settings.saveEffectLevels(audio.getEffectLevels());
 }
 
 /** Restores local audio-layer toggles and applies initial voice-layer state. */
 function loadAudioLayerState(): void {
-  const raw = localStorage.getItem(AUDIO_LAYER_STATE_STORAGE_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Partial<AudioLayerState>;
-      audioLayers = {
-        voice: parsed.voice !== false,
-        item: parsed.item !== false,
-        media: parsed.media !== false,
-        world: parsed.world !== false,
-      };
-    } catch {
-      // Ignore malformed persisted values.
-    }
-  }
+  audioLayers = settings.loadAudioLayers();
   audio.setVoiceLayerEnabled(audioLayers.voice);
 }
 
 /** Persists current audio-layer toggles to local storage. */
 function persistAudioLayerState(): void {
-  localStorage.setItem(AUDIO_LAYER_STATE_STORAGE_KEY, JSON.stringify(audioLayers));
+  settings.saveAudioLayers(audioLayers);
 }
 
 /** Clamps microphone input gain to the supported calibration bounds. */
@@ -470,18 +448,17 @@ function clampMicInputGain(value: number): number {
 
 /** Loads persisted microphone input gain and applies default when missing. */
 function loadMicInputGain(): void {
-  const raw = localStorage.getItem(MIC_INPUT_GAIN_STORAGE_KEY);
-  if (!raw) {
+  const parsed = settings.loadMicInputGain();
+  if (parsed === null) {
     audio.setOutboundInputGain(2);
     return;
   }
-  const parsed = Number(raw);
   audio.setOutboundInputGain(clampMicInputGain(parsed));
 }
 
 /** Persists microphone input gain to local storage. */
 function persistMicInputGain(value: number): void {
-  localStorage.setItem(MIC_INPUT_GAIN_STORAGE_KEY, String(value));
+  settings.saveMicInputGain(value);
 }
 
 /** Applies current layer toggles to peer voice, media streams, and item emitters. */
@@ -572,21 +549,7 @@ function navigateChatBuffer(target: 'prev' | 'next' | 'first' | 'last'): void {
 
 /** Updates compact input/output device summary labels in the pre-connect UI. */
 function updateDeviceSummary(): void {
-  if (preferredInputDeviceId) {
-    const text = dom.audioInputSelect.selectedOptions[0]?.text || preferredInputDeviceName || 'Saved microphone';
-    dom.audioInputCurrent.textContent = `Input: ${text}`;
-    dom.audioInputCurrent.classList.remove('hidden');
-  } else {
-    dom.audioInputCurrent.classList.add('hidden');
-  }
-
-  if (preferredOutputDeviceId) {
-    const text = dom.audioOutputSelect.selectedOptions[0]?.text || preferredOutputDeviceName || 'Saved speakers';
-    dom.audioOutputCurrent.textContent = `Output: ${text}`;
-    dom.audioOutputCurrent.classList.remove('hidden');
-  } else {
-    dom.audioOutputCurrent.classList.add('hidden');
-  }
+  mediaSession.updateDeviceSummary();
 }
 
 /** Returns peer nicknames currently occupying the given grid cell. */
@@ -1040,262 +1003,69 @@ function handleMovement(): void {
 
 /** Checks microphone permission state when Permissions API support is available. */
 async function checkMicPermission(): Promise<boolean> {
-  const permissionApi = navigator.permissions;
-  if (!permissionApi?.query) return true;
-  try {
-    const result = await permissionApi.query({ name: 'microphone' as PermissionName });
-    return result.state !== 'denied';
-  } catch {
-    return true;
-  }
+  return mediaSession.checkMicPermission();
 }
 
 /** Starts local microphone capture and rebuilds the outbound track pipeline. */
 async function setupLocalMedia(audioDeviceId = ''): Promise<void> {
-  stopLocalMedia();
-
-  await audio.ensureContext();
-
-  const constraints: MediaStreamConstraints = {
-    audio: {
-      deviceId: audioDeviceId ? { exact: audioDeviceId } : undefined,
-      sampleRate: 48000,
-      channelCount: 2,
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-    },
-    video: false,
-  };
-
-  localStream = await navigator.mediaDevices.getUserMedia(constraints);
-  const audioTrack = localStream.getAudioTracks()[0];
-  if (audioTrack) {
-    audioTrack.enabled = !state.isMuted;
-  }
-  outboundStream = await audio.configureOutboundStream(localStream);
-  await peerManager.replaceOutgoingTrack(outboundStream);
+  await mediaSession.setupLocalMedia(audioDeviceId);
 }
 
 /** Runs a short RMS sample to estimate and apply a usable microphone input gain. */
 async function calibrateMicInputGain(): Promise<void> {
-  if (calibratingMicInput) {
-    updateStatus('Mic calibration already running.');
-    return;
-  }
-  if (!state.running || !localStream) {
-    updateStatus('Connect first, then use Shift+C to calibrate.');
-    audio.sfxUiCancel();
-    return;
-  }
-  const track = localStream.getAudioTracks()[0];
-  if (!track || track.readyState !== 'live') {
-    updateStatus('No active microphone track for calibration.');
-    audio.sfxUiCancel();
-    return;
-  }
-  await audio.ensureContext();
-  const audioContext = audio.context;
-  if (!audioContext) {
-    updateStatus('Audio context unavailable.');
-    audio.sfxUiCancel();
-    return;
-  }
-
-  calibratingMicInput = true;
-  updateStatus('Speak for 5 seconds to calibrate your audio.');
-  audio.sfxUiBlip();
-
-  const source = audioContext.createMediaStreamSource(new MediaStream([track]));
-  const analyser = audioContext.createAnalyser();
-  analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0.2;
-  source.connect(analyser);
-  const samples = new Float32Array(analyser.fftSize);
-  const rmsValues: number[] = [];
-
-  try {
-    const startedAt = performance.now();
-    while (performance.now() - startedAt < MIC_CALIBRATION_DURATION_MS) {
-      analyser.getFloatTimeDomainData(samples);
-      let sumSquares = 0;
-      for (let i = 0; i < samples.length; i += 1) {
-        const sample = samples[i];
-        sumSquares += sample * sample;
-      }
-      const rms = Math.sqrt(sumSquares / samples.length);
-      rmsValues.push(rms);
-      await new Promise((resolve) => window.setTimeout(resolve, MIC_CALIBRATION_SAMPLE_INTERVAL_MS));
-    }
-  } finally {
-    source.disconnect();
-    analyser.disconnect();
-    calibratingMicInput = false;
-  }
-
-  const activeRms = rmsValues.filter((value) => value >= MIC_CALIBRATION_ACTIVE_RMS_THRESHOLD);
-  if (activeRms.length < 10) {
-    updateStatus('No audio detected, please try again.');
-    audio.sfxUiCancel();
-    return;
-  }
-
-  activeRms.sort((a, b) => a - b);
-  const percentileIndex = Math.min(activeRms.length - 1, Math.floor(activeRms.length * 0.9));
-  const observedRms = activeRms[percentileIndex];
-  if (!(observedRms > 0)) {
-    updateStatus('No audio detected, please try again.');
-    audio.sfxUiCancel();
-    return;
-  }
-
-  const calibratedGain = clampMicInputGain((MIC_CALIBRATION_TARGET_RMS / observedRms) * MIC_INPUT_GAIN_SCALE_MULTIPLIER);
-  const roundedGain = clampMicInputGain(snapNumberToStep(calibratedGain, MIC_INPUT_GAIN_STEP, MIC_CALIBRATION_MIN_GAIN));
-  const appliedGain = audio.setOutboundInputGain(roundedGain);
-  persistMicInputGain(appliedGain);
-  updateStatus(`Mic calibration set to ${formatSteppedNumber(appliedGain, MIC_INPUT_GAIN_STEP)}x.`);
-  audio.sfxUiConfirm();
+  await mediaSession.calibrateMicInputGain(clampMicInputGain, persistMicInputGain);
 }
 
 /** Stops local capture tracks and clears outbound stream references. */
 function stopLocalMedia(): void {
-  if (localStream) {
-    localStream.getTracks().forEach((track) => track.stop());
-    localStream = null;
-  }
-  outboundStream = null;
+  mediaSession.stopLocalMedia();
 }
 
 /** Maps browser media/capture errors to user-facing remediation text. */
 function describeMediaError(error: unknown): string {
-  if (error instanceof DOMException) {
-    if (error.name === 'NotAllowedError') return 'Microphone blocked. Allow mic access in browser site settings.';
-    if (error.name === 'NotFoundError') return 'No microphone found. Check that an input device is connected and enabled.';
-    if (error.name === 'NotReadableError') return 'Microphone is busy or unavailable. Close other apps using the mic and retry.';
-    if (error.name === 'OverconstrainedError') return 'Selected audio device is unavailable. Choose another input device.';
-    if (error.name === 'SecurityError') return 'Microphone access requires a secure context (HTTPS) in production.';
-  }
-  return 'Audio setup failed. Check browser permissions and selected input device.';
+  return mediaSession.describeMediaError(error);
+}
+
+/** Builds dependencies shared by connect/disconnect flow helpers. */
+function getConnectionFlowDeps(): ConnectFlowDeps {
+  return {
+    state,
+    dom,
+    sanitizeName,
+    updateStatus,
+    updateConnectAvailability,
+    settingsSaveNickname: (value) => settings.saveNickname(value),
+    mediaIsConnecting: () => mediaSession.isConnecting(),
+    mediaSetConnecting: (value) => mediaSession.setConnecting(value),
+    mediaCheckMicPermission: () => checkMicPermission(),
+    mediaPopulateAudioDevices: () => populateAudioDevices(),
+    mediaGetPreferredInputDeviceId: () => mediaSession.getPreferredInputDeviceId(),
+    mediaSetupLocalMedia: (audioDeviceId) => setupLocalMedia(audioDeviceId),
+    mediaDescribeError: (error) => describeMediaError(error),
+    mediaStopLocalMedia: () => stopLocalMedia(),
+    signalingConnect: (handler) => signaling.connect(handler as (message: IncomingMessage) => Promise<void>),
+    signalingDisconnect: () => signaling.disconnect(),
+    onMessage: (message) => onMessage(message as IncomingMessage),
+    worldGridSize,
+    persistPlayerPosition,
+    peerManagerCleanupAll: () => peerManager.cleanupAll(),
+    radioCleanupAll: () => radioRuntime.cleanupAll(),
+    emitCleanupAll: () => itemEmitRuntime.cleanupAll(),
+    playLogoutSound: () => {
+      void audio.playSample(SYSTEM_SOUND_URLS.logout, 1);
+    },
+  };
 }
 
 /** Performs end-to-end connect flow: validation, media setup, then signaling connection. */
 async function connect(): Promise<void> {
-  if (connecting || state.running) {
-    return;
-  }
-  const nickname = sanitizeName(dom.preconnectNickname.value);
-  if (!nickname) {
-    updateStatus('Nickname is required.');
-    updateConnectAvailability();
-    return;
-  }
-  state.player.nickname = nickname;
-  dom.preconnectNickname.value = nickname;
-  localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
-  connecting = true;
-  updateConnectAvailability();
-  const canProceed = await checkMicPermission();
-  if (!canProceed) {
-    updateStatus('Microphone access is required.');
-    connecting = false;
-    updateConnectAvailability();
-    return;
-  }
-
-  state.player.x = Math.floor(Math.random() * worldGridSize);
-  state.player.y = Math.floor(Math.random() * worldGridSize);
-  const storedPosition = localStorage.getItem('spatialChatPosition');
-  if (storedPosition) {
-    try {
-      const parsed = JSON.parse(storedPosition) as { x?: number; y?: number };
-      if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
-        const x = Math.floor(parsed.x as number);
-        const y = Math.floor(parsed.y as number);
-        if (x >= 0 && x < worldGridSize && y >= 0 && y < worldGridSize) {
-          state.player.x = x;
-          state.player.y = y;
-        }
-      }
-    } catch {
-      // Ignore malformed saved positions and keep randomized defaults.
-    }
-  }
-
-  try {
-    await populateAudioDevices();
-    if (dom.audioInputSelect.options.length === 0) {
-      updateStatus('No audio input device found. Open Settings or connect a microphone.');
-      connecting = false;
-      updateConnectAvailability();
-      return;
-    }
-    const inputDeviceId = dom.audioInputSelect.value || preferredInputDeviceId;
-    await setupLocalMedia(inputDeviceId);
-  } catch (error) {
-    console.error(error);
-    updateStatus(describeMediaError(error));
-    connecting = false;
-    updateConnectAvailability();
-    return;
-  }
-
-  try {
-    await signaling.connect(onMessage);
-  } catch (error) {
-    console.error(error);
-    stopLocalMedia();
-    updateStatus('Connect failed. Signaling server may be offline or unreachable.');
-    connecting = false;
-    updateConnectAvailability();
-  }
+  await runConnectFlow(getConnectionFlowDeps());
 }
 
 /** Tears down active session state, media, peers, and UI back to pre-connect mode. */
 function disconnect(): void {
-  const wasRunning = state.running;
-  if (state.running) {
-    persistPlayerPosition();
-  }
-
-  signaling.disconnect();
-  stopLocalMedia();
-
-  peerManager.cleanupAll();
-  radioRuntime.cleanupAll();
-  itemEmitRuntime.cleanupAll();
-  state.running = false;
-  state.keysPressed = {};
-  state.peers.clear();
-  state.items.clear();
-  state.carriedItemId = null;
-  state.mode = 'normal';
-  state.sortedItemIds = [];
-  state.itemListIndex = 0;
-  state.selectedItemIds = [];
-  state.selectionContext = null;
-  state.selectedItemIndex = 0;
-  state.selectedItemId = null;
-  state.itemPropertyKeys = [];
-  state.itemPropertyIndex = 0;
-  state.editingPropertyKey = null;
-  state.itemPropertyOptionValues = [];
-  state.itemPropertyOptionIndex = 0;
-  state.effectSelectIndex = 0;
+  runDisconnectFlow(getConnectionFlowDeps());
   pendingEscapeDisconnect = false;
-
-  connecting = false;
-  dom.nicknameContainer.classList.remove('hidden');
-  dom.connectButton.classList.remove('hidden');
-  dom.disconnectButton.classList.add('hidden');
-  dom.focusGridButton.classList.add('hidden');
-  dom.canvas.classList.add('hidden');
-  dom.instructions.classList.add('hidden');
-  updateConnectAvailability();
-
-  updateStatus('Disconnected.');
-  if (wasRunning) {
-    void audio.playSample(SYSTEM_SOUND_URLS.logout, 1);
-  }
 }
 
 const onMessage = createOnMessageHandler({
@@ -1304,7 +1074,8 @@ const onMessage = createOnMessageHandler({
     worldGridSize = size;
   },
   setConnecting: (value) => {
-    connecting = value;
+    mediaSession.setConnecting(value);
+    updateConnectAvailability();
   },
   rendererSetGridSize: (size) => renderer.setGridSize(size),
   applyServerItemUiDefinitions: (defs) => applyServerItemUiDefinitions(defs as Parameters<typeof applyServerItemUiDefinitions>[0]),
@@ -1352,10 +1123,7 @@ const onMessage = createOnMessageHandler({
 /** Toggles local microphone track mute state. */
 function toggleMute(): void {
   state.isMuted = !state.isMuted;
-  if (localStream) {
-    const track = localStream.getAudioTracks()[0];
-    if (track) track.enabled = !state.isMuted;
-  }
+  mediaSession.applyMuteToTrack(state.isMuted);
   updateStatus(state.isMuted ? 'Muted.' : 'Unmuted.');
 }
 
@@ -1381,7 +1149,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       return;
     case 'toggleOutputMode':
       outputMode = audio.toggleOutputMode();
-      localStorage.setItem(AUDIO_OUTPUT_MODE_STORAGE_KEY, outputMode);
+      mediaSession.saveOutputMode(outputMode);
       updateStatus(outputMode === 'mono' ? 'Mono output.' : 'Stereo output.');
       audio.sfxUiBlip();
       return;
@@ -2111,33 +1879,30 @@ function setupInputHandlers(): void {
 
     if (isTypingKey(code) && state.keysPressed[code]) return;
 
-    if (state.mode === 'nickname') {
-      handleNicknameModeInput(code, event.key, event.ctrlKey);
-    } else if (state.mode === 'chat') {
-      handleChatModeInput(code, event.key, event.ctrlKey);
-    } else if (state.mode === 'micGainEdit') {
-      handleMicGainEditModeInput(code, event.key, event.ctrlKey);
-    } else if (state.mode === 'effectSelect') {
-      handleEffectSelectModeInput(code, event.key);
-    } else if (state.mode === 'helpView') {
-      handleHelpViewModeInput(code);
-    } else if (state.mode === 'listUsers') {
-      handleListModeInput(code, event.key);
-    } else if (state.mode === 'listItems') {
-      handleListItemsModeInput(code, event.key);
-    } else if (state.mode === 'addItem') {
-      handleAddItemModeInput(code, event.key);
-    } else if (state.mode === 'selectItem') {
-      handleSelectItemModeInput(code, event.key);
-    } else if (state.mode === 'itemProperties') {
-      itemPropertyEditor.handleItemPropertiesModeInput(code, event.key);
-    } else if (state.mode === 'itemPropertyEdit') {
-      itemPropertyEditor.handleItemPropertyEditModeInput(code, event.key, event.ctrlKey);
-    } else if (state.mode === 'itemPropertyOptionSelect') {
-      itemPropertyEditor.handleItemPropertyOptionSelectModeInput(code, event.key);
-    } else {
-      handleNormalModeInput(code, event.shiftKey);
-    }
+    dispatchModeInput({
+      mode: state.mode,
+      code,
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      handlers: {
+        nickname: handleNicknameModeInput,
+        chat: handleChatModeInput,
+        micGainEdit: handleMicGainEditModeInput,
+        effectSelect: (currentCode, currentKey) => handleEffectSelectModeInput(currentCode, currentKey),
+        helpView: (currentCode) => handleHelpViewModeInput(currentCode),
+        listUsers: (currentCode, currentKey) => handleListModeInput(currentCode, currentKey),
+        listItems: (currentCode, currentKey) => handleListItemsModeInput(currentCode, currentKey),
+        addItem: (currentCode, currentKey) => handleAddItemModeInput(currentCode, currentKey),
+        selectItem: (currentCode, currentKey) => handleSelectItemModeInput(currentCode, currentKey),
+        itemProperties: (currentCode, currentKey) => itemPropertyEditor.handleItemPropertiesModeInput(currentCode, currentKey),
+        itemPropertyEdit: (currentCode, currentKey, currentCtrlKey) =>
+          itemPropertyEditor.handleItemPropertyEditModeInput(currentCode, currentKey, currentCtrlKey),
+        itemPropertyOptionSelect: (currentCode, currentKey) =>
+          itemPropertyEditor.handleItemPropertyOptionSelectModeInput(currentCode, currentKey),
+      },
+      onNormalMode: handleNormalModeInput,
+    });
 
     state.keysPressed[code] = true;
   });
@@ -2158,52 +1923,7 @@ function setupInputHandlers(): void {
 
 /** Enumerates audio devices, updates selectors, and persists preferred choices. */
 async function populateAudioDevices(): Promise<void> {
-  if (!navigator.mediaDevices?.enumerateDevices) {
-    return;
-  }
-
-  let temporaryStream: MediaStream | null = null;
-  try {
-    temporaryStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const devices = await navigator.mediaDevices.enumerateDevices();
-
-    dom.audioInputSelect.innerHTML = '';
-    dom.audioOutputSelect.innerHTML = '';
-
-    for (const device of devices) {
-      if (device.kind === 'audioinput') {
-        dom.audioInputSelect.add(new Option(device.label || `Microphone ${dom.audioInputSelect.length + 1}`, device.deviceId));
-      }
-      if (device.kind === 'audiooutput') {
-        const option = new Option(device.label || `Speaker ${dom.audioOutputSelect.length + 1}`, device.deviceId);
-        dom.audioOutputSelect.add(option);
-      }
-    }
-
-    if (preferredInputDeviceId && Array.from(dom.audioInputSelect.options).some((option) => option.value === preferredInputDeviceId)) {
-      dom.audioInputSelect.value = preferredInputDeviceId;
-      preferredInputDeviceName = dom.audioInputSelect.selectedOptions[0]?.text || preferredInputDeviceName;
-    } else if (dom.audioInputSelect.options.length > 0) {
-      preferredInputDeviceId = dom.audioInputSelect.value;
-      preferredInputDeviceName = dom.audioInputSelect.selectedOptions[0]?.text || preferredInputDeviceName;
-      localStorage.setItem(AUDIO_INPUT_STORAGE_KEY, preferredInputDeviceId);
-      localStorage.setItem(AUDIO_INPUT_NAME_STORAGE_KEY, preferredInputDeviceName);
-    }
-
-    if (preferredOutputDeviceId && Array.from(dom.audioOutputSelect.options).some((option) => option.value === preferredOutputDeviceId)) {
-      dom.audioOutputSelect.value = preferredOutputDeviceId;
-      preferredOutputDeviceName = dom.audioOutputSelect.selectedOptions[0]?.text || preferredOutputDeviceName;
-      void peerManager.setOutputDevice(preferredOutputDeviceId);
-    }
-
-    const sinkCapable = typeof (HTMLMediaElement.prototype as HTMLMediaElement & { setSinkId?: unknown }).setSinkId === 'function';
-    dom.audioOutputSelect.disabled = !sinkCapable;
-    updateDeviceSummary();
-  } catch {
-    updateStatus('Could not list devices.');
-  } finally {
-    temporaryStream?.getTracks().forEach((track) => track.stop());
-  }
+  await mediaSession.populateAudioDevices();
 }
 
 /** Opens settings modal and focuses device controls. */
@@ -2239,16 +1959,10 @@ function setupUiHandlers(): void {
     sfxUiBlip: () => audio.sfxUiBlip(),
     setupLocalMedia,
     setPreferredInput: (id, name) => {
-      preferredInputDeviceId = id;
-      preferredInputDeviceName = name || preferredInputDeviceName;
-      localStorage.setItem(AUDIO_INPUT_STORAGE_KEY, preferredInputDeviceId);
-      localStorage.setItem(AUDIO_INPUT_NAME_STORAGE_KEY, preferredInputDeviceName);
+      mediaSession.setPreferredInput(id, name);
     },
     setPreferredOutput: (id, name) => {
-      preferredOutputDeviceId = id;
-      preferredOutputDeviceName = name || preferredOutputDeviceName;
-      localStorage.setItem(AUDIO_OUTPUT_STORAGE_KEY, preferredOutputDeviceId);
-      localStorage.setItem(AUDIO_OUTPUT_NAME_STORAGE_KEY, preferredOutputDeviceName);
+      mediaSession.setPreferredOutput(id, name);
     },
     updateDeviceSummary,
     setOutputDevice: (id) => peerManager.setOutputDevice(id),
@@ -2261,7 +1975,7 @@ function setupUiHandlers(): void {
 
 setupInputHandlers();
 setupUiHandlers();
-const storedNickname = sanitizeName(localStorage.getItem(NICKNAME_STORAGE_KEY) || '');
+const storedNickname = sanitizeName(settings.loadNickname());
 dom.preconnectNickname.value = storedNickname;
 if (storedNickname) {
   state.player.nickname = storedNickname;
