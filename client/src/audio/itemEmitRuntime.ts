@@ -1,11 +1,12 @@
 import { HEARING_RADIUS, type WorldItem } from '../state/gameState';
 import { AudioEngine } from './audioEngine';
-import { resolveSpatialMix } from './spatial';
+import { resolveDirectionalMuffleRatio, resolveSpatialMix } from './spatial';
 
 type EmitOutput = {
   soundUrl: string;
   element: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
+  directionalFilter: BiquadFilterNode;
   gain: GainNode;
   panner: StereoPannerNode | null;
 };
@@ -34,6 +35,7 @@ export class ItemEmitRuntime {
     output.element.pause();
     output.element.src = '';
     output.source.disconnect();
+    output.directionalFilter.disconnect();
     output.gain.disconnect();
     output.panner?.disconnect();
     this.outputs.delete(itemId);
@@ -83,17 +85,20 @@ export class ItemEmitRuntime {
       element.preload = 'none';
       element.crossOrigin = 'anonymous';
       const source = audioCtx.createMediaElementSource(element);
+      const directionalFilter = audioCtx.createBiquadFilter();
+      directionalFilter.type = 'lowpass';
+      directionalFilter.frequency.value = 12000;
       const gain = audioCtx.createGain();
       gain.gain.value = 0;
       let panner: StereoPannerNode | null = null;
-      source.connect(gain);
+      source.connect(directionalFilter).connect(gain);
       if (this.audio.supportsStereoPanner()) {
         panner = audioCtx.createStereoPanner();
         gain.connect(panner).connect(audioCtx.destination);
       } else {
         gain.connect(audioCtx.destination);
       }
-      this.outputs.set(item.id, { soundUrl, element, source, gain, panner });
+      this.outputs.set(item.id, { soundUrl, element, source, directionalFilter, gain, panner });
       void element.play().catch(() => undefined);
     }
 
@@ -133,6 +138,18 @@ export class ItemEmitRuntime {
       });
       const gainValue = mix?.gain ?? 0;
       const panValue = mix?.pan ?? 0;
+      const muffleRatio = resolveDirectionalMuffleRatio(
+        item.x - playerPosition.x,
+        item.y - playerPosition.y,
+        {
+          enabled: spatialConfig.directional,
+          facingDeg: spatialConfig.facingDeg,
+          coneDeg: 120,
+          rearGain: 0.35,
+        },
+      );
+      const cutoffHz = 12000 - (12000 - 2500) * muffleRatio;
+      output.directionalFilter.frequency.linearRampToValueAtTime(cutoffHz, audioCtx.currentTime + 0.1);
       output.gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + 0.1);
       if (output.panner) {
         const resolvedPan = this.audio.getOutputMode() === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));

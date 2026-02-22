@@ -20,6 +20,11 @@ export type SpatialMixResult = {
   pan: number;
 };
 
+type DirectionalProfile = {
+  attenuationFactor: number;
+  offAxisRatio: number;
+};
+
 export function resolveSpatialMix(options: SpatialMixOptions): SpatialMixResult | null {
   const {
     dx,
@@ -37,19 +42,8 @@ export function resolveSpatialMix(options: SpatialMixOptions): SpatialMixResult 
   const distance = Math.hypot(dx, dy);
   let effectiveRange = range;
   if (options.directional?.enabled) {
-    const coneDeg = Math.max(1, Math.min(359, options.directional.coneDeg ?? 120));
-    const rearGain = Math.max(0, Math.min(1, options.directional.rearGain ?? 0.5));
-    const facingDeg = normalizeDegrees(options.directional.facingDeg);
-    // `dx/dy` are listener-relative source coords in current callers, so invert to get source->listener bearing.
-    const bearingDeg = bearingFromSourceToListener(-dx, -dy);
-    const diff = angularDifferenceDeg(facingDeg, bearingDeg);
-    const halfCone = coneDeg / 2;
-    if (diff > halfCone) {
-      const span = Math.max(1, 180 - halfCone);
-      const t = Math.max(0, Math.min(1, (diff - halfCone) / span));
-      const directionalFactor = 1 - t * (1 - rearGain);
-      effectiveRange = Math.max(0.01, range * directionalFactor);
-    }
+    const directionalProfile = resolveDirectionalProfile(dx, dy, options.directional);
+    effectiveRange = Math.max(0.01, range * directionalProfile.attenuationFactor);
   }
 
   if (distance > effectiveRange) {
@@ -71,6 +65,15 @@ export function resolveSpatialMix(options: SpatialMixOptions): SpatialMixResult 
   return { distance, gain, pan };
 }
 
+export function resolveDirectionalMuffleRatio(
+  dx: number,
+  dy: number,
+  directional: SpatialMixOptions['directional'],
+): number {
+  if (!directional?.enabled) return 0;
+  return resolveDirectionalProfile(dx, dy, directional).offAxisRatio;
+}
+
 export function normalizeDegrees(value: number): number {
   if (!Number.isFinite(value)) return 0;
   const wrapped = value % 360;
@@ -86,4 +89,27 @@ function bearingFromSourceToListener(dx: number, dy: number): number {
 function angularDifferenceDeg(a: number, b: number): number {
   const raw = Math.abs(normalizeDegrees(a) - normalizeDegrees(b));
   return raw > 180 ? 360 - raw : raw;
+}
+
+function resolveDirectionalProfile(
+  dx: number,
+  dy: number,
+  directional: NonNullable<SpatialMixOptions['directional']>,
+): DirectionalProfile {
+  const coneDeg = Math.max(1, Math.min(359, directional.coneDeg ?? 120));
+  const rearGain = Math.max(0, Math.min(1, directional.rearGain ?? 0.5));
+  const facingDeg = normalizeDegrees(directional.facingDeg);
+  // `dx/dy` are listener-relative source coords in current callers, so invert to get source->listener bearing.
+  const bearingDeg = bearingFromSourceToListener(-dx, -dy);
+  const diff = angularDifferenceDeg(facingDeg, bearingDeg);
+  const halfCone = coneDeg / 2;
+  if (diff <= halfCone) {
+    return { attenuationFactor: 1, offAxisRatio: 0 };
+  }
+  const span = Math.max(1, 180 - halfCone);
+  const offAxisRatio = Math.max(0, Math.min(1, (diff - halfCone) / span));
+  return {
+    attenuationFactor: 1 - offAxisRatio * (1 - rearGain),
+    offAxisRatio,
+  };
 }

@@ -1,7 +1,7 @@
 import { HEARING_RADIUS, type WorldItem } from '../state/gameState';
 import { EFFECT_IDS, clampEffectLevel, connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
 import { AudioEngine } from './audioEngine';
-import { resolveSpatialMix } from './spatial';
+import { resolveDirectionalMuffleRatio, resolveSpatialMix } from './spatial';
 
 export const RADIO_CHANNEL_OPTIONS = ['stereo', 'mono', 'left', 'right'] as const;
 export type RadioChannelMode = (typeof RADIO_CHANNEL_OPTIONS)[number];
@@ -26,6 +26,7 @@ type ItemRadioOutput = {
   effectRuntime: EffectRuntime | null;
   effect: EffectId;
   effectValue: number;
+  directionalFilter: BiquadFilterNode;
   gain: GainNode;
   panner: StereoPannerNode | null;
 };
@@ -152,6 +153,7 @@ export class RadioStationRuntime {
     output.sourceInput.disconnect();
     output.effectInput.disconnect();
     disconnectEffectRuntime(output.effectRuntime);
+    output.directionalFilter.disconnect();
     output.gain.disconnect();
     output.panner?.disconnect();
     this.itemRadioOutputs.delete(itemId);
@@ -230,6 +232,18 @@ export class RadioStationRuntime {
       });
       const gainValue = mix?.gain ?? 0;
       const panValue = mix?.pan ?? 0;
+      const muffleRatio = resolveDirectionalMuffleRatio(
+        item.x - playerPosition.x,
+        item.y - playerPosition.y,
+        {
+          enabled: spatialConfig.directional,
+          facingDeg: spatialConfig.facingDeg,
+          coneDeg: 120,
+          rearGain: 0.35,
+        },
+      );
+      const cutoffHz = 12000 - (12000 - 2500) * muffleRatio;
+      output.directionalFilter.frequency.linearRampToValueAtTime(cutoffHz, audioCtx.currentTime + 0.1);
       output.gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + 0.1);
       if (output.panner) {
         const resolvedPan = this.audio.getOutputMode() === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
@@ -249,7 +263,7 @@ export class RadioStationRuntime {
     }
     output.effectInput.disconnect();
     disconnectEffectRuntime(output.effectRuntime);
-    output.effectRuntime = connectEffectChain(audioCtx, output.effectInput, output.gain, effect, effectValue);
+    output.effectRuntime = connectEffectChain(audioCtx, output.effectInput, output.directionalFilter, effect, effectValue);
     output.effect = effect;
     output.effectValue = effectValue;
   }
@@ -313,11 +327,15 @@ export class RadioStationRuntime {
 
     const gain = audioCtx.createGain();
     gain.gain.value = 0;
+    const directionalFilter = audioCtx.createBiquadFilter();
+    directionalFilter.type = 'lowpass';
+    directionalFilter.frequency.value = 12000;
     const effectInput = audioCtx.createGain();
     const channelSource = connectRadioChannelSource(audioCtx, shared.source, channel, effectInput);
     const effect = normalizeRadioEffect(item.params.effect);
     const effectValue = normalizeRadioEffectValue(item.params.effectValue);
-    const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
+    const effectRuntime = connectEffectChain(audioCtx, effectInput, directionalFilter, effect, effectValue);
+    directionalFilter.connect(gain);
     let panner: StereoPannerNode | null = null;
     if (this.audio.supportsStereoPanner()) {
       panner = audioCtx.createStereoPanner();
@@ -338,6 +356,7 @@ export class RadioStationRuntime {
       effectRuntime,
       effect,
       effectValue,
+      directionalFilter,
       gain,
       panner,
     });
