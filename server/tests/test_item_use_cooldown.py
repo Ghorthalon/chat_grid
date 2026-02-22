@@ -85,7 +85,7 @@ async def test_radio_use_toggles_enabled(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.mark.asyncio
-async def test_radio_channel_update_validates(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_radio_media_fields_update_validate(monkeypatch: pytest.MonkeyPatch) -> None:
     server = SignalingServer("127.0.0.1", 8765, None, None)
     ws = _fake_ws()
     client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=6)
@@ -106,17 +106,17 @@ async def test_radio_channel_update_validates(monkeypatch: pytest.MonkeyPatch) -
 
     await server._handle_message(
         client,
-        json.dumps({"type": "item_update", "itemId": item.id, "params": {"channel": "left"}}),
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"mediaChannel": "left"}}),
     )
     assert send_payloads[-1].ok is True
-    assert item.params.get("channel") == "left"
+    assert item.params.get("mediaChannel") == "left"
 
     await server._handle_message(
         client,
-        json.dumps({"type": "item_update", "itemId": item.id, "params": {"channel": "invalid"}}),
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"mediaChannel": "invalid"}}),
     )
     assert send_payloads[-1].ok is False
-    assert "channel must be one of" in send_payloads[-1].message.lower()
+    assert "mediachannel must be one of" in send_payloads[-1].message.lower()
 
     await server._handle_message(
         client,
@@ -138,6 +138,13 @@ async def test_radio_channel_update_validates(monkeypatch: pytest.MonkeyPatch) -
     )
     assert send_payloads[-1].ok is True
     assert item.params.get("mediaVolume") == 12
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"mediaEffect": "echo"}}),
+    )
+    assert send_payloads[-1].ok is True
+    assert item.params.get("mediaEffect") == "echo"
 
     await server._handle_message(
         client,
@@ -285,6 +292,8 @@ async def test_widget_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
                     "facing": 123.4,
                     "emitRange": 7,
                     "emitVolume": 42,
+                    "emitEffect": "reverb",
+                    "emitEffectValue": 63.2,
                     "useSound": "ping.ogg",
                     "emitSound": "https://example.com/ambient.ogg",
                 },
@@ -296,6 +305,8 @@ async def test_widget_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     assert item.params.get("facing") == 123.4
     assert item.params.get("emitRange") == 7
     assert item.params.get("emitVolume") == 42
+    assert item.params.get("emitEffect") == "reverb"
+    assert item.params.get("emitEffectValue") == 63.2
     assert item.params.get("useSound") == "sounds/ping.ogg"
     assert item.params.get("emitSound") == "https://example.com/ambient.ogg"
 

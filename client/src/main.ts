@@ -723,9 +723,11 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
   }
   if (key === 'timeZone') return String(item.params.timeZone ?? getDefaultClockTimeZone());
   if (key === 'use24Hour') return item.params.use24Hour === true ? 'on' : 'off';
-  if (key === 'channel') return normalizeRadioChannel(item.params.channel);
-  if (key === 'effect') return normalizeRadioEffect(item.params.effect);
-  if (key === 'effectValue') return String(normalizeRadioEffectValue(item.params.effectValue));
+  if (key === 'mediaChannel') return normalizeRadioChannel(item.params.mediaChannel);
+  if (key === 'mediaEffect') return normalizeRadioEffect(item.params.mediaEffect);
+  if (key === 'mediaEffectValue') return String(normalizeRadioEffectValue(item.params.mediaEffectValue));
+  if (key === 'emitEffect') return normalizeRadioEffect(item.params.emitEffect);
+  if (key === 'emitEffectValue') return String(normalizeRadioEffectValue(item.params.emitEffectValue));
   if (key === 'facing') {
     const parsed = Number(item.params.facing ?? 0);
     if (!Number.isFinite(parsed)) return '0';
@@ -744,14 +746,15 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
 function inferItemPropertyValueType(item: WorldItem, key: string): string | undefined {
   if (key === 'useSound' || key === 'emitSound') return 'sound';
   if (key === 'enabled' || key === 'use24Hour' || key === 'directional') return 'boolean';
-  if (key === 'channel' || key === 'effect' || key === 'timeZone') return 'list';
+  if (key === 'mediaChannel' || key === 'mediaEffect' || key === 'emitEffect' || key === 'timeZone') return 'list';
   if (
     key === 'x' ||
     key === 'y' ||
     key === 'version' ||
     key === 'mediaVolume' ||
     key === 'emitVolume' ||
-    key === 'effectValue' ||
+    key === 'mediaEffectValue' ||
+    key === 'emitEffectValue' ||
     key === 'facing' ||
     key === 'emitRange' ||
     key === 'sides' ||
@@ -2155,22 +2158,22 @@ function handleItemPropertyEditModeInput(code: string, key: string, ctrlKey: boo
         return;
       }
       signaling.send({ type: 'item_update', itemId, params: { emitVolume: parsed.value } });
-    } else if (propertyKey === 'effect') {
+    } else if (propertyKey === 'mediaEffect' || propertyKey === 'emitEffect') {
       const normalized = value.trim().toLowerCase() as EffectId;
       if (!EFFECT_IDS.has(normalized)) {
-        updateStatus(`effect must be one of: ${EFFECT_SEQUENCE.map((effect) => effect.id).join(', ')}.`);
+        updateStatus(`${itemPropertyLabel(propertyKey)} must be one of: ${EFFECT_SEQUENCE.map((effect) => effect.id).join(', ')}.`);
         audio.sfxUiCancel();
         return;
       }
-      signaling.send({ type: 'item_update', itemId, params: { effect: normalized } });
-    } else if (propertyKey === 'effectValue') {
+      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: normalized } });
+    } else if (propertyKey === 'mediaEffectValue' || propertyKey === 'emitEffectValue') {
       const parsed = validateNumericItemPropertyInput(item, propertyKey, value, false);
       if (!parsed.ok) {
         updateStatus(parsed.message);
         audio.sfxUiCancel();
         return;
       }
-      signaling.send({ type: 'item_update', itemId, params: { effectValue: clampEffectLevel(parsed.value) } });
+      signaling.send({ type: 'item_update', itemId, params: { [propertyKey]: clampEffectLevel(parsed.value) } });
     } else if (propertyKey === 'facing') {
       const parsed = validateNumericItemPropertyInput(item, propertyKey, value, false);
       if (!parsed.ok) {

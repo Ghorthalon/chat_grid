@@ -17,6 +17,8 @@ EDITABLE_PROPERTIES: tuple[str, ...] = (
     "facing",
     "emitRange",
     "emitVolume",
+    "emitEffect",
+    "emitEffectValue",
     "useSound",
     "emitSound",
 )
@@ -33,9 +35,12 @@ DEFAULT_PARAMS: dict = {
     "facing": 0,
     "emitRange": 15,
     "emitVolume": 100,
+    "emitEffect": "off",
+    "emitEffectValue": 50,
     "useSound": "",
     "emitSound": "",
 }
+EFFECT_OPTIONS: tuple[str, ...] = ("reverb", "echo", "flanger", "high_pass", "low_pass", "off")
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item."},
@@ -55,6 +60,12 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
         "valueType": "number",
         "tooltip": "Emitted sound volume percent.",
         "range": {"min": 0, "max": 100, "step": 1},
+    },
+    "emitEffect": {"valueType": "list", "tooltip": "Effect applied to emitted sound."},
+    "emitEffectValue": {
+        "valueType": "number",
+        "tooltip": "Amount for emit effect.",
+        "range": {"min": 0, "max": 100, "step": 0.1},
     },
     "useSound": {"valueType": "sound", "tooltip": "Sound played on use. Filename assumes sounds folder, or use full URL."},
     "emitSound": {"valueType": "sound", "tooltip": "Looping emitted sound. Filename assumes sounds folder, or use full URL."},
@@ -112,6 +123,19 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
     if not (0 <= emit_volume <= 100):
         raise ValueError("emitVolume must be between 0 and 100.")
     next_params["emitVolume"] = emit_volume
+
+    emit_effect = str(next_params.get("emitEffect", item.params.get("emitEffect", "off"))).strip().lower()
+    if emit_effect not in EFFECT_OPTIONS:
+        raise ValueError("emitEffect must be one of reverb, echo, flanger, high_pass, low_pass, off.")
+    next_params["emitEffect"] = emit_effect
+
+    try:
+        emit_effect_value = float(next_params.get("emitEffectValue", item.params.get("emitEffectValue", 50)))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("emitEffectValue must be a number.") from exc
+    if not (0 <= emit_effect_value <= 100):
+        raise ValueError("emitEffectValue must be between 0 and 100.")
+    next_params["emitEffectValue"] = round(emit_effect_value, 1)
 
     next_params["useSound"] = _normalize_sound_value(next_params.get("useSound", item.params.get("useSound", "")))
     next_params["emitSound"] = _normalize_sound_value(next_params.get("emitSound", item.params.get("emitSound", "")))

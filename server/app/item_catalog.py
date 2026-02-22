@@ -75,8 +75,9 @@ ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
 }
 
 ITEM_PROPERTY_OPTIONS: dict[str, tuple[str, ...]] = {
-    "effect": RADIO_EFFECT_OPTIONS,
-    "channel": RADIO_CHANNEL_OPTIONS,
+    "mediaEffect": RADIO_EFFECT_OPTIONS,
+    "emitEffect": RADIO_EFFECT_OPTIONS,
+    "mediaChannel": RADIO_CHANNEL_OPTIONS,
     "timeZone": CLOCK_TIME_ZONE_OPTIONS,
 }
 

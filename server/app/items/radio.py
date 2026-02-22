@@ -14,10 +14,10 @@ EDITABLE_PROPERTIES: tuple[str, ...] = (
     "title",
     "streamUrl",
     "enabled",
-    "channel",
     "mediaVolume",
-    "effect",
-    "effectValue",
+    "mediaChannel",
+    "mediaEffect",
+    "mediaEffectValue",
     "facing",
     "emitRange",
 )
@@ -31,10 +31,10 @@ DEFAULT_TITLE = "radio"
 DEFAULT_PARAMS: dict = {
     "streamUrl": "",
     "enabled": True,
-    "channel": "stereo",
     "mediaVolume": 50,
-    "effect": "off",
-    "effectValue": 50,
+    "mediaChannel": "stereo",
+    "mediaEffect": "off",
+    "mediaEffectValue": 50,
     "facing": 0,
     "emitRange": 20,
 }
@@ -46,14 +46,14 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item."},
     "streamUrl": {"valueType": "text", "tooltip": "Audio stream URL used by this radio."},
     "enabled": {"valueType": "boolean", "tooltip": "Turns playback on or off for this radio."},
-    "channel": {"valueType": "list", "tooltip": "Select how the station audio channels are rendered."},
     "mediaVolume": {
         "valueType": "number",
         "tooltip": "Playback media volume percent for this radio.",
         "range": {"min": 0, "max": 100, "step": 1},
     },
-    "effect": {"valueType": "list", "tooltip": "Select the active radio effect."},
-    "effectValue": {
+    "mediaChannel": {"valueType": "list", "tooltip": "Select how the station audio channels are rendered."},
+    "mediaEffect": {"valueType": "list", "tooltip": "Select the active radio effect."},
+    "mediaEffectValue": {
         "valueType": "number",
         "tooltip": "Amount for the selected effect.",
         "range": {"min": 0, "max": 100, "step": 0.1},
@@ -107,23 +107,23 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
         raise ValueError("mediaVolume must be between 0 and 100.")
     next_params["mediaVolume"] = media_volume
 
-    effect = str(next_params.get("effect", "off")).strip().lower()
+    effect = str(next_params.get("mediaEffect", "off")).strip().lower()
     if effect not in EFFECT_OPTIONS:
-        raise ValueError("effect must be one of reverb, echo, flanger, high_pass, low_pass, off.")
-    next_params["effect"] = effect
+        raise ValueError("mediaEffect must be one of reverb, echo, flanger, high_pass, low_pass, off.")
+    next_params["mediaEffect"] = effect
 
-    channel = str(next_params.get("channel", "stereo")).strip().lower()
+    channel = str(next_params.get("mediaChannel", "stereo")).strip().lower()
     if channel not in CHANNEL_OPTIONS:
-        raise ValueError("channel must be one of stereo, mono, left, right.")
-    next_params["channel"] = channel
+        raise ValueError("mediaChannel must be one of stereo, mono, left, right.")
+    next_params["mediaChannel"] = channel
 
     try:
-        effect_value = float(next_params.get("effectValue", 50))
+        effect_value = float(next_params.get("mediaEffectValue", 50))
     except (TypeError, ValueError) as exc:
-        raise ValueError("effectValue must be a number.") from exc
+        raise ValueError("mediaEffectValue must be a number.") from exc
     if not (0 <= effect_value <= 100):
-        raise ValueError("effectValue must be between 0 and 100.")
-    next_params["effectValue"] = round(effect_value, 1)
+        raise ValueError("mediaEffectValue must be between 0 and 100.")
+    next_params["mediaEffectValue"] = round(effect_value, 1)
 
     try:
         facing = float(next_params.get("facing", item.params.get("facing", 0)))

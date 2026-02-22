@@ -205,8 +205,8 @@ export class RadioStationRuntime {
       const enabled = item.params.enabled !== false;
       const mediaVolume = Number(item.params.mediaVolume ?? 50);
       const normalizedVolume = Number.isFinite(mediaVolume) ? Math.max(0, Math.min(100, mediaVolume)) / 100 : 0.5;
-      const effect = normalizeRadioEffect(item.params.effect);
-      const effectValue = normalizeRadioEffectValue(item.params.effectValue);
+      const effect = normalizeRadioEffect(item.params.mediaEffect);
+      const effectValue = normalizeRadioEffectValue(item.params.mediaEffectValue);
       this.applyEffect(output, audioCtx, effect, effectValue);
       if (!streamUrl || !enabled) {
         output.gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
@@ -299,7 +299,7 @@ export class RadioStationRuntime {
     const audioCtx = this.audio.context;
     if (!audioCtx) return;
 
-    const channel = normalizeRadioChannel(item.params.channel);
+    const channel = normalizeRadioChannel(item.params.mediaChannel);
     const existing = this.itemRadioOutputs.get(item.id);
     if (existing && existing.streamUrl === streamUrl && existing.channel === channel) {
       return;
@@ -315,8 +315,8 @@ export class RadioStationRuntime {
     gain.gain.value = 0;
     const effectInput = audioCtx.createGain();
     const channelSource = connectRadioChannelSource(audioCtx, shared.source, channel, effectInput);
-    const effect = normalizeRadioEffect(item.params.effect);
-    const effectValue = normalizeRadioEffectValue(item.params.effectValue);
+    const effect = normalizeRadioEffect(item.params.mediaEffect);
+    const effectValue = normalizeRadioEffectValue(item.params.mediaEffectValue);
     const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
     let panner: StereoPannerNode | null = null;
     if (this.audio.supportsStereoPanner()) {

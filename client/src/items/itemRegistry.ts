@@ -48,11 +48,11 @@ const DEFAULT_CLOCK_TIME_ZONE_OPTIONS = [
 const DEFAULT_ITEM_TYPE_SEQUENCE: ItemType[] = ['clock', 'dice', 'radio_station', 'wheel', 'widget'];
 
 const DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
-  radio_station: ['title', 'streamUrl', 'enabled', 'channel', 'mediaVolume', 'effect', 'effectValue', 'facing', 'emitRange'],
+  radio_station: ['title', 'streamUrl', 'enabled', 'mediaVolume', 'mediaChannel', 'mediaEffect', 'mediaEffectValue', 'facing', 'emitRange'],
   dice: ['title', 'sides', 'number'],
   wheel: ['title', 'spaces'],
   clock: ['title', 'timeZone', 'use24Hour'],
-  widget: ['title', 'enabled', 'directional', 'facing', 'emitRange', 'emitVolume', 'useSound', 'emitSound'],
+  widget: ['title', 'enabled', 'directional', 'facing', 'emitRange', 'emitVolume', 'emitEffect', 'emitEffectValue', 'useSound', 'emitSound'],
 };
 
 const DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES: Record<ItemType, Record<string, string | number | boolean>> = {
@@ -112,8 +112,9 @@ let itemTypeGlobalProperties: Record<ItemType, Record<string, string | number | 
   widget: { ...DEFAULT_ITEM_TYPE_GLOBAL_PROPERTIES.widget },
 };
 let optionItemPropertyValues: Partial<Record<string, string[]>> = {
-  effect: EFFECT_SEQUENCE.map((effect) => effect.id),
-  channel: [...RADIO_CHANNEL_OPTIONS],
+  mediaEffect: EFFECT_SEQUENCE.map((effect) => effect.id),
+  emitEffect: EFFECT_SEQUENCE.map((effect) => effect.id),
+  mediaChannel: [...RADIO_CHANNEL_OPTIONS],
   timeZone: [...DEFAULT_CLOCK_TIME_ZONE_OPTIONS],
 };
 let itemTypePropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
@@ -195,6 +196,11 @@ export function itemPropertyLabel(key: string): string {
   if (key === 'emitRange') return 'emit range';
   if (key === 'mediaVolume') return 'media volume';
   if (key === 'emitVolume') return 'emit volume';
+  if (key === 'mediaChannel') return 'media channel';
+  if (key === 'mediaEffect') return 'media effect';
+  if (key === 'mediaEffectValue') return 'media effect value';
+  if (key === 'emitEffect') return 'emit effect';
+  if (key === 'emitEffectValue') return 'emit effect value';
   if (key === 'useSound') return 'use sound';
   if (key === 'emitSound') return 'emit sound';
   return key;

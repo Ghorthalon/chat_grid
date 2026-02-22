@@ -1,11 +1,17 @@
 import { HEARING_RADIUS, type WorldItem } from '../state/gameState';
 import { AudioEngine } from './audioEngine';
+import { connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
+import { normalizeRadioEffect, normalizeRadioEffectValue } from './radioStationRuntime';
 import { resolveSpatialMix } from './spatial';
 
 type EmitOutput = {
   soundUrl: string;
   element: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
+  effectInput: GainNode;
+  effectRuntime: EffectRuntime | null;
+  effect: EffectId;
+  effectValue: number;
   gain: GainNode;
   panner: StereoPannerNode | null;
 };
@@ -34,6 +40,8 @@ export class ItemEmitRuntime {
     output.element.pause();
     output.element.src = '';
     output.source.disconnect();
+    output.effectInput.disconnect();
+    disconnectEffectRuntime(output.effectRuntime);
     output.gain.disconnect();
     output.panner?.disconnect();
     this.outputs.delete(itemId);
@@ -85,17 +93,21 @@ export class ItemEmitRuntime {
       element.preload = 'none';
       element.crossOrigin = 'anonymous';
       const source = audioCtx.createMediaElementSource(element);
+      const effectInput = audioCtx.createGain();
       const gain = audioCtx.createGain();
       gain.gain.value = 0;
       let panner: StereoPannerNode | null = null;
-      source.connect(gain);
+      source.connect(effectInput);
+      const effect = normalizeRadioEffect(item.params.emitEffect);
+      const effectValue = normalizeRadioEffectValue(item.params.emitEffectValue);
+      const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
       if (this.audio.supportsStereoPanner()) {
         panner = audioCtx.createStereoPanner();
         gain.connect(panner).connect(audioCtx.destination);
       } else {
         gain.connect(audioCtx.destination);
       }
-      this.outputs.set(item.id, { soundUrl, element, source, gain, panner });
+      this.outputs.set(item.id, { soundUrl, element, source, effectInput, effectRuntime, effect, effectValue, gain, panner });
       void element.play().catch(() => undefined);
     }
 
@@ -116,6 +128,15 @@ export class ItemEmitRuntime {
       if (!item || item.carrierId) {
         output.gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
         continue;
+      }
+      const effect = normalizeRadioEffect(item.params.emitEffect);
+      const effectValue = normalizeRadioEffectValue(item.params.emitEffectValue);
+      if (output.effect !== effect || output.effectValue !== effectValue) {
+        output.effectInput.disconnect();
+        disconnectEffectRuntime(output.effectRuntime);
+        output.effectRuntime = connectEffectChain(audioCtx, output.effectInput, output.gain, effect, effectValue);
+        output.effect = effect;
+        output.effectValue = effectValue;
       }
       const spatialConfig = this.getSpatialConfig(item);
       const mix = resolveSpatialMix({

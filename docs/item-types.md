@@ -21,10 +21,10 @@ This is behavior-focused documentation for item types and their defaults.
 - Params:
   - `streamUrl=""`
   - `enabled=true`
-  - `channel="stereo"`
+  - `mediaChannel="stereo"`
   - `mediaVolume=50`
-  - `effect="off"`
-  - `effectValue=50`
+  - `mediaEffect="off"`
+  - `mediaEffectValue=50`
   - `facing=0`
   - `emitRange=20`
 - Global:
@@ -38,10 +38,10 @@ This is behavior-focused documentation for item types and their defaults.
 - `use` toggles `enabled` on/off and broadcasts chat status.
 
 ### Validation
-- `channel`: `stereo | mono | left | right`
+- `mediaChannel`: `stereo | mono | left | right`
 - `mediaVolume`: integer `0..100`
-- `effect`: `reverb | echo | flanger | high_pass | low_pass | off`
-- `effectValue`: number `0..100` with `0.1` precision
+- `mediaEffect`: `reverb | echo | flanger | high_pass | low_pass | off`
+- `mediaEffectValue`: number `0..100` with `0.1` precision
 - `facing`: number `0..360` with `0.1` precision
 - `emitRange`: integer `5..20`
 
@@ -120,6 +120,8 @@ This is behavior-focused documentation for item types and their defaults.
   - `facing=0`
   - `emitRange=15`
   - `emitVolume=100`
+  - `emitEffect="off"`
+  - `emitEffectValue=50`
   - `useSound=""`
   - `emitSound=""`
 - Global:
@@ -138,6 +140,8 @@ This is behavior-focused documentation for item types and their defaults.
 - `facing`: number `0..360` with `0.1` precision
 - `emitRange`: integer `1..20`
 - `emitVolume`: integer `0..100`
+- `emitEffect`: `reverb | echo | flanger | high_pass | low_pass | off`
+- `emitEffectValue`: number `0..100` with `0.1` precision
 - `useSound`: empty, filename (assumed under `sounds/`), or full URL
 - `emitSound`: empty, filename (assumed under `sounds/`), or full URL
 
