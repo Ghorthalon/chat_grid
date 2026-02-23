@@ -1070,6 +1070,7 @@ function playLocalPianoNote(
   keyId: string,
   midi: number,
   config: ReturnType<typeof getPianoParams>,
+  sourceGroupId?: string,
 ): void {
   const ctx = audio.context;
   const destination = audio.getOutputDestinationNode();
@@ -1078,7 +1079,7 @@ function playLocalPianoNote(
   const sourceY = item.carrierId === state.player.id ? state.player.y : item.y;
   pianoSynth.noteOn(
     keyId,
-    `local:${itemId}`,
+    sourceGroupId ?? `local:${itemId}`,
     midi,
     config.instrument,
     config.voiceMode,
@@ -1149,7 +1150,7 @@ function startPianoDemo(item: WorldItem, itemId: string): void {
       if (event.on) {
         if (activePianoDemoNotes.has(logicalKey)) return;
         activePianoDemoNotes.set(logicalKey, { runtimeKey, midi: event.midi });
-        playLocalPianoNote(liveItem, itemId, runtimeKey, event.midi, config);
+        playLocalPianoNote(liveItem, itemId, runtimeKey, event.midi, config, `demo:${itemId}`);
       } else {
         const active = activePianoDemoNotes.get(logicalKey);
         if (active) {
