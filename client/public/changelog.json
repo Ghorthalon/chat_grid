@@ -1,6 +1,12 @@
 {
   "sections": [
     {
+      "date": "February 23, 2026",
+      "items": [
+        "Added a Piano item type."
+      ]
+    },
+    {
       "date": "February 22, 2026",
       "items": [
         "Teleporting now takes a bit of time.",
