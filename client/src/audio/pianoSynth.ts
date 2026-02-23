@@ -41,6 +41,7 @@ type InstrumentPreset = {
   gain: number;
   sustainRatio?: number;
   holdSustain?: boolean;
+  heldDecayScale?: number;
   releaseScale?: number;
   vibrato?: { rateHz: number; depthCents: number };
 };
@@ -55,6 +56,7 @@ const PRESETS: Record<Exclude<PianoInstrumentId, 'drum_kit'>, InstrumentPreset> 
     gain: 0.32,
     sustainRatio: 0.5,
     holdSustain: false,
+    heldDecayScale: 2.0,
     releaseScale: 0.9,
   },
   electric_piano: {
@@ -66,6 +68,7 @@ const PRESETS: Record<Exclude<PianoInstrumentId, 'drum_kit'>, InstrumentPreset> 
     gain: 0.3,
     sustainRatio: 0.52,
     holdSustain: false,
+    heldDecayScale: 2.0,
     releaseScale: 0.8,
   },
   guitar: {
@@ -77,6 +80,7 @@ const PRESETS: Record<Exclude<PianoInstrumentId, 'drum_kit'>, InstrumentPreset> 
     gain: 0.24,
     sustainRatio: 0.48,
     holdSustain: false,
+    heldDecayScale: 2.0,
     releaseScale: 0.7,
   },
   organ: {
@@ -308,7 +312,8 @@ export class PianoSynth {
       voiceGain.gain.exponentialRampToValueAtTime(sustainGain, now + attackSeconds + decaySeconds * 0.6);
     } else {
       // Struck/plucked timbres naturally decay even if the key remains held.
-      voiceGain.gain.exponentialRampToValueAtTime(0.0001, now + attackSeconds + decaySeconds);
+      const heldDecaySeconds = Math.max(0.25, decaySeconds * (preset.heldDecayScale ?? 2.0));
+      voiceGain.gain.exponentialRampToValueAtTime(0.0001, now + attackSeconds + heldDecaySeconds);
     }
 
     let tailNode: AudioNode = voiceGain;
