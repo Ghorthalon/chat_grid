@@ -243,6 +243,13 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
       case 'item_action_result': {
         if (message.ok) {
           if (message.action === 'use') {
+            const pianoStatusLabel =
+              message.message === 'record' || message.message === 'play' || message.message === 'stop' ? message.message : null;
+            if (pianoStatusLabel) {
+              deps.updateStatus(pianoStatusLabel);
+              deps.audioUiBlip();
+              break;
+            }
             deps.pushChatMessage(message.message);
             const item = message.itemId ? deps.getItemById(message.itemId) : null;
             if (!item?.useSound && item && item.type !== 'piano') {

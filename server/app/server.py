@@ -195,20 +195,57 @@ class SignalingServer:
         key_id: str,
         midi: int,
         on: bool,
+        instrument_override: str | None = None,
+        voice_mode_override: str | None = None,
+        attack_override: int | None = None,
+        decay_override: int | None = None,
+        release_override: int | None = None,
+        brightness_override: int | None = None,
+        emit_range_override: int | None = None,
         exclude: ServerConnection | None = None,
     ) -> None:
         """Broadcast one piano note event using current item synth settings."""
 
-        instrument = str(item.params.get("instrument", "piano")).strip().lower()
-        voice_mode = str(item.params.get("voiceMode", "poly")).strip().lower()
+        instrument = (instrument_override if isinstance(instrument_override, str) else str(item.params.get("instrument", "piano"))).strip().lower()
+        voice_mode = (voice_mode_override if isinstance(voice_mode_override, str) else str(item.params.get("voiceMode", "poly"))).strip().lower()
         if voice_mode not in {"poly", "mono"}:
             voice_mode = "poly"
         octave = int(item.params.get("octave", 0)) if isinstance(item.params.get("octave", 0), (int, float)) else 0
-        attack = int(item.params.get("attack", 15)) if isinstance(item.params.get("attack", 15), (int, float)) else 15
-        decay = int(item.params.get("decay", 45)) if isinstance(item.params.get("decay", 45), (int, float)) else 45
-        release = int(item.params.get("release", 35)) if isinstance(item.params.get("release", 35), (int, float)) else 35
-        brightness = int(item.params.get("brightness", 55)) if isinstance(item.params.get("brightness", 55), (int, float)) else 55
-        emit_range = int(item.params.get("emitRange", 15)) if isinstance(item.params.get("emitRange", 15), (int, float)) else 15
+        attack = (
+            int(attack_override)
+            if isinstance(attack_override, int)
+            else int(item.params.get("attack", 15))
+            if isinstance(item.params.get("attack", 15), (int, float))
+            else 15
+        )
+        decay = (
+            int(decay_override)
+            if isinstance(decay_override, int)
+            else int(item.params.get("decay", 45))
+            if isinstance(item.params.get("decay", 45), (int, float))
+            else 45
+        )
+        release = (
+            int(release_override)
+            if isinstance(release_override, int)
+            else int(item.params.get("release", 35))
+            if isinstance(item.params.get("release", 35), (int, float))
+            else 35
+        )
+        brightness = (
+            int(brightness_override)
+            if isinstance(brightness_override, int)
+            else int(item.params.get("brightness", 55))
+            if isinstance(item.params.get("brightness", 55), (int, float))
+            else 55
+        )
+        emit_range = (
+            int(emit_range_override)
+            if isinstance(emit_range_override, int)
+            else int(item.params.get("emitRange", 15))
+            if isinstance(item.params.get("emitRange", 15), (int, float))
+            else 15
+        )
         source_x, source_y = self._get_piano_source_position(item)
         await self._broadcast(
             ItemPianoNoteBroadcastPacket(
@@ -273,7 +310,7 @@ class SignalingServer:
 
         try:
             await asyncio.sleep(PIANO_RECORDING_MAX_MS / 1000)
-            await self._finalize_piano_recording(item_id, status_message="Recording reached 30.0 s and was saved.")
+            await self._finalize_piano_recording(item_id, status_message="stop")
         except asyncio.CancelledError:
             return
 
@@ -294,12 +331,26 @@ class SignalingServer:
             raw_on = event.get("on")
             if not isinstance(raw_time, (int, float)) or not isinstance(raw_key, str) or not isinstance(raw_midi, (int, float)) or not isinstance(raw_on, bool):
                 continue
+            raw_instrument = event.get("instrument")
+            raw_voice_mode = event.get("voiceMode")
+            raw_attack = event.get("attack")
+            raw_decay = event.get("decay")
+            raw_release = event.get("release")
+            raw_brightness = event.get("brightness")
+            raw_emit_range = event.get("emitRange")
             events.append(
                 {
                     "t": max(0, min(PIANO_RECORDING_MAX_MS, int(raw_time))),
                     "keyId": raw_key[:32] or "KeyA",
                     "midi": max(0, min(127, int(raw_midi))),
                     "on": raw_on,
+                    "instrument": str(raw_instrument).strip().lower() if isinstance(raw_instrument, str) else None,
+                    "voiceMode": str(raw_voice_mode).strip().lower() if isinstance(raw_voice_mode, str) else None,
+                    "attack": max(0, min(100, int(raw_attack))) if isinstance(raw_attack, (int, float)) else None,
+                    "decay": max(0, min(100, int(raw_decay))) if isinstance(raw_decay, (int, float)) else None,
+                    "release": max(0, min(100, int(raw_release))) if isinstance(raw_release, (int, float)) else None,
+                    "brightness": max(0, min(100, int(raw_brightness))) if isinstance(raw_brightness, (int, float)) else None,
+                    "emitRange": max(5, min(20, int(raw_emit_range))) if isinstance(raw_emit_range, (int, float)) else None,
                 }
             )
         events.sort(key=lambda entry: int(entry["t"]))
@@ -330,6 +381,13 @@ class SignalingServer:
                     key_id=key_id,
                     midi=midi,
                     on=on,
+                    instrument_override=event.get("instrument") if isinstance(event.get("instrument"), str) else None,
+                    voice_mode_override=event.get("voiceMode") if isinstance(event.get("voiceMode"), str) else None,
+                    attack_override=event.get("attack") if isinstance(event.get("attack"), int) else None,
+                    decay_override=event.get("decay") if isinstance(event.get("decay"), int) else None,
+                    release_override=event.get("release") if isinstance(event.get("release"), int) else None,
+                    brightness_override=event.get("brightness") if isinstance(event.get("brightness"), int) else None,
+                    emit_range_override=event.get("emitRange") if isinstance(event.get("emitRange"), int) else None,
                 )
                 previous_at_ms = current_at_ms
         except asyncio.CancelledError:
@@ -877,9 +935,32 @@ class SignalingServer:
                 elapsed_ms = max(0, min(PIANO_RECORDING_MAX_MS, int((time.monotonic() - started) * 1000)))
                 events = recording_state.get("events")
                 if isinstance(events, list) and len(events) < PIANO_RECORDING_MAX_EVENTS:
-                    events.append({"t": elapsed_ms, "keyId": packet.keyId[:32], "midi": packet.midi, "on": packet.on})
+                    instrument = str(item.params.get("instrument", "piano")).strip().lower()
+                    voice_mode = str(item.params.get("voiceMode", "poly")).strip().lower()
+                    if voice_mode not in {"poly", "mono"}:
+                        voice_mode = "poly"
+                    attack = int(item.params.get("attack", 15)) if isinstance(item.params.get("attack", 15), (int, float)) else 15
+                    decay = int(item.params.get("decay", 45)) if isinstance(item.params.get("decay", 45), (int, float)) else 45
+                    release = int(item.params.get("release", 35)) if isinstance(item.params.get("release", 35), (int, float)) else 35
+                    brightness = int(item.params.get("brightness", 55)) if isinstance(item.params.get("brightness", 55), (int, float)) else 55
+                    emit_range = int(item.params.get("emitRange", 15)) if isinstance(item.params.get("emitRange", 15), (int, float)) else 15
+                    events.append(
+                        {
+                            "t": elapsed_ms,
+                            "keyId": packet.keyId[:32],
+                            "midi": packet.midi,
+                            "on": packet.on,
+                            "instrument": instrument,
+                            "voiceMode": voice_mode,
+                            "attack": max(0, min(100, attack)),
+                            "decay": max(0, min(100, decay)),
+                            "release": max(0, min(100, release)),
+                            "brightness": max(0, min(100, brightness)),
+                            "emitRange": max(5, min(20, emit_range)),
+                        }
+                    )
                 if elapsed_ms >= PIANO_RECORDING_MAX_MS:
-                    await self._finalize_piano_recording(item.id, status_message="Recording reached 30.0 s and was saved.")
+                    await self._finalize_piano_recording(item.id, status_message="stop")
             await self._broadcast_item_piano_note(
                 item,
                 sender_id=client.id,
@@ -908,7 +989,7 @@ class SignalingServer:
                     await self._send_item_result(client, False, "use", "This piano is already recording.", item.id)
                     return
                 if existing and existing.get("ownerClientId") == client.id:
-                    await self._finalize_piano_recording(item.id, status_message="Recording saved.")
+                    await self._finalize_piano_recording(item.id, status_message="stop")
                     return
                 self._cancel_piano_playback(item.id)
                 recording_state = {
@@ -919,7 +1000,7 @@ class SignalingServer:
                 self.piano_recording_state_by_item[item.id] = recording_state
                 auto_stop_task = asyncio.create_task(self._auto_stop_piano_recording(item.id))
                 recording_state["autoStopTask"] = auto_stop_task
-                await self._send_item_result(client, True, "use", "Recording started. Press comma again to stop.", item.id)
+                await self._send_item_result(client, True, "use", "record", item.id)
                 return
 
             if packet.action == "playback":
@@ -933,7 +1014,12 @@ class SignalingServer:
                 self._cancel_piano_playback(item.id)
                 playback_task = asyncio.create_task(self._start_piano_playback(item))
                 self.piano_playback_tasks_by_item[item.id] = playback_task
-                await self._send_item_result(client, True, "use", f"Playing recording on {item.title}.", item.id)
+                await self._send_item_result(client, True, "use", "play", item.id)
+                return
+
+            if packet.action == "stop_playback":
+                self._cancel_piano_playback(item.id)
+                await self._send_item_result(client, True, "use", "stop", item.id)
                 return
             return
 

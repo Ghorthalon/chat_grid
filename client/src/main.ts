@@ -995,7 +995,7 @@ function handlePianoUseModeKeyUp(code: string): void {
 /** Plays one short C4 preview using the piano item's current/overridden envelope+instrument. */
 async function previewPianoSettingChange(
   item: WorldItem,
-  overrides: Partial<{ instrument: PianoInstrumentId; attack: number; decay: number; release: number; brightness: number }>,
+  overrides: Partial<{ instrument: PianoInstrumentId; octave: number; attack: number; decay: number; release: number; brightness: number }>,
 ): Promise<void> {
   if (item.type !== 'piano') return;
   await audio.ensureContext();
@@ -1004,6 +1004,7 @@ async function previewPianoSettingChange(
   if (!ctx || !destination) return;
   const current = getPianoParams(item);
   const instrument = overrides.instrument ?? current.instrument;
+  const octave = Math.max(-2, Math.min(2, Math.round(overrides.octave ?? current.octave)));
   const attack = Math.max(0, Math.min(100, Math.round(overrides.attack ?? current.attack)));
   const decay = Math.max(0, Math.min(100, Math.round(overrides.decay ?? current.decay)));
   const release = Math.max(0, Math.min(100, Math.round(overrides.release ?? current.release)));
@@ -1015,7 +1016,7 @@ async function previewPianoSettingChange(
   pianoSynth.noteOn(
     previewKeyId,
     'preview',
-    60,
+    Math.max(0, Math.min(127, 60 + octave * 12)),
     instrument,
     'poly',
     attack,
@@ -2423,12 +2424,17 @@ function handlePianoUseModeInput(code: string): void {
     audio.sfxUiBlip();
     return;
   }
+  if (code === 'Slash') {
+    signaling.send({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
+    audio.sfxUiBlip();
+    return;
+  }
   if (code === 'Equal' || code === 'Minus') {
     const current = getPianoParams(item).octave;
     const next = Math.max(-2, Math.min(2, current + (code === 'Equal' ? 1 : -1)));
     item.params.octave = next;
     signaling.send({ type: 'item_update', itemId, params: { octave: next } });
-    void previewPianoSettingChange(item, {});
+    void previewPianoSettingChange(item, { octave: next });
     updateStatus(`octave ${next}.`);
     if (next === current) {
       audio.sfxUiCancel();
@@ -2462,6 +2468,7 @@ function handlePianoUseModeInput(code: string): void {
         });
         void previewPianoSettingChange(item, {
           instrument,
+          octave,
           attack: defaults.attack,
           decay: defaults.decay,
           release: defaults.release,
@@ -2749,8 +2756,10 @@ const itemPropertyEditor = createItemPropertyEditor({
     if (key === 'instrument') {
       const instrument = normalizePianoInstrument(value);
       const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
+      const octave = defaultsOctaveForInstrument(instrument);
       void previewPianoSettingChange(item, {
         instrument,
+        octave,
         attack: defaults.attack,
         decay: defaults.decay,
         release: defaults.release,
@@ -2783,7 +2792,9 @@ const itemPropertyEditor = createItemPropertyEditor({
       return;
     }
     if (key === 'octave') {
-      void previewPianoSettingChange(item, {});
+      const octave = Number(value);
+      if (!Number.isFinite(octave)) return;
+      void previewPianoSettingChange(item, { octave });
     }
   },
   updateStatus,
