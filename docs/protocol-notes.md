@@ -38,7 +38,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `item_use_sound` contains absolute item world coordinates (`x`, `y`) and sound path.
 - `item_piano_note` contains:
   - `itemId`, `senderId`, `keyId`, `midi`, `on`
-  - resolved `instrument`, `attack`, `decay`, `emitRange`
+  - resolved `instrument`, `voiceMode`, `octave`, `attack`, `decay`, `release`, `brightness`, `emitRange`
   - absolute source coordinates `x`, `y`
 
 ## Welcome Metadata

@@ -76,7 +76,7 @@ Applies to effect select, user/item list modes, item selection, item property li
 
 ## Piano Use Mode
 
-- `1-9`: Switch instrument preset quickly
+- `1-9` (and `0` for the 10th slot): Switch instrument preset quickly
 - `A S D F G H J K L ; '`: Play white keys (C major from C4 upward)
 - `W E T Y U O P ]`: Play sharps
 - Multiple keys can be held/played at once

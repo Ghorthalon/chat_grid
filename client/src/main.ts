@@ -255,6 +255,7 @@ let activeTeleportLoopStop: (() => void) | null = null;
 let activeTeleportLoopToken = 0;
 let activePianoItemId: string | null = null;
 const activePianoKeys = new Set<string>();
+const activePianoKeyMidi = new Map<string, number>();
 const activeRemotePianoKeys = new Set<string>();
 let pianoPreviewTimeoutId: number | null = null;
 let activeTeleport:
@@ -796,6 +797,8 @@ function getItemSpatialConfig(item: WorldItem): { range: number; directional: bo
 /** Resolves piano params with safe defaults for local play mode. */
 function getPianoParams(item: WorldItem): {
   instrument: PianoInstrumentId;
+  voiceMode: 'mono' | 'poly';
+  octave: number;
   attack: number;
   decay: number;
   release: number;
@@ -816,18 +819,33 @@ function getPianoParams(item: WorldItem): {
       : 'piano';
   const rawAttack = Number(item.params.attack);
   const rawDecay = Number(item.params.decay);
+  const rawOctave = Number(item.params.octave);
+  const rawVoiceMode = String(item.params.voiceMode ?? defaultsVoiceModeForInstrument(instrument)).trim().toLowerCase();
   const rawRelease = Number(item.params.release);
   const rawBrightness = Number(item.params.brightness);
   const rawEmitRange = Number(item.params.emitRange ?? getItemTypeGlobalProperties(item.type).emitRange ?? 15);
   const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
   return {
     instrument,
+    voiceMode: rawVoiceMode === 'mono' ? 'mono' : 'poly',
+    octave: Math.max(-2, Math.min(2, Number.isFinite(rawOctave) ? Math.round(rawOctave) : defaultsOctaveForInstrument(instrument))),
     attack: Math.max(0, Math.min(100, Number.isFinite(rawAttack) ? Math.round(rawAttack) : defaults.attack)),
     decay: Math.max(0, Math.min(100, Number.isFinite(rawDecay) ? Math.round(rawDecay) : defaults.decay)),
     release: Math.max(0, Math.min(100, Number.isFinite(rawRelease) ? Math.round(rawRelease) : defaults.release)),
     brightness: Math.max(0, Math.min(100, Number.isFinite(rawBrightness) ? Math.round(rawBrightness) : defaults.brightness)),
     emitRange: Math.max(5, Math.min(20, Number.isFinite(rawEmitRange) ? Math.round(rawEmitRange) : 15)),
   };
+}
+
+/** Returns default voice mode for a given piano instrument. */
+function defaultsVoiceModeForInstrument(instrument: PianoInstrumentId): 'mono' | 'poly' {
+  if (instrument === 'bass' || instrument === 'violin' || instrument === 'brass') return 'mono';
+  return 'poly';
+}
+
+/** Returns default octave offset for a given piano instrument. */
+function defaultsOctaveForInstrument(instrument: PianoInstrumentId): number {
+  return instrument === 'bass' ? -1 : 0;
 }
 
 /** Normalizes arbitrary instrument strings into supported piano synth ids. */
@@ -839,6 +857,7 @@ function normalizePianoInstrument(value: unknown): PianoInstrumentId {
   if (raw === 'bass') return 'bass';
   if (raw === 'violin') return 'violin';
   if (raw === 'synth_lead') return 'synth_lead';
+  if (raw === 'brass') return 'brass';
   if (raw === 'nintendo') return 'nintendo';
   if (raw === 'drum_kit') return 'drum_kit';
   return 'piano';
@@ -872,13 +891,14 @@ function stopPianoUseMode(announce = true): void {
   if (!activePianoItemId) return;
   const itemId = activePianoItemId;
   for (const code of Array.from(activePianoKeys)) {
-    const midi = getPianoMidiForCode(code);
-    if (midi === null) continue;
+    const midi = activePianoKeyMidi.get(code);
+    if (!Number.isFinite(midi)) continue;
     signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi, on: false });
     pianoSynth.noteOff(code);
   }
   activePianoItemId = null;
   activePianoKeys.clear();
+  activePianoKeyMidi.clear();
   state.mode = 'normal';
   if (announce) {
     updateStatus('Stopped piano.');
@@ -908,8 +928,10 @@ async function previewPianoSettingChange(
   pianoSynth.noteOff(previewKeyId);
   pianoSynth.noteOn(
     previewKeyId,
+    'preview',
     60,
     instrument,
+    'poly',
     attack,
     decay,
     release,
@@ -933,6 +955,8 @@ function playRemotePianoNote(note: {
   keyId: string;
   midi: number;
   instrument: string;
+  voiceMode: 'mono' | 'poly';
+  octave: number;
   attack: number;
   decay: number;
   release: number;
@@ -944,13 +968,18 @@ function playRemotePianoNote(note: {
   const ctx = audio.context;
   const destination = audio.getOutputDestinationNode();
   if (!ctx || !destination) return;
-  const runtimeKey = `${note.senderId}:${note.keyId}`;
+  const runtimeKey = `${note.senderId}:${note.itemId}:${note.keyId}`;
   if (activeRemotePianoKeys.has(runtimeKey)) return;
+  if (note.voiceMode === 'mono') {
+    stopRemotePianoNotesForSource(note.senderId, note.itemId);
+  }
   activeRemotePianoKeys.add(runtimeKey);
   pianoSynth.noteOn(
     runtimeKey,
+    `remote:${note.senderId}:${note.itemId}`,
     Math.max(0, Math.min(127, Math.round(note.midi))),
     normalizePianoInstrument(note.instrument),
+    note.voiceMode,
     Math.max(0, Math.min(100, Math.round(note.attack))),
     Math.max(0, Math.min(100, Math.round(note.decay))),
     Math.max(0, Math.min(100, Math.round(note.release))),
@@ -966,14 +995,28 @@ function playRemotePianoNote(note: {
 
 /** Stops one inbound piano note previously started for another user. */
 function stopRemotePianoNote(senderId: string, keyId: string): void {
-  const runtimeKey = `${senderId}:${keyId}`;
-  if (!activeRemotePianoKeys.delete(runtimeKey)) return;
-  pianoSynth.noteOff(runtimeKey);
+  const suffix = `:${keyId}`;
+  for (const runtimeKey of Array.from(activeRemotePianoKeys)) {
+    if (!runtimeKey.startsWith(`${senderId}:`)) continue;
+    if (!runtimeKey.endsWith(suffix)) continue;
+    activeRemotePianoKeys.delete(runtimeKey);
+    pianoSynth.noteOff(runtimeKey);
+  }
 }
 
 /** Stops all currently active remote piano notes for a sender id. */
 function stopAllRemotePianoNotesForSender(senderId: string): void {
   const prefix = `${senderId}:`;
+  for (const runtimeKey of Array.from(activeRemotePianoKeys)) {
+    if (!runtimeKey.startsWith(prefix)) continue;
+    activeRemotePianoKeys.delete(runtimeKey);
+    pianoSynth.noteOff(runtimeKey);
+  }
+}
+
+/** Stops all remote piano notes for one sender+item source group. */
+function stopRemotePianoNotesForSource(senderId: string, itemId: string): void {
+  const prefix = `${senderId}:${itemId}:`;
   for (const runtimeKey of Array.from(activeRemotePianoKeys)) {
     if (!runtimeKey.startsWith(prefix)) continue;
     activeRemotePianoKeys.delete(runtimeKey);
@@ -1195,7 +1238,7 @@ function getItemPropertyValue(item: WorldItem, key: string): string {
 function inferItemPropertyValueType(item: WorldItem, key: string): string | undefined {
   if (key === 'useSound' || key === 'emitSound') return 'sound';
   if (key === 'enabled' || key === 'use24Hour' || key === 'directional') return 'boolean';
-  if (key === 'mediaChannel' || key === 'mediaEffect' || key === 'emitEffect' || key === 'timeZone' || key === 'instrument') return 'list';
+  if (key === 'mediaChannel' || key === 'mediaEffect' || key === 'emitEffect' || key === 'timeZone' || key === 'instrument' || key === 'voiceMode') return 'list';
   if (
     key === 'x' ||
     key === 'y' ||
@@ -1208,6 +1251,7 @@ function inferItemPropertyValueType(item: WorldItem, key: string): string | unde
     key === 'emitEffectValue' ||
     key === 'facing' ||
     key === 'emitRange' ||
+    key === 'octave' ||
     key === 'attack' ||
     key === 'decay' ||
     key === 'release' ||
@@ -2285,11 +2329,16 @@ function handlePianoUseModeInput(code: string): void {
   }
   if (code.startsWith('Digit')) {
     const digit = Number(code.slice(5));
-    if (Number.isInteger(digit) && digit >= 1 && digit <= 9) {
-      const instrument = PIANO_INSTRUMENT_OPTIONS[digit - 1];
+    const instrumentIndex = digit === 0 ? 9 : digit - 1;
+    if (Number.isInteger(instrumentIndex) && instrumentIndex >= 0 && instrumentIndex < PIANO_INSTRUMENT_OPTIONS.length) {
+      const instrument = PIANO_INSTRUMENT_OPTIONS[instrumentIndex];
       if (instrument) {
         const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
+        const voiceMode = defaultsVoiceModeForInstrument(instrument);
+        const octave = defaultsOctaveForInstrument(instrument);
         item.params.instrument = instrument;
+        item.params.voiceMode = voiceMode;
+        item.params.octave = octave;
         item.params.attack = defaults.attack;
         item.params.decay = defaults.decay;
         item.params.release = defaults.release;
@@ -2317,17 +2366,21 @@ function handlePianoUseModeInput(code: string): void {
   const midi = getPianoMidiForCode(code);
   if (midi === null) return;
   if (activePianoKeys.has(code)) return;
+  const config = getPianoParams(item);
+  const playedMidi = Math.max(0, Math.min(127, midi + config.octave * 12));
   activePianoKeys.add(code);
+  activePianoKeyMidi.set(code, playedMidi);
   const ctx = audio.context;
   const destination = audio.getOutputDestinationNode();
   if (!ctx || !destination) return;
-  const config = getPianoParams(item);
   const sourceX = item.carrierId === state.player.id ? state.player.x : item.x;
   const sourceY = item.carrierId === state.player.id ? state.player.y : item.y;
   pianoSynth.noteOn(
     code,
-    midi,
+    `local:${itemId}`,
+    playedMidi,
     config.instrument,
+    config.voiceMode,
     config.attack,
     config.decay,
     config.release,
@@ -2335,7 +2388,7 @@ function handlePianoUseModeInput(code: string): void {
     { audioCtx: ctx, destination },
     { x: sourceX - state.player.x, y: sourceY - state.player.y, range: config.emitRange },
   );
-  signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi, on: true });
+  signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi: playedMidi, on: true });
 }
 
 /** Handles effect menu list navigation and selection. */
@@ -2623,6 +2676,10 @@ const itemPropertyEditor = createItemPropertyEditor({
       const brightness = Number(value);
       if (!Number.isFinite(brightness)) return;
       void previewPianoSettingChange(item, { brightness });
+      return;
+    }
+    if (key === 'octave') {
+      void previewPianoSettingChange(item, {});
     }
   },
   updateStatus,
@@ -2802,8 +2859,9 @@ function setupInputHandlers(): void {
       if (activePianoKeys.delete(code)) {
         pianoSynth.noteOff(code);
         const itemId = activePianoItemId;
-        const midi = getPianoMidiForCode(code);
-        if (itemId && midi !== null) {
+        const midi = activePianoKeyMidi.get(code);
+        activePianoKeyMidi.delete(code);
+        if (itemId && Number.isFinite(midi)) {
           signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi, on: false });
         }
       }

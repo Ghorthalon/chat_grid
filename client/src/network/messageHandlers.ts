@@ -52,6 +52,8 @@ type MessageHandlerDeps = {
     keyId: string;
     midi: number;
     instrument: string;
+    voiceMode: 'mono' | 'poly';
+    octave: number;
     attack: number;
     decay: number;
     release: number;
@@ -275,6 +277,8 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
             keyId: message.keyId,
             midi: message.midi,
             instrument: message.instrument,
+            voiceMode: message.voiceMode,
+            octave: message.octave,
             attack: message.attack,
             decay: message.decay,
             release: message.release,

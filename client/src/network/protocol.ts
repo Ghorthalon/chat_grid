@@ -158,6 +158,8 @@ export const itemPianoNoteSchema = z.object({
   midi: z.number().int().min(0).max(127),
   on: z.boolean(),
   instrument: z.string(),
+  voiceMode: z.enum(['mono', 'poly']),
+  octave: z.number().int().min(-2).max(2),
   attack: z.number().int().min(0).max(100),
   decay: z.number().int().min(0).max(100),
   release: z.number().int().min(0).max(100),

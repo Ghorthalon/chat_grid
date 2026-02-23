@@ -157,6 +157,8 @@ This is behavior-focused documentation for item types and their defaults.
 - Title: `piano`
 - Params:
   - `instrument="piano"`
+  - `voiceMode="poly"`
+  - `octave=0`
   - `attack=15`
   - `decay=45`
   - `release=35`
@@ -173,13 +175,15 @@ This is behavior-focused documentation for item types and their defaults.
 - Announces that the user begins playing the piano (client enters piano key mode).
 
 ### Validation
-- `instrument`: `piano | electric_piano | guitar | organ | bass | violin | synth_lead | nintendo | drum_kit`
+- `instrument`: `piano | electric_piano | guitar | organ | bass | violin | synth_lead | brass | nintendo | drum_kit`
+- `voiceMode`: `poly | mono`
+- `octave`: integer `-2..2`
 - `attack`: integer `0..100`
 - `decay`: integer `0..100`
 - `release`: integer `0..100`
 - `brightness`: integer `0..100`
 - `emitRange`: integer `5..20`
-- Instrument changes reset `attack`/`decay`/`release`/`brightness` to instrument defaults.
+- Instrument changes reset `voiceMode`/`octave`/`attack`/`decay`/`release`/`brightness` to instrument defaults.
 
 ## Adding A New Item Type (Registry V1)
 

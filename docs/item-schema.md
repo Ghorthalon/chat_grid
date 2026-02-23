@@ -163,6 +163,8 @@
 ```json
 {
   "instrument": "piano",
+  "voiceMode": "poly",
+  "octave": 0,
   "attack": 15,
   "decay": 45,
   "release": 35,
@@ -172,8 +174,10 @@
 ```
 
 - `instrument`: one of
-  `piano | electric_piano | guitar | organ | bass | violin | synth_lead | nintendo | drum_kit`.
-- Selecting a new instrument resets `attack`/`decay` to that instrument's defaults.
+  `piano | electric_piano | guitar | organ | bass | violin | synth_lead | brass | nintendo | drum_kit`.
+- `voiceMode`: one of `poly | mono`.
+- `octave`: integer, range `-2..2` (default `0`; bass defaults to `-1`).
+- Selecting a new instrument resets `voiceMode`/`octave`/`attack`/`decay`/`release`/`brightness` to that instrument's defaults.
 - `attack`: integer, range `0-100`, default `15`.
 - `decay`: integer, range `0-100`, default `45`.
 - `release`: integer, range `0-100`, default `35`.
@@ -235,8 +239,12 @@
   "midi": 60,
   "on": true,
   "instrument": "piano",
+  "voiceMode": "poly",
+  "octave": 0,
   "attack": 15,
   "decay": 45,
+  "release": 35,
+  "brightness": 55,
   "x": 12,
   "y": 8,
   "emitRange": 15

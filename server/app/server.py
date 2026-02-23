@@ -677,6 +677,10 @@ class SignalingServer:
             else:
                 active_keys.discard(packet.keyId)
             instrument = str(item.params.get("instrument", "piano")).strip().lower()
+            voice_mode = str(item.params.get("voiceMode", "poly")).strip().lower()
+            if voice_mode not in {"poly", "mono"}:
+                voice_mode = "poly"
+            octave = int(item.params.get("octave", 0)) if isinstance(item.params.get("octave", 0), (int, float)) else 0
             attack = int(item.params.get("attack", 15)) if isinstance(item.params.get("attack", 15), (int, float)) else 15
             decay = int(item.params.get("decay", 45)) if isinstance(item.params.get("decay", 45), (int, float)) else 45
             release = int(item.params.get("release", 35)) if isinstance(item.params.get("release", 35), (int, float)) else 35
@@ -693,6 +697,8 @@ class SignalingServer:
                     midi=packet.midi,
                     on=packet.on,
                     instrument=instrument,
+                    voiceMode=voice_mode,
+                    octave=max(-2, min(2, octave)),
                     attack=max(0, min(100, attack)),
                     decay=max(0, min(100, decay)),
                     release=max(0, min(100, release)),

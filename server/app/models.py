@@ -230,6 +230,8 @@ class ItemPianoNoteBroadcastPacket(BasePacket):
     midi: int
     on: bool
     instrument: str
+    voiceMode: str
+    octave: int
     attack: int
     decay: int
     release: int

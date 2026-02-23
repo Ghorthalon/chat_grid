@@ -54,14 +54,16 @@ const DEFAULT_PIANO_INSTRUMENT_OPTIONS = [
   'bass',
   'violin',
   'synth_lead',
+  'brass',
   'nintendo',
   'drum_kit',
 ] as const;
+const DEFAULT_PIANO_VOICE_MODE_OPTIONS = ['poly', 'mono'] as const;
 
 const DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
   radio_station: ['title', 'streamUrl', 'enabled', 'mediaVolume', 'mediaChannel', 'mediaEffect', 'mediaEffectValue', 'facing', 'emitRange'],
   dice: ['title', 'sides', 'number'],
-  piano: ['title', 'instrument', 'attack', 'decay', 'release', 'brightness', 'emitRange'],
+  piano: ['title', 'instrument', 'voiceMode', 'octave', 'attack', 'decay', 'release', 'brightness', 'emitRange'],
   wheel: ['title', 'spaces'],
   clock: ['title', 'timeZone', 'use24Hour'],
   widget: ['title', 'enabled', 'directional', 'facing', 'emitRange', 'emitVolume', 'emitSoundSpeed', 'emitSoundTempo', 'emitEffect', 'emitEffectValue', 'useSound', 'emitSound'],
@@ -133,6 +135,7 @@ let optionItemPropertyValues: Partial<Record<string, string[]>> = {
   emitEffect: EFFECT_SEQUENCE.map((effect) => effect.id),
   mediaChannel: [...RADIO_CHANNEL_OPTIONS],
   instrument: [...DEFAULT_PIANO_INSTRUMENT_OPTIONS],
+  voiceMode: [...DEFAULT_PIANO_VOICE_MODE_OPTIONS],
   timeZone: [...DEFAULT_CLOCK_TIME_ZONE_OPTIONS],
 };
 let itemTypePropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
@@ -239,6 +242,8 @@ export function itemPropertyLabel(key: string): string {
   if (key === 'emitEffect') return 'emit effect';
   if (key === 'emitEffectValue') return 'emit effect value';
   if (key === 'instrument') return 'instrument';
+  if (key === 'voiceMode') return 'voice mode';
+  if (key === 'octave') return 'octave';
   if (key === 'attack') return 'attack';
   if (key === 'decay') return 'decay';
   if (key === 'release') return 'release';

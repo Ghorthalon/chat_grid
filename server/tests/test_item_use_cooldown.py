@@ -377,6 +377,8 @@ async def test_piano_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert send_payloads[-1].ok is True
     assert item.params.get("instrument") == "drum_kit"
+    assert item.params.get("voiceMode") == "poly"
+    assert item.params.get("octave") == 0
     assert item.params.get("attack") == 1
     assert item.params.get("decay") == 22
     assert item.params.get("release") == 12
@@ -389,9 +391,11 @@ async def test_piano_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert send_payloads[-1].ok is True
     assert item.params.get("instrument") == "nintendo"
-    assert item.params.get("attack") == 2
-    assert item.params.get("decay") == 28
-    assert item.params.get("release") == 18
+    assert item.params.get("voiceMode") == "poly"
+    assert item.params.get("octave") == 0
+    assert item.params.get("attack") == 1
+    assert item.params.get("decay") == 24
+    assert item.params.get("release") == 15
     assert item.params.get("brightness") == 85
 
     await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
@@ -405,6 +409,21 @@ async def test_piano_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert send_payloads[-1].ok is False
     assert "instrument must be one of" in send_payloads[-1].message.lower()
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"voiceMode": "mono", "octave": -2}}),
+    )
+    assert send_payloads[-1].ok is True
+    assert item.params.get("voiceMode") == "mono"
+    assert item.params.get("octave") == -2
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_update", "itemId": item.id, "params": {"octave": 3}}),
+    )
+    assert send_payloads[-1].ok is False
+    assert "octave must be between -2 and 2" in send_payloads[-1].message.lower()
 
 
 @pytest.mark.asyncio
@@ -446,6 +465,8 @@ async def test_piano_note_packet_broadcasts(monkeypatch: pytest.MonkeyPatch) -> 
     assert getattr(packet, "type", "") == "item_piano_note"
     assert getattr(packet, "itemId", "") == item.id
     assert getattr(packet, "instrument", "") == "organ"
+    assert getattr(packet, "voiceMode", "") == "poly"
+    assert getattr(packet, "octave", 999) == 0
     assert getattr(packet, "attack", -1) == 20
     assert getattr(packet, "decay", -1) == 60
     assert getattr(packet, "release", -1) == 35
