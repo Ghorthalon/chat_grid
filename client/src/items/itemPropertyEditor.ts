@@ -38,6 +38,7 @@ type EditorDeps = {
   effectSequenceIdsCsv: string;
   applyTextInputEdit: (code: string, key: string, maxLength: number, ctrlKey?: boolean, allowReplaceOnNextType?: boolean) => void;
   setReplaceTextOnNextType: (value: boolean) => void;
+  suppressItemPropertyEchoMs: (ms: number) => void;
   updateStatus: (message: string) => void;
   sfxUiBlip: () => void;
   sfxUiCancel: () => void;
@@ -102,6 +103,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         const delta = code === 'ArrowRight' ? 1 : -1;
         const nextIndex = (currentIndex + delta + options.length) % options.length;
         const nextValue = options[nextIndex];
+        deps.suppressItemPropertyEchoMs(600);
         deps.signalingSend({ type: 'item_update', itemId, params: { [selectedKey]: nextValue } });
         deps.updateStatus(nextValue);
         deps.sfxUiBlip();
@@ -114,6 +116,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
           current = selectedKey === 'enabled' ? item.params.enabled !== false : item.params[selectedKey] === true;
         }
         const nextValue = !current;
+        deps.suppressItemPropertyEchoMs(600);
         deps.signalingSend({ type: 'item_update', itemId, params: { [selectedKey]: nextValue } });
         deps.updateStatus(nextValue ? 'on' : 'off');
         deps.sfxUiBlip();
@@ -136,6 +139,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         let nextValue = attempted;
         if (Number.isFinite(min)) nextValue = Math.max(min, nextValue);
         if (Number.isFinite(max)) nextValue = Math.min(max, nextValue);
+        deps.suppressItemPropertyEchoMs(600);
         deps.signalingSend({ type: 'item_update', itemId, params: { [selectedKey]: nextValue } });
         deps.updateStatus(formatSteppedNumber(nextValue, step));
         if (Math.abs(nextValue - currentValue) < 1e-9 || Math.abs(nextValue - attempted) > 1e-9) {

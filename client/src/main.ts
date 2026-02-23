@@ -221,6 +221,7 @@ let lastSubscriptionRefreshTileX = Math.round(state.player.x);
 let lastSubscriptionRefreshTileY = Math.round(state.player.y);
 let subscriptionRefreshInFlight = false;
 let subscriptionRefreshPending = false;
+let suppressItemPropertyEchoUntilMs = 0;
 let activeTeleportLoopStop: (() => void) | null = null;
 let activeTeleportLoopToken = 0;
 let activeTeleport:
@@ -1491,6 +1492,7 @@ const onAppMessage = createOnMessageHandler({
   itemPropertyLabel,
   getItemPropertyValue,
   getItemById: (itemId) => state.items.get(itemId),
+  shouldAnnounceItemPropertyEcho: () => Date.now() >= suppressItemPropertyEchoUntilMs,
   playLocateToneAt: (x, y) => audio.sfxLocate({ x: x - state.player.x, y: y - state.player.y }),
   resolveIncomingSoundUrl,
   playIncomingItemUseSound: (url, x, y) => {
@@ -2250,6 +2252,9 @@ const itemPropertyEditor = createItemPropertyEditor({
   applyTextInputEdit,
   setReplaceTextOnNextType: (value) => {
     replaceTextOnNextType = value;
+  },
+  suppressItemPropertyEchoMs: (ms) => {
+    suppressItemPropertyEchoUntilMs = Math.max(suppressItemPropertyEchoUntilMs, Date.now() + Math.max(0, ms));
   },
   updateStatus,
   sfxUiBlip: () => audio.sfxUiBlip(),

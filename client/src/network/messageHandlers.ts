@@ -62,6 +62,7 @@ type MessageHandlerDeps = {
   itemPropertyLabel: (key: string) => string;
   getItemPropertyValue: (item: WorldItem, key: string) => string;
   getItemById: (itemId: string) => WorldItem | undefined;
+  shouldAnnounceItemPropertyEcho: () => boolean;
   playLocateToneAt: (x: number, y: number) => void;
   resolveIncomingSoundUrl: (url: string) => string;
   playIncomingItemUseSound: (url: string, x: number, y: number) => void;
@@ -204,7 +205,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         deps.state.carriedItemId = deps.getCarriedItemId();
         if (deps.state.mode === 'itemProperties' && deps.state.selectedItemId === message.item.id) {
           const key = deps.state.itemPropertyKeys[deps.state.itemPropertyIndex];
-          if (key) {
+          if (key && deps.shouldAnnounceItemPropertyEcho()) {
             deps.updateStatus(`${deps.itemPropertyLabel(key)}: ${deps.getItemPropertyValue(message.item, key)}`);
           }
         }
