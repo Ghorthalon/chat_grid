@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import ssl
+import time
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -48,6 +49,7 @@ from .models import (
     ItemDropPacket,
     ItemPianoNoteBroadcastPacket,
     ItemPianoNotePacket,
+    ItemPianoRecordingPacket,
     ItemPickupPacket,
     ItemRemovePacket,
     ItemUpdatePacket,
@@ -69,6 +71,8 @@ LOGGER = logging.getLogger("chgrid.server")
 PACKET_LOGGER = logging.getLogger("chgrid.server.packet")
 CLIENT_PACKET_ADAPTER = TypeAdapter(ClientPacket)
 MAX_ACTIVE_PIANO_KEYS_PER_CLIENT = 12
+PIANO_RECORDING_MAX_MS = 30_000
+PIANO_RECORDING_MAX_EVENTS = 4096
 
 
 class SignalingServer:
@@ -94,6 +98,8 @@ class SignalingServer:
         self.item_service = ItemService(state_file=state_file)
         self.item_last_use_ms: dict[str, int] = {}
         self.active_piano_keys_by_client: dict[str, set[str]] = {}
+        self.piano_recording_state_by_item: dict[str, dict] = {}
+        self.piano_playback_tasks_by_item: dict[str, asyncio.Task[None]] = {}
         self.grid_size = max(1, grid_size)
         self.instance_id = str(uuid.uuid4())
         self.server_version = self._resolve_server_version()
@@ -163,6 +169,185 @@ class SignalingServer:
         if isinstance(item.useSound, str) and item.useSound.strip():
             return item.useSound.strip()
         return None
+
+    def _get_client_by_id(self, client_id: str) -> ClientConnection | None:
+        """Resolve one connected client by id."""
+
+        for connected in self.clients.values():
+            if connected.id == client_id:
+                return connected
+        return None
+
+    def _get_piano_source_position(self, item: WorldItem) -> tuple[int, int]:
+        """Resolve world position used for piano note spatial broadcasts."""
+
+        if item.carrierId:
+            carrier = self._get_client_by_id(item.carrierId)
+            if carrier is not None:
+                return carrier.x, carrier.y
+        return item.x, item.y
+
+    async def _broadcast_item_piano_note(
+        self,
+        item: WorldItem,
+        *,
+        sender_id: str,
+        key_id: str,
+        midi: int,
+        on: bool,
+        exclude: ServerConnection | None = None,
+    ) -> None:
+        """Broadcast one piano note event using current item synth settings."""
+
+        instrument = str(item.params.get("instrument", "piano")).strip().lower()
+        voice_mode = str(item.params.get("voiceMode", "poly")).strip().lower()
+        if voice_mode not in {"poly", "mono"}:
+            voice_mode = "poly"
+        octave = int(item.params.get("octave", 0)) if isinstance(item.params.get("octave", 0), (int, float)) else 0
+        attack = int(item.params.get("attack", 15)) if isinstance(item.params.get("attack", 15), (int, float)) else 15
+        decay = int(item.params.get("decay", 45)) if isinstance(item.params.get("decay", 45), (int, float)) else 45
+        release = int(item.params.get("release", 35)) if isinstance(item.params.get("release", 35), (int, float)) else 35
+        brightness = int(item.params.get("brightness", 55)) if isinstance(item.params.get("brightness", 55), (int, float)) else 55
+        emit_range = int(item.params.get("emitRange", 15)) if isinstance(item.params.get("emitRange", 15), (int, float)) else 15
+        source_x, source_y = self._get_piano_source_position(item)
+        await self._broadcast(
+            ItemPianoNoteBroadcastPacket(
+                type="item_piano_note",
+                itemId=item.id,
+                senderId=sender_id,
+                keyId=key_id,
+                midi=max(0, min(127, int(midi))),
+                on=on,
+                instrument=instrument,
+                voiceMode=voice_mode,
+                octave=max(-2, min(2, octave)),
+                attack=max(0, min(100, attack)),
+                decay=max(0, min(100, decay)),
+                release=max(0, min(100, release)),
+                brightness=max(0, min(100, brightness)),
+                x=source_x,
+                y=source_y,
+                emitRange=max(5, min(20, emit_range)),
+            ),
+            exclude=exclude,
+        )
+
+    def _cancel_piano_playback(self, item_id: str) -> None:
+        """Cancel active playback task for one piano item, if any."""
+
+        task = self.piano_playback_tasks_by_item.pop(item_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def _finalize_piano_recording(self, item_id: str, *, status_message: str | None = None) -> None:
+        """Persist and broadcast one active recording session, then clear runtime state."""
+
+        session = self.piano_recording_state_by_item.pop(item_id, None)
+        if not session:
+            return
+        auto_stop_task = session.get("autoStopTask")
+        if isinstance(auto_stop_task, asyncio.Task) and not auto_stop_task.done():
+            auto_stop_task.cancel()
+        item = self.items.get(item_id)
+        if not item or item.type != "piano":
+            return
+        now_monotonic = time.monotonic()
+        started = float(session.get("startedMonotonic", now_monotonic))
+        elapsed_ms = int((now_monotonic - started) * 1000)
+        elapsed_ms = max(0, min(PIANO_RECORDING_MAX_MS, elapsed_ms))
+        recorded_events = session.get("events")
+        events = list(recorded_events) if isinstance(recorded_events, list) else []
+        item.params["recording"] = events
+        item.params["recordingLengthMs"] = elapsed_ms
+        item.updatedAt = self.item_service.now_ms()
+        item.version += 1
+        self.item_service.save_state()
+        await self._broadcast_item(item)
+        owner_id = str(session.get("ownerClientId", ""))
+        owner = self._get_client_by_id(owner_id) if owner_id else None
+        if owner and status_message:
+            await self._send_item_result(owner, True, "use", status_message, item.id)
+
+    async def _auto_stop_piano_recording(self, item_id: str) -> None:
+        """Stop a recording automatically at the max recording duration."""
+
+        try:
+            await asyncio.sleep(PIANO_RECORDING_MAX_MS / 1000)
+            await self._finalize_piano_recording(item_id, status_message="Recording reached 30.0 s and was saved.")
+        except asyncio.CancelledError:
+            return
+
+    async def _start_piano_playback(self, item: WorldItem) -> None:
+        """Run one piano recording playback task and broadcast note events."""
+
+        sender_id = f"item:{item.id}:playback"
+        raw_events = item.params.get("recording")
+        if not isinstance(raw_events, list):
+            return
+        events: list[dict[str, object]] = []
+        for event in raw_events:
+            if not isinstance(event, dict):
+                continue
+            raw_time = event.get("t")
+            raw_key = event.get("keyId")
+            raw_midi = event.get("midi")
+            raw_on = event.get("on")
+            if not isinstance(raw_time, (int, float)) or not isinstance(raw_key, str) or not isinstance(raw_midi, (int, float)) or not isinstance(raw_on, bool):
+                continue
+            events.append(
+                {
+                    "t": max(0, min(PIANO_RECORDING_MAX_MS, int(raw_time))),
+                    "keyId": raw_key[:32] or "KeyA",
+                    "midi": max(0, min(127, int(raw_midi))),
+                    "on": raw_on,
+                }
+            )
+        events.sort(key=lambda entry: int(entry["t"]))
+        if not events:
+            return
+
+        active_keys: dict[str, int] = {}
+        previous_at_ms = 0
+        try:
+            for event in events:
+                current_at_ms = int(event["t"])
+                delay_ms = max(0, current_at_ms - previous_at_ms)
+                if delay_ms > 0:
+                    await asyncio.sleep(delay_ms / 1000)
+                current_item = self.items.get(item.id)
+                if not current_item or current_item.type != "piano":
+                    break
+                key_id = str(event["keyId"])
+                midi = int(event["midi"])
+                on = bool(event["on"])
+                if on:
+                    active_keys[key_id] = midi
+                else:
+                    active_keys.pop(key_id, None)
+                await self._broadcast_item_piano_note(
+                    current_item,
+                    sender_id=sender_id,
+                    key_id=key_id,
+                    midi=midi,
+                    on=on,
+                )
+                previous_at_ms = current_at_ms
+        except asyncio.CancelledError:
+            pass
+        finally:
+            current_item = self.items.get(item.id)
+            if current_item and current_item.type == "piano":
+                for key_id, midi in list(active_keys.items()):
+                    await self._broadcast_item_piano_note(
+                        current_item,
+                        sender_id=sender_id,
+                        key_id=key_id,
+                        midi=midi,
+                        on=False,
+                    )
+            current_task = self.piano_playback_tasks_by_item.get(item.id)
+            if current_task is asyncio.current_task():
+                self.piano_playback_tasks_by_item.pop(item.id, None)
 
     def _is_in_bounds(self, x: int, y: int) -> bool:
         """Check whether a coordinate is inside server-authoritative world bounds."""
@@ -263,6 +448,10 @@ class SignalingServer:
             if websocket in self.clients:
                 disconnected = self.clients.pop(websocket)
                 self.active_piano_keys_by_client.pop(disconnected.id, None)
+                for item_id, session in list(self.piano_recording_state_by_item.items()):
+                    if session.get("ownerClientId") != disconnected.id:
+                        continue
+                    await self._finalize_piano_recording(item_id)
                 for item in self.item_service.drop_carried_items_for_disconnect(disconnected):
                     await self._broadcast_item(item)
                 self.item_service.save_state()
@@ -589,6 +778,12 @@ class SignalingServer:
                 item.type,
                 item.title,
             )
+            self._cancel_piano_playback(item.id)
+            recording_state = self.piano_recording_state_by_item.pop(item.id, None)
+            if recording_state is not None:
+                auto_stop_task = recording_state.get("autoStopTask")
+                if isinstance(auto_stop_task, asyncio.Task) and not auto_stop_task.done():
+                    auto_stop_task.cancel()
             self.item_service.remove_item(item.id)
             self.item_last_use_ms.pop(item.id, None)
             await self._broadcast(ItemRemovePacket(type="item_remove", itemId=item.id))
@@ -676,39 +871,70 @@ class SignalingServer:
                 active_keys.add(packet.keyId)
             else:
                 active_keys.discard(packet.keyId)
-            instrument = str(item.params.get("instrument", "piano")).strip().lower()
-            voice_mode = str(item.params.get("voiceMode", "poly")).strip().lower()
-            if voice_mode not in {"poly", "mono"}:
-                voice_mode = "poly"
-            octave = int(item.params.get("octave", 0)) if isinstance(item.params.get("octave", 0), (int, float)) else 0
-            attack = int(item.params.get("attack", 15)) if isinstance(item.params.get("attack", 15), (int, float)) else 15
-            decay = int(item.params.get("decay", 45)) if isinstance(item.params.get("decay", 45), (int, float)) else 45
-            release = int(item.params.get("release", 35)) if isinstance(item.params.get("release", 35), (int, float)) else 35
-            brightness = int(item.params.get("brightness", 55)) if isinstance(item.params.get("brightness", 55), (int, float)) else 55
-            emit_range = int(item.params.get("emitRange", 15)) if isinstance(item.params.get("emitRange", 15), (int, float)) else 15
-            source_x = client.x if item.carrierId == client.id else item.x
-            source_y = client.y if item.carrierId == client.id else item.y
-            await self._broadcast(
-                ItemPianoNoteBroadcastPacket(
-                    type="item_piano_note",
-                    itemId=item.id,
-                    senderId=client.id,
-                    keyId=packet.keyId,
-                    midi=packet.midi,
-                    on=packet.on,
-                    instrument=instrument,
-                    voiceMode=voice_mode,
-                    octave=max(-2, min(2, octave)),
-                    attack=max(0, min(100, attack)),
-                    decay=max(0, min(100, decay)),
-                    release=max(0, min(100, release)),
-                    brightness=max(0, min(100, brightness)),
-                    x=source_x,
-                    y=source_y,
-                    emitRange=max(5, min(20, emit_range)),
-                ),
+            recording_state = self.piano_recording_state_by_item.get(item.id)
+            if recording_state and recording_state.get("ownerClientId") == client.id:
+                started = float(recording_state.get("startedMonotonic", time.monotonic()))
+                elapsed_ms = max(0, min(PIANO_RECORDING_MAX_MS, int((time.monotonic() - started) * 1000)))
+                events = recording_state.get("events")
+                if isinstance(events, list) and len(events) < PIANO_RECORDING_MAX_EVENTS:
+                    events.append({"t": elapsed_ms, "keyId": packet.keyId[:32], "midi": packet.midi, "on": packet.on})
+                if elapsed_ms >= PIANO_RECORDING_MAX_MS:
+                    await self._finalize_piano_recording(item.id, status_message="Recording reached 30.0 s and was saved.")
+            await self._broadcast_item_piano_note(
+                item,
+                sender_id=client.id,
+                key_id=packet.keyId,
+                midi=packet.midi,
+                on=packet.on,
                 exclude=client.websocket,
             )
+            return
+
+        if isinstance(packet, ItemPianoRecordingPacket):
+            item = self.items.get(packet.itemId)
+            if not item or item.type != "piano":
+                await self._send_item_result(client, False, "use", "Piano not found.")
+                return
+            if item.carrierId not in (None, client.id):
+                await self._send_item_result(client, False, "use", "Piano is not available.", item.id)
+                return
+            if item.carrierId is None and (item.x != client.x or item.y != client.y):
+                await self._send_item_result(client, False, "use", "Piano is not on your square.", item.id)
+                return
+
+            if packet.action == "toggle_record":
+                existing = self.piano_recording_state_by_item.get(item.id)
+                if existing and existing.get("ownerClientId") != client.id:
+                    await self._send_item_result(client, False, "use", "This piano is already recording.", item.id)
+                    return
+                if existing and existing.get("ownerClientId") == client.id:
+                    await self._finalize_piano_recording(item.id, status_message="Recording saved.")
+                    return
+                self._cancel_piano_playback(item.id)
+                recording_state = {
+                    "ownerClientId": client.id,
+                    "startedMonotonic": time.monotonic(),
+                    "events": [],
+                }
+                self.piano_recording_state_by_item[item.id] = recording_state
+                auto_stop_task = asyncio.create_task(self._auto_stop_piano_recording(item.id))
+                recording_state["autoStopTask"] = auto_stop_task
+                await self._send_item_result(client, True, "use", "Recording started. Press comma again to stop.", item.id)
+                return
+
+            if packet.action == "playback":
+                if item.id in self.piano_recording_state_by_item:
+                    await self._send_item_result(client, False, "use", "Stop recording before playback.", item.id)
+                    return
+                recording = item.params.get("recording")
+                if not isinstance(recording, list) or not recording:
+                    await self._send_item_result(client, False, "use", "No recording saved on this piano.", item.id)
+                    return
+                self._cancel_piano_playback(item.id)
+                playback_task = asyncio.create_task(self._start_piano_playback(item))
+                self.piano_playback_tasks_by_item[item.id] = playback_task
+                await self._send_item_result(client, True, "use", f"Playing recording on {item.title}.", item.id)
+                return
             return
 
         if isinstance(packet, ItemUpdatePacket):

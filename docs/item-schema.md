@@ -183,6 +183,8 @@
 - `release`: integer, range `0-100`, default `35`.
 - `brightness`: integer, range `0-100`, default `55`.
 - `emitRange`: integer, range `5-20`, default `15`.
+- `recording`: server-managed array of note events (`t`, `keyId`, `midi`, `on`) captured from piano mode recording.
+- `recordingLengthMs`: server-managed recording duration in milliseconds (`0..30000`).
 
 ## Packet Shapes
 

@@ -507,3 +507,87 @@ async def test_piano_note_key_cap(monkeypatch: pytest.MonkeyPatch) -> None:
         json.dumps({"type": "item_piano_note", "itemId": item.id, "keyId": "KeyOverflow", "midi": 60, "on": True}),
     )
     assert len(broadcast_payloads) == 12
+
+
+@pytest.mark.asyncio
+async def test_piano_recording_toggle_and_save(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=6)
+    server.clients[ws] = client
+    item = server.item_service.default_item(client, "piano")
+    server.item_service.add_item(item)
+
+    send_payloads: list[object] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        return
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "toggle_record"}),
+    )
+    assert send_payloads[-1].ok is True
+    assert item.id in server.piano_recording_state_by_item
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_piano_note", "itemId": item.id, "keyId": "KeyA", "midi": 60, "on": True}),
+    )
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_piano_note", "itemId": item.id, "keyId": "KeyA", "midi": 60, "on": False}),
+    )
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "toggle_record"}),
+    )
+    assert send_payloads[-1].ok is True
+    assert item.id not in server.piano_recording_state_by_item
+    recording = item.params.get("recording")
+    assert isinstance(recording, list)
+    assert len(recording) >= 2
+    assert recording[0]["keyId"] == "KeyA"
+
+
+@pytest.mark.asyncio
+async def test_piano_playback_starts_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=6)
+    server.clients[ws] = client
+    item = server.item_service.default_item(client, "piano")
+    item.params["recording"] = [{"t": 0, "keyId": "KeyA", "midi": 60, "on": True}]
+    server.item_service.add_item(item)
+
+    send_payloads: list[object] = []
+    playback_started: list[str] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        return
+
+    async def fake_start_playback(current_item) -> None:
+        playback_started.append(current_item.id)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server, "_start_piano_playback", fake_start_playback)
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "playback"}),
+    )
+    assert send_payloads[-1].ok is True
+    task = server.piano_playback_tasks_by_item.get(item.id)
+    assert task is not None
+    await task
+    assert playback_started == [item.id]

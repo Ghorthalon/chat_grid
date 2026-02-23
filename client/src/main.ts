@@ -256,6 +256,8 @@ let activeTeleportLoopToken = 0;
 let activePianoItemId: string | null = null;
 const activePianoKeys = new Set<string>();
 const activePianoKeyMidi = new Map<string, number>();
+const activePianoHeldOrder: string[] = [];
+let activePianoMonophonicKey: string | null = null;
 const activeRemotePianoKeys = new Set<string>();
 let pianoPreviewTimeoutId: number | null = null;
 let activeTeleport:
@@ -881,6 +883,8 @@ async function startPianoUseMode(itemId: string): Promise<void> {
   activePianoItemId = itemId;
   activePianoKeys.clear();
   activePianoKeyMidi.clear();
+  activePianoHeldOrder.length = 0;
+  activePianoMonophonicKey = null;
   state.mode = 'pianoUse';
   await audio.ensureContext();
   updateStatus(`using ${item.title}, press escape to stop.`);
@@ -900,11 +904,92 @@ function stopPianoUseMode(announce = true): void {
   activePianoItemId = null;
   activePianoKeys.clear();
   activePianoKeyMidi.clear();
+  activePianoHeldOrder.length = 0;
+  activePianoMonophonicKey = null;
   state.mode = 'normal';
   if (announce) {
     updateStatus('Stopped piano.');
     audio.sfxUiCancel();
   }
+}
+
+/** Starts one local piano note and sends the matching network note-on packet. */
+function playLocalPianoNote(
+  item: WorldItem,
+  itemId: string,
+  keyId: string,
+  midi: number,
+  config: ReturnType<typeof getPianoParams>,
+): void {
+  const ctx = audio.context;
+  const destination = audio.getOutputDestinationNode();
+  if (!ctx || !destination) return;
+  const sourceX = item.carrierId === state.player.id ? state.player.x : item.x;
+  const sourceY = item.carrierId === state.player.id ? state.player.y : item.y;
+  pianoSynth.noteOn(
+    keyId,
+    `local:${itemId}`,
+    midi,
+    config.instrument,
+    config.voiceMode,
+    config.attack,
+    config.decay,
+    config.release,
+    config.brightness,
+    { audioCtx: ctx, destination },
+    { x: sourceX - state.player.x, y: sourceY - state.player.y, range: config.emitRange },
+  );
+  signaling.send({ type: 'item_piano_note', itemId, keyId, midi, on: true });
+}
+
+/** Handles key release while in piano mode, including mono fallback retrigger behavior. */
+function handlePianoUseModeKeyUp(code: string): void {
+  if (!activePianoKeys.delete(code)) return;
+  const orderIndex = activePianoHeldOrder.lastIndexOf(code);
+  if (orderIndex >= 0) {
+    activePianoHeldOrder.splice(orderIndex, 1);
+  }
+  const itemId = activePianoItemId;
+  const midi = activePianoKeyMidi.get(code);
+  activePianoKeyMidi.delete(code);
+  if (!itemId || !Number.isFinite(midi)) {
+    pianoSynth.noteOff(code);
+    if (activePianoMonophonicKey === code) {
+      activePianoMonophonicKey = null;
+    }
+    return;
+  }
+  const item = state.items.get(itemId);
+  if (!item || item.type !== 'piano') {
+    pianoSynth.noteOff(code);
+    if (activePianoMonophonicKey === code) {
+      activePianoMonophonicKey = null;
+    }
+    return;
+  }
+  const config = getPianoParams(item);
+  if (config.voiceMode !== 'mono') {
+    pianoSynth.noteOff(code);
+    signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi, on: false });
+    return;
+  }
+  if (activePianoMonophonicKey !== code) {
+    return;
+  }
+  pianoSynth.noteOff(code);
+  signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi, on: false });
+  const fallbackCode = activePianoHeldOrder[activePianoHeldOrder.length - 1] ?? null;
+  if (!fallbackCode) {
+    activePianoMonophonicKey = null;
+    return;
+  }
+  const fallbackMidi = activePianoKeyMidi.get(fallbackCode);
+  if (!Number.isFinite(fallbackMidi)) {
+    activePianoMonophonicKey = null;
+    return;
+  }
+  activePianoMonophonicKey = fallbackCode;
+  playLocalPianoNote(item, itemId, fallbackCode, fallbackMidi, config);
 }
 
 /** Plays one short C4 preview using the piano item's current/overridden envelope+instrument. */
@@ -2328,6 +2413,16 @@ function handlePianoUseModeInput(code: string): void {
     stopPianoUseMode(false);
     return;
   }
+  if (code === 'Comma') {
+    signaling.send({ type: 'item_piano_recording', itemId, action: 'toggle_record' });
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'Period') {
+    signaling.send({ type: 'item_piano_recording', itemId, action: 'playback' });
+    audio.sfxUiBlip();
+    return;
+  }
   if (code === 'Equal' || code === 'Minus') {
     const current = getPianoParams(item).octave;
     const next = Math.max(-2, Math.min(2, current + (code === 'Equal' ? 1 : -1)));
@@ -2385,25 +2480,19 @@ function handlePianoUseModeInput(code: string): void {
   const playedMidi = Math.max(0, Math.min(127, midi + config.octave * 12));
   activePianoKeys.add(code);
   activePianoKeyMidi.set(code, playedMidi);
-  const ctx = audio.context;
-  const destination = audio.getOutputDestinationNode();
-  if (!ctx || !destination) return;
-  const sourceX = item.carrierId === state.player.id ? state.player.x : item.x;
-  const sourceY = item.carrierId === state.player.id ? state.player.y : item.y;
-  pianoSynth.noteOn(
-    code,
-    `local:${itemId}`,
-    playedMidi,
-    config.instrument,
-    config.voiceMode,
-    config.attack,
-    config.decay,
-    config.release,
-    config.brightness,
-    { audioCtx: ctx, destination },
-    { x: sourceX - state.player.x, y: sourceY - state.player.y, range: config.emitRange },
-  );
-  signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi: playedMidi, on: true });
+  activePianoHeldOrder.push(code);
+  if (config.voiceMode === 'mono') {
+    const previousCode = activePianoMonophonicKey;
+    if (previousCode && previousCode !== code) {
+      const previousMidi = activePianoKeyMidi.get(previousCode);
+      pianoSynth.noteOff(previousCode);
+      if (Number.isFinite(previousMidi)) {
+        signaling.send({ type: 'item_piano_note', itemId, keyId: previousCode, midi: previousMidi, on: false });
+      }
+    }
+    activePianoMonophonicKey = code;
+  }
+  playLocalPianoNote(item, itemId, code, playedMidi, config);
 }
 
 /** Handles effect menu list navigation and selection. */
@@ -2871,15 +2960,7 @@ function setupInputHandlers(): void {
   document.addEventListener('keyup', (event) => {
     const code = normalizeInputCode(event);
     if (state.mode === 'pianoUse' && code) {
-      if (activePianoKeys.delete(code)) {
-        pianoSynth.noteOff(code);
-        const itemId = activePianoItemId;
-        const midi = activePianoKeyMidi.get(code);
-        activePianoKeyMidi.delete(code);
-        if (itemId && Number.isFinite(midi)) {
-          signaling.send({ type: 'item_piano_note', itemId, keyId: code, midi, on: false });
-        }
-      }
+      handlePianoUseModeKeyUp(code);
     }
     if (code) {
       state.keysPressed[code] = false;

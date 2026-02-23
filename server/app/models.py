@@ -75,6 +75,12 @@ class ItemPianoNotePacket(BasePacket):
     on: bool
 
 
+class ItemPianoRecordingPacket(BasePacket):
+    type: Literal["item_piano_recording"]
+    itemId: str
+    action: Literal["toggle_record", "playback"]
+
+
 class ItemUpdatePacket(BasePacket):
     type: Literal["item_update"]
     itemId: str
@@ -94,6 +100,7 @@ ClientPacket = (
     | ItemDeletePacket
     | ItemUsePacket
     | ItemPianoNotePacket
+    | ItemPianoRecordingPacket
     | ItemUpdatePacket
 )
 

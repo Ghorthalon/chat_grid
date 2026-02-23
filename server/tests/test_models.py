@@ -22,3 +22,9 @@ def test_item_add_accepts_piano_type() -> None:
     adapter = TypeAdapter(ClientPacket)
     packet = adapter.validate_python({"type": "item_add", "itemType": "piano"})
     assert packet.type == "item_add"
+
+
+def test_item_piano_recording_packet_validates() -> None:
+    adapter = TypeAdapter(ClientPacket)
+    packet = adapter.validate_python({"type": "item_piano_recording", "itemId": "p1", "action": "toggle_record"})
+    assert packet.type == "item_piano_recording"
