@@ -28,8 +28,12 @@
           "description": "Play the saved recording."
         },
         {
+          "keys": "Enter",
+          "description": "Play demo melody. Press Enter again to restart it."
+        },
+        {
           "keys": "C",
-          "description": "Stop recording playback."
+          "description": "Stop demo and recording playback."
         },
         {
           "keys": "Escape",

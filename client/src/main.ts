@@ -112,6 +112,26 @@ const PIANO_SHARP_KEY_MIDI_BY_CODE: Record<string, number> = {
   KeyP: 75,
   BracketRight: 78,
 };
+const PIANO_DEMO_STEPS_F_MAJOR: Array<{ midi: number; durationMs: number; gapMs: number }> = [
+  { midi: 65, durationMs: 220, gapMs: 40 }, // F4
+  { midi: 69, durationMs: 220, gapMs: 40 }, // A4
+  { midi: 72, durationMs: 280, gapMs: 60 }, // C5
+  { midi: 74, durationMs: 220, gapMs: 40 }, // D5
+  { midi: 72, durationMs: 220, gapMs: 40 }, // C5
+  { midi: 69, durationMs: 260, gapMs: 60 }, // A4
+  { midi: 70, durationMs: 220, gapMs: 40 }, // Bb4
+  { midi: 69, durationMs: 220, gapMs: 40 }, // A4
+  { midi: 67, durationMs: 260, gapMs: 60 }, // G4
+  { midi: 65, durationMs: 360, gapMs: 90 }, // F4
+  { midi: 67, durationMs: 220, gapMs: 40 }, // G4
+  { midi: 69, durationMs: 220, gapMs: 40 }, // A4
+  { midi: 70, durationMs: 220, gapMs: 40 }, // Bb4
+  { midi: 72, durationMs: 280, gapMs: 60 }, // C5
+  { midi: 70, durationMs: 220, gapMs: 40 }, // Bb4
+  { midi: 69, durationMs: 220, gapMs: 40 }, // A4
+  { midi: 67, durationMs: 260, gapMs: 60 }, // G4
+  { midi: 65, durationMs: 420, gapMs: 120 }, // F4
+];
 
 declare global {
   interface Window {
@@ -274,6 +294,10 @@ const activePianoKeys = new Set<string>();
 const activePianoKeyMidi = new Map<string, number>();
 const activePianoHeldOrder: string[] = [];
 let activePianoMonophonicKey: string | null = null;
+let activePianoDemoRunToken = 0;
+let activePianoDemoItemId: string | null = null;
+const activePianoDemoTimeoutIds: number[] = [];
+const activePianoDemoNotes = new Map<string, number>();
 const activeRemotePianoKeys = new Set<string>();
 let pianoPreviewTimeoutId: number | null = null;
 let activeTeleport:
@@ -928,6 +952,7 @@ async function startPianoUseMode(itemId: string): Promise<void> {
 /** Exits local piano key mode and releases any held notes. */
 function stopPianoUseMode(announce = true): void {
   if (!activePianoItemId) return;
+  stopPianoDemo(true);
   const itemId = activePianoItemId;
   for (const code of Array.from(activePianoKeys)) {
     const midi = activePianoKeyMidi.get(code);
@@ -974,6 +999,59 @@ function playLocalPianoNote(
     { x: sourceX - state.player.x, y: sourceY - state.player.y, range: config.emitRange },
   );
   signaling.send({ type: 'item_piano_note', itemId, keyId, midi, on: true });
+}
+
+/** Stops active piano demo notes/timeouts and optionally emits note-off packets. */
+function stopPianoDemo(sendNoteOff = true): boolean {
+  const hadActiveDemo = activePianoDemoNotes.size > 0 || activePianoDemoTimeoutIds.length > 0;
+  activePianoDemoRunToken += 1;
+  while (activePianoDemoTimeoutIds.length > 0) {
+    const timeoutId = activePianoDemoTimeoutIds.pop();
+    if (typeof timeoutId === 'number') {
+      window.clearTimeout(timeoutId);
+    }
+  }
+  const itemId = activePianoDemoItemId;
+  for (const [keyId, midi] of Array.from(activePianoDemoNotes.entries())) {
+    pianoSynth.noteOff(keyId);
+    if (sendNoteOff && itemId && Number.isFinite(midi)) {
+      signaling.send({ type: 'item_piano_note', itemId, keyId, midi, on: false });
+    }
+  }
+  activePianoDemoNotes.clear();
+  activePianoDemoItemId = null;
+  return hadActiveDemo;
+}
+
+/** Starts the built-in piano demo sequence from the beginning. */
+function startPianoDemo(item: WorldItem, itemId: string): void {
+  stopPianoDemo(true);
+  const runToken = activePianoDemoRunToken;
+  activePianoDemoItemId = itemId;
+  let atMs = 0;
+  for (let index = 0; index < PIANO_DEMO_STEPS_F_MAJOR.length; index += 1) {
+    const step = PIANO_DEMO_STEPS_F_MAJOR[index]!;
+    const startTimeoutId = window.setTimeout(() => {
+      if (runToken !== activePianoDemoRunToken) return;
+      const liveItem = state.items.get(itemId);
+      if (!liveItem || liveItem.type !== 'piano') return;
+      const liveConfig = getPianoParams(liveItem);
+      const midi = Math.max(0, Math.min(127, step.midi + liveConfig.octave * 12));
+      const keyId = `__piano_demo_${runToken}_${index}`;
+      activePianoDemoNotes.set(keyId, midi);
+      playLocalPianoNote(liveItem, itemId, keyId, midi, liveConfig);
+      const stopTimeoutId = window.setTimeout(() => {
+        if (runToken !== activePianoDemoRunToken) return;
+        if (!activePianoDemoNotes.has(keyId)) return;
+        activePianoDemoNotes.delete(keyId);
+        pianoSynth.noteOff(keyId);
+        signaling.send({ type: 'item_piano_note', itemId, keyId, midi, on: false });
+      }, step.durationMs);
+      activePianoDemoTimeoutIds.push(stopTimeoutId);
+    }, atMs);
+    activePianoDemoTimeoutIds.push(startTimeoutId);
+    atMs += step.durationMs + step.gapMs;
+  }
 }
 
 /** Handles key release while in piano mode, including mono fallback retrigger behavior. */
@@ -2456,6 +2534,12 @@ function handlePianoUseModeInput(code: string): void {
     stopPianoUseMode(false);
     return;
   }
+  if (code === 'Enter') {
+    startPianoDemo(item, itemId);
+    updateStatus('demo play');
+    audio.sfxUiBlip();
+    return;
+  }
   if (code === 'KeyZ') {
     signaling.send({ type: 'item_piano_recording', itemId, action: 'toggle_record' });
     return;
@@ -2465,6 +2549,7 @@ function handlePianoUseModeInput(code: string): void {
     return;
   }
   if (code === 'KeyC') {
+    stopPianoDemo(true);
     signaling.send({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
     return;
   }

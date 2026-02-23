@@ -84,7 +84,8 @@ Applies to effect select, user/item list modes, item selection, item property li
 - `-` / `=`: Shift octave down/up
 - `Z`: Start/stop recording on this piano (max 30s)
 - `X`: Play back saved recording on this piano
-- `C`: Stop playback on this piano
+- `Enter`: Play demo melody (press again to restart)
+- `C`: Stop demo/playback on this piano
 - `Escape`: Exit piano mode
 
 ## Help Viewer Mode
