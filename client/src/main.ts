@@ -2414,17 +2414,17 @@ function handlePianoUseModeInput(code: string): void {
     stopPianoUseMode(false);
     return;
   }
-  if (code === 'Comma') {
+  if (code === 'KeyZ') {
     signaling.send({ type: 'item_piano_recording', itemId, action: 'toggle_record' });
     audio.sfxUiBlip();
     return;
   }
-  if (code === 'Period') {
+  if (code === 'KeyX') {
     signaling.send({ type: 'item_piano_recording', itemId, action: 'playback' });
     audio.sfxUiBlip();
     return;
   }
-  if (code === 'Slash') {
+  if (code === 'KeyC') {
     signaling.send({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
     audio.sfxUiBlip();
     return;

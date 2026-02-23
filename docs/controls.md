@@ -81,9 +81,9 @@ Applies to effect select, user/item list modes, item selection, item property li
 - `W E T Y U O P ]`: Play sharps
 - Multiple keys can be held/played at once
 - `-` / `=`: Shift octave down/up
-- `,`: Start/stop recording on this piano (max 30s)
-- `.`: Play back saved recording on this piano
-- `/`: Stop playback on this piano
+- `Z`: Start/stop recording on this piano (max 30s)
+- `X`: Play back saved recording on this piano
+- `C`: Stop playback on this piano
 - `Escape`: Exit piano mode
 
 ## Help Viewer Mode

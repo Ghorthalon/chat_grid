@@ -241,12 +241,18 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
       }
 
       case 'item_action_result': {
+        const pianoStatusMessages = new Set([
+          'record',
+          'play',
+          'stop',
+          'No recording saved on this piano.',
+          'Stop recording before playback.',
+          'This piano is already recording.',
+        ]);
         if (message.ok) {
           if (message.action === 'use') {
-            const pianoStatusLabel =
-              message.message === 'record' || message.message === 'play' || message.message === 'stop' ? message.message : null;
-            if (pianoStatusLabel) {
-              deps.updateStatus(pianoStatusLabel);
+            if (pianoStatusMessages.has(message.message)) {
+              deps.updateStatus(message.message);
               deps.audioUiBlip();
               break;
             }
@@ -260,6 +266,11 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
             deps.audioUiConfirm();
           }
         } else {
+          if (message.action === 'use' && pianoStatusMessages.has(message.message)) {
+            deps.updateStatus(message.message);
+            deps.audioUiCancel();
+            break;
+          }
           deps.pushChatMessage(message.message);
           deps.audioUiCancel();
         }
