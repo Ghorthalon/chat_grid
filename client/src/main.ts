@@ -81,7 +81,6 @@ const RECONNECT_DELAY_MS = 5_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
 const AUDIO_SUBSCRIPTION_REFRESH_MS = 500;
 const AUTO_RECONNECT_AFTER_RELOAD_KEY = 'chatGridAutoReconnectAfterReload';
-const SELF_LIST_ENTRY_ID = '__self__';
 
 declare global {
   interface Window {
@@ -520,31 +519,6 @@ function applyConfiguredPeerListenGains(): void {
   for (const [peerId, peerState] of state.peers.entries()) {
     peerManager.setPeerListenGain(peerId, getPeerListenGainForNickname(peerState.nickname));
   }
-}
-
-/** Resolves a list user entry id to either local player or a remote peer. */
-function getListUserEntry(peerId: string):
-  | { id: string; nickname: string; x: number; y: number; isSelf: true }
-  | { id: string; nickname: string; x: number; y: number; isSelf: false }
-  | null {
-  if (peerId === SELF_LIST_ENTRY_ID) {
-    return {
-      id: SELF_LIST_ENTRY_ID,
-      nickname: state.player.nickname,
-      x: state.player.x,
-      y: state.player.y,
-      isSelf: true,
-    };
-  }
-  const peer = state.peers.get(peerId);
-  if (!peer) return null;
-  return {
-    id: peer.id,
-    nickname: peer.nickname,
-    x: peer.x,
-    y: peer.y,
-    isSelf: false,
-  };
 }
 
 /** Applies current layer toggles to peer voice, media streams, and item emitters. */
@@ -1534,31 +1508,6 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       audio.sfxUiBlip();
       return;
     }
-    case 'listUsersAlphabetical':
-      state.sortedPeerIds = [
-        ...Array.from(state.peers.entries()).map(([id, peer]) => ({ id, nickname: peer.nickname })),
-        { id: SELF_LIST_ENTRY_ID, nickname: state.player.nickname },
-      ]
-        .sort((a, b) => a.nickname.localeCompare(b.nickname, undefined, { sensitivity: 'base' }))
-        .map((entry) => entry.id);
-      state.listIndex = 0;
-      state.mode = 'listUsers';
-      {
-        const first = getListUserEntry(state.sortedPeerIds[0]);
-        if (first) {
-          const userCount = state.sortedPeerIds.length;
-          const userLabelText = userCount === 1 ? 'user' : 'users';
-          const gain = first.isSelf ? 1 : getPeerListenGainForNickname(first.nickname);
-          const gainPhrase = first.isSelf
-            ? 'self volume not adjustable'
-            : `volume ${formatSteppedNumber(gain, MIC_INPUT_GAIN_STEP)}`;
-          updateStatus(
-            `${userCount} ${userLabelText}. ${first.nickname}, ${gainPhrase}.`,
-          );
-        }
-      }
-      audio.sfxUiBlip();
-      return;
     case 'addItem': {
       const itemTypeSequence = getItemTypeSequence();
       if (itemTypeSequence.length === 0) {
@@ -1700,11 +1649,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
           return;
         }
         state.sortedPeerIds = Array.from(state.peers.entries())
-          .sort(
-            (a, b) =>
-              Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
-              Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
-          )
+          .sort((a, b) => a[1].nickname.localeCompare(b[1].nickname, undefined, { sensitivity: 'base' }))
           .map(([id]) => id);
         state.listIndex = 0;
         state.mode = 'listUsers';
@@ -1712,8 +1657,9 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
         if (first) {
           const userCount = state.sortedPeerIds.length;
           const userLabelText = userCount === 1 ? 'user' : 'users';
+          const gainPhrase = `volume ${formatSteppedNumber(getPeerListenGainForNickname(first.nickname), MIC_INPUT_GAIN_STEP)}`;
           updateStatus(
-            `${userCount} ${userLabelText}. ${first.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+            `${userCount} ${userLabelText}. ${first.nickname}, ${gainPhrase}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
           );
         }
         audio.sfxUiBlip();
@@ -1933,19 +1879,15 @@ function handleListModeInput(code: string, key: string): void {
   }
 
   if (code === 'ArrowLeft' || code === 'ArrowRight') {
-    const entry = getListUserEntry(state.sortedPeerIds[state.listIndex]);
+    const peerId = state.sortedPeerIds[state.listIndex];
+    const entry = state.peers.get(peerId);
     if (!entry) return;
-    if (entry.isSelf) {
-      updateStatus('Your own listen volume is not adjustable.');
-      audio.sfxUiCancel();
-      return;
-    }
     const current = getPeerListenGainForNickname(entry.nickname);
     const delta = code === 'ArrowRight' ? MIC_INPUT_GAIN_STEP : -MIC_INPUT_GAIN_STEP;
     const attempted = snapNumberToStep(current + delta, MIC_INPUT_GAIN_STEP, MIC_CALIBRATION_MIN_GAIN);
     const next = clampMicInputGain(attempted);
     setPeerListenGainForNickname(entry.nickname, next);
-    peerManager.setPeerListenGain(entry.id, next);
+    peerManager.setPeerListenGain(peerId, next);
     updateStatus(`${entry.nickname} volume ${formatSteppedNumber(next, MIC_INPUT_GAIN_STEP)}.`);
     if (Math.abs(next - current) < 1e-9 || Math.abs(next - attempted) > 1e-9) {
       audio.sfxUiCancel();
@@ -1955,17 +1897,18 @@ function handleListModeInput(code: string, key: string): void {
     return;
   }
 
-  const control = handleListControlKey(code, key, state.sortedPeerIds, state.listIndex, (peerId) => {
-    const entry = getListUserEntry(peerId);
-    return entry?.nickname ?? '';
-  });
+  const control = handleListControlKey(
+    code,
+    key,
+    state.sortedPeerIds,
+    state.listIndex,
+    (peerId) => state.peers.get(peerId)?.nickname ?? '',
+  );
   if (control.type === 'move') {
     state.listIndex = control.index;
-    const entry = getListUserEntry(state.sortedPeerIds[state.listIndex]);
+    const entry = state.peers.get(state.sortedPeerIds[state.listIndex]);
     if (!entry) return;
-    const gainPhrase = entry.isSelf
-      ? 'self volume not adjustable'
-      : `volume ${formatSteppedNumber(getPeerListenGainForNickname(entry.nickname), MIC_INPUT_GAIN_STEP)}`;
+    const gainPhrase = `volume ${formatSteppedNumber(getPeerListenGainForNickname(entry.nickname), MIC_INPUT_GAIN_STEP)}`;
     updateStatus(
       `${entry.nickname}, ${gainPhrase}, ${distanceDirectionPhrase(state.player.x, state.player.y, entry.x, entry.y)}, ${entry.x}, ${entry.y}`,
     );
@@ -1976,7 +1919,7 @@ function handleListModeInput(code: string, key: string): void {
   }
 
   if (control.type === 'select') {
-    const entry = getListUserEntry(state.sortedPeerIds[state.listIndex]);
+    const entry = state.peers.get(state.sortedPeerIds[state.listIndex]);
     if (!entry) return;
     if (state.player.x === entry.x && state.player.y === entry.y) {
       updateStatus('Already here.');

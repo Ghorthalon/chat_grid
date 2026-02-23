@@ -30,15 +30,11 @@
         },
         {
           "keys": "Shift+L",
-          "description": "List users; Enter teleports to that user"
+          "description": "List users; Enter teleports to that user, left/right arrow adjust volume"
         },
         {
           "keys": "U",
           "description": "Speak connected users"
-        },
-        {
-          "keys": "Shift+U",
-          "description": "List users alphabetically; Left/Right adjusts selected user volume"
         },
         {
           "keys": "Slash",

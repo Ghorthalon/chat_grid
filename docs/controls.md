@@ -12,9 +12,8 @@ This document is the authoritative keymap for the client.
 
 ### Users, Nickname, Chat
 - `L`: Locate nearest user
-- `Shift+L`: List users and teleport to selected user with `Enter`
+- `Shift+L`: List users alphabetically; `Enter` teleports to selected user; `ArrowLeft`/`ArrowRight` adjust selected user volume
 - `U`: Speak connected users
-- `Shift+U`: List users alphabetically
 - `N`: Edit nickname
 - `/`: Start chat
 - `,` / `.`: Previous/next message
