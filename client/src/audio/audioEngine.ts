@@ -394,6 +394,34 @@ export class AudioEngine {
     }
   }
 
+  /** Starts a looping sample and returns a stop callback for explicit teardown. */
+  async startLoopingSample(url: string, gain = 1): Promise<(() => void) | null> {
+    await this.ensureContext();
+    const { audioCtx, sfxGainNode } = this;
+    if (!audioCtx || !sfxGainNode || gain <= 0) return null;
+    try {
+      const buffer = await this.getSampleBuffer(url);
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = gain;
+      source.connect(gainNode).connect(sfxGainNode);
+      source.start();
+      return () => {
+        try {
+          source.stop();
+        } catch {
+          // Ignore already-stopped source.
+        }
+        source.disconnect();
+        gainNode.disconnect();
+      };
+    } catch {
+      return null;
+    }
+  }
+
   cleanupPeerAudio(peer: SpatialPeerRuntime): void {
     if (peer.audioElement) {
       peer.audioElement.pause();

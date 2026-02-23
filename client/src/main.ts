@@ -177,6 +177,7 @@ const SYSTEM_SOUND_URLS = {
 } as const;
 const FOOTSTEP_SOUND_URLS = Array.from({ length: 11 }, (_, index) => withBase(`sounds/step-${index + 1}.ogg`));
 const FOOTSTEP_GAIN = 0.7;
+const TELEPORT_START_SOUND_URL = withBase('sounds/teleport_start.ogg');
 const TELEPORT_SOUND_URL = withBase('sounds/teleport.ogg');
 const WALL_SOUND_URL = withBase('sounds/wall.ogg');
 
@@ -219,6 +220,8 @@ let lastSubscriptionRefreshTileX = Math.round(state.player.x);
 let lastSubscriptionRefreshTileY = Math.round(state.player.y);
 let subscriptionRefreshInFlight = false;
 let subscriptionRefreshPending = false;
+let activeTeleportLoopStop: (() => void) | null = null;
+let activeTeleportLoopToken = 0;
 let activeTeleport:
   | {
       startX: number;
@@ -1096,6 +1099,13 @@ function randomFootstepUrl(): string {
   return FOOTSTEP_SOUND_URLS[Math.floor(Math.random() * FOOTSTEP_SOUND_URLS.length)];
 }
 
+/** Stops active teleport loop audio, if one is running. */
+function stopTeleportLoopAudio(): void {
+  if (!activeTeleportLoopStop) return;
+  activeTeleportLoopStop();
+  activeTeleportLoopStop = null;
+}
+
 /** Starts animated teleport movement toward a target tile at fixed squares-per-second pace. */
 function startTeleportTo(targetX: number, targetY: number, completionStatus: string): void {
   const startX = state.player.x;
@@ -1115,6 +1125,17 @@ function startTeleportTo(targetX: number, targetY: number, completionStatus: str
     lastSentY: Math.round(startY),
     completionStatus,
   };
+  stopTeleportLoopAudio();
+  activeTeleportLoopToken += 1;
+  const loopToken = activeTeleportLoopToken;
+  void audio.startLoopingSample(TELEPORT_START_SOUND_URL, FOOTSTEP_GAIN).then((stopLoop) => {
+    if (!stopLoop) return;
+    if (activeTeleport && loopToken === activeTeleportLoopToken) {
+      activeTeleportLoopStop = stopLoop;
+      return;
+    }
+    stopLoop();
+  });
   void refreshAudioSubscriptionsAt({ x: targetX, y: targetY }, true);
   state.keysPressed.ArrowUp = false;
   state.keysPressed.ArrowDown = false;
@@ -1151,6 +1172,7 @@ function updateTeleport(): void {
   state.player.y = activeTeleport.targetY;
   signaling.send({ type: 'update_position', x: activeTeleport.targetX, y: activeTeleport.targetY });
   activeTeleport = null;
+  stopTeleportLoopAudio();
   persistPlayerPosition();
   void refreshAudioSubscriptions(true);
   void audio.playSample(TELEPORT_SOUND_URL, FOOTSTEP_GAIN);
@@ -1392,6 +1414,7 @@ function disconnect(): void {
   lastSubscriptionRefreshAt = 0;
   lastSubscriptionRefreshTileX = Math.round(state.player.x);
   lastSubscriptionRefreshTileY = Math.round(state.player.y);
+  stopTeleportLoopAudio();
   activeTeleport = null;
 }
 
@@ -1427,6 +1450,7 @@ const onAppMessage = createOnMessageHandler({
     );
   },
   TELEPORT_SOUND_URL,
+  TELEPORT_START_SOUND_URL,
   audioLayers,
   pushChatMessage,
   classifySystemMessageSound,
