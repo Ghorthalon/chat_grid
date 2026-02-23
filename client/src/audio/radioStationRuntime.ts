@@ -2,6 +2,7 @@ import { HEARING_RADIUS, type WorldItem } from '../state/gameState';
 import { EFFECT_IDS, clampEffectLevel, connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
 import { AudioEngine } from './audioEngine';
 import { resolveSpatialMix } from './spatial';
+import { volumePercentToGain } from './volume';
 
 export const RADIO_CHANNEL_OPTIONS = ['stereo', 'mono', 'left', 'right'] as const;
 export type RadioChannelMode = (typeof RADIO_CHANNEL_OPTIONS)[number];
@@ -265,8 +266,7 @@ export class RadioStationRuntime {
       }
       const streamUrl = String(item.params.streamUrl ?? '').trim();
       const enabled = item.params.enabled !== false;
-      const mediaVolume = Number(item.params.mediaVolume ?? 50);
-      const normalizedVolume = Number.isFinite(mediaVolume) ? Math.max(0, Math.min(100, mediaVolume)) / 100 : 0.5;
+      const normalizedVolume = volumePercentToGain(item.params.mediaVolume, 50);
       const effect = normalizeRadioEffect(item.params.mediaEffect);
       const effectValue = normalizeRadioEffectValue(item.params.mediaEffectValue);
       this.applyEffect(output, audioCtx, effect, effectValue);

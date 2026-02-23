@@ -4,6 +4,7 @@ import { AudioEngine } from './audioEngine';
 import { connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
 import { normalizeRadioEffect, normalizeRadioEffectValue } from './radioStationRuntime';
 import { resolveSpatialMix } from './spatial';
+import { volumePercentToGain } from './volume';
 
 type EmitOutput = {
   soundUrl: string;
@@ -23,7 +24,7 @@ type EmitSpatialConfig = {
   facingDeg: number;
 };
 
-const ITEM_EMIT_BASE_GAIN = 0.3;
+const ITEM_EMIT_BASE_GAIN = 1;
 const SUBSCRIBE_PRELOAD_SQUARES = 5;
 const UNSUBSCRIBE_HYSTERESIS_SQUARES = 8;
 
@@ -218,8 +219,7 @@ export class ItemEmitRuntime {
       });
       const gainValue = mix?.gain ?? 0;
       const panValue = mix?.pan ?? 0;
-      const emitVolumeRaw = Number(item.params.emitVolume ?? 100);
-      const emitVolume = Number.isFinite(emitVolumeRaw) ? Math.max(0, Math.min(100, emitVolumeRaw)) / 100 : 1;
+      const emitVolume = volumePercentToGain(item.params.emitVolume, 100);
       output.gain.gain.linearRampToValueAtTime(gainValue * emitVolume, audioCtx.currentTime + 0.1);
       if (output.panner) {
         const resolvedPan = this.audio.getOutputMode() === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
