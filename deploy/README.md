@@ -104,6 +104,8 @@ Notes:
 - Replace `yourdomain.com` with your real domain.
 - Script copies `deploy/apache/chgrid-vhost-snippet.conf`, runs `rebuildhttpdconf`, then restarts Apache via WHM restart command.
 - Snippet now includes no-cache headers for `/chgrid/` and `/chgrid/index.html` so client updates are not stuck on stale HTML.
+- `deploy_client.sh` also installs `/chgrid/.htaccess` from `deploy/apache/chgrid-public-htaccess`
+  to force no-cache on `index.html` and `version.js` in shared-host setups.
 
 ## 7) Optional HTTPS relay for HTTP radio streams
 

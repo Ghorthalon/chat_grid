@@ -6,6 +6,7 @@ PUBLISH_DIR="${2:-/home/bestmidi/public_html/chgrid}"
 BASE_PATH="${3:-/chgrid/}"
 CLIENT_DIR="$REPO_ROOT/client"
 PHP_PROXY_DIR="$REPO_ROOT/deploy/php"
+PUBLIC_HTACCESS_SRC="$REPO_ROOT/deploy/apache/chgrid-public-htaccess"
 
 if [[ ! -d "$CLIENT_DIR" ]]; then
   echo "error: client directory not found: $CLIENT_DIR" >&2
@@ -26,6 +27,10 @@ rsync -a --delete dist/ "$PUBLISH_DIR/"
 
 if [[ -d "$PHP_PROXY_DIR" ]]; then
   rsync -a "$PHP_PROXY_DIR/" "$PUBLISH_DIR/"
+fi
+
+if [[ -f "$PUBLIC_HTACCESS_SRC" ]]; then
+  cp "$PUBLIC_HTACCESS_SRC" "$PUBLISH_DIR/.htaccess"
 fi
 
 # Normalize publish permissions for restrictive shared-host PHP handlers.
