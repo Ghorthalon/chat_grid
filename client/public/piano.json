@@ -4,19 +4,19 @@
       "title": "Piano Mode",
       "items": [
         {
-          "keys": "A S D F G H J K L ; '",
-          "description": "Play white keys (C major scale from C4)."
+          "keys": "Home row",
+          "description": "A S D F G H J K L semicolon quote. Play white keys (C major scale from C4)."
         },
         {
-          "keys": "W E T Y U O P ]",
-          "description": "Play sharp keys."
+          "keys": "Qwerty row",
+          "description": "W E T Y U O P right bracket. Play black keys (sharps)."
         },
         {
-          "keys": "1-9, 0",
+          "keys": "1 through 0",
           "description": "Change instrument presets."
         },
         {
-          "keys": "- / =",
+          "keys": "Minus / Equals",
           "description": "Shift octave down or up."
         },
         {
