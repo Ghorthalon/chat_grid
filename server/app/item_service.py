@@ -24,8 +24,11 @@ class ItemService:
         """Create service and eagerly load persisted state when configured."""
 
         self.state_file = state_file
+        self.piano_songs_file = state_file.with_name("piano_songs.json") if state_file else None
         self.items: dict[str, WorldItem] = {}
+        self.piano_songs: dict[str, dict] = {}
         self.load_state()
+        self.load_piano_songs()
 
     @staticmethod
     def now_ms() -> int:
@@ -129,6 +132,29 @@ class ItemService:
         except Exception as exc:
             LOGGER.warning("failed to load persisted item state from %s: %s", self.state_file, exc)
 
+    def load_piano_songs(self) -> None:
+        """Load persisted piano song registry used by piano items."""
+
+        if not self.piano_songs_file:
+            return
+        try:
+            if not self.piano_songs_file.exists():
+                return
+            raw = json.loads(self.piano_songs_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                return
+            loaded: dict[str, dict] = {}
+            for song_id, payload in raw.items():
+                if not isinstance(song_id, str) or not song_id.strip():
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                loaded[song_id] = payload
+            self.piano_songs = loaded
+            LOGGER.info("loaded %d persisted piano songs from %s", len(self.piano_songs), self.piano_songs_file)
+        except Exception as exc:
+            LOGGER.warning("failed to load piano songs from %s: %s", self.piano_songs_file, exc)
+
     def save_state(self) -> None:
         """Persist instance-only item data to configured state file."""
 
@@ -155,3 +181,17 @@ class ItemService:
             self.state_file.write_text(json.dumps(payload, ensure_ascii=True, separators=(",", ":")), encoding="utf-8")
         except Exception as exc:
             LOGGER.warning("failed to persist item state to %s: %s", self.state_file, exc)
+
+    def save_piano_songs(self) -> None:
+        """Persist compact piano song registry payload to configured storage file."""
+
+        if not self.piano_songs_file:
+            return
+        try:
+            self.piano_songs_file.parent.mkdir(parents=True, exist_ok=True)
+            self.piano_songs_file.write_text(
+                json.dumps(self.piano_songs, ensure_ascii=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            LOGGER.warning("failed to persist piano songs to %s: %s", self.piano_songs_file, exc)

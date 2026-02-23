@@ -294,8 +294,44 @@ class SignalingServer:
         elapsed_ms = max(0, min(PIANO_RECORDING_MAX_MS, elapsed_ms))
         recorded_events = session.get("events")
         events = list(recorded_events) if isinstance(recorded_events, list) else []
-        item.params["recording"] = events
-        item.params["recordingLengthMs"] = elapsed_ms
+        song_id = f"item:{item.id}:recording"
+        keys: list[str] = []
+        key_to_index: dict[str, int] = {}
+        compact_events: list[list[int]] = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            t = int(event.get("t", 0)) if isinstance(event.get("t"), (int, float)) else 0
+            key_id = str(event.get("keyId", "")).strip()
+            midi = int(event.get("midi", 0)) if isinstance(event.get("midi"), (int, float)) else 0
+            on = 1 if event.get("on") is True else 0
+            if not key_id:
+                continue
+            index = key_to_index.get(key_id)
+            if index is None:
+                index = len(keys)
+                keys.append(key_id)
+                key_to_index[key_id] = index
+            compact_events.append([max(0, min(PIANO_RECORDING_MAX_MS, t)), index, max(0, min(127, midi)), on])
+        compact_events.sort(key=lambda row: row[0])
+        self.item_service.piano_songs[song_id] = {
+            "meta": {
+                "instrument": str(item.params.get("instrument", "piano")).strip().lower(),
+                "voiceMode": str(item.params.get("voiceMode", "poly")).strip().lower(),
+                "attack": int(item.params.get("attack", 15)) if isinstance(item.params.get("attack"), (int, float)) else 15,
+                "decay": int(item.params.get("decay", 45)) if isinstance(item.params.get("decay"), (int, float)) else 45,
+                "release": int(item.params.get("release", 35)) if isinstance(item.params.get("release"), (int, float)) else 35,
+                "brightness": int(item.params.get("brightness", 55)) if isinstance(item.params.get("brightness"), (int, float)) else 55,
+                "emitRange": int(item.params.get("emitRange", 15)) if isinstance(item.params.get("emitRange"), (int, float)) else 15,
+                "recordingLengthMs": elapsed_ms,
+            },
+            "keys": keys,
+            "events": compact_events,
+        }
+        self.item_service.save_piano_songs()
+        item.params["songId"] = song_id
+        item.params.pop("recording", None)
+        item.params.pop("recordingLengthMs", None)
         item.updatedAt = self.item_service.now_ms()
         item.version += 1
         self.item_service.save_state()
@@ -318,41 +354,92 @@ class SignalingServer:
         """Run one piano recording playback task and broadcast note events."""
 
         sender_id = f"item:{item.id}:playback"
-        raw_events = item.params.get("recording")
-        if not isinstance(raw_events, list):
-            return
         events: list[dict[str, object]] = []
-        for event in raw_events:
-            if not isinstance(event, dict):
-                continue
-            raw_time = event.get("t")
-            raw_key = event.get("keyId")
-            raw_midi = event.get("midi")
-            raw_on = event.get("on")
-            if not isinstance(raw_time, (int, float)) or not isinstance(raw_key, str) or not isinstance(raw_midi, (int, float)) or not isinstance(raw_on, bool):
-                continue
-            raw_instrument = event.get("instrument")
-            raw_voice_mode = event.get("voiceMode")
-            raw_attack = event.get("attack")
-            raw_decay = event.get("decay")
-            raw_release = event.get("release")
-            raw_brightness = event.get("brightness")
-            raw_emit_range = event.get("emitRange")
-            events.append(
-                {
-                    "t": max(0, min(PIANO_RECORDING_MAX_MS, int(raw_time))),
-                    "keyId": raw_key[:32] or "KeyA",
-                    "midi": max(0, min(127, int(raw_midi))),
-                    "on": raw_on,
-                    "instrument": str(raw_instrument).strip().lower() if isinstance(raw_instrument, str) else None,
-                    "voiceMode": str(raw_voice_mode).strip().lower() if isinstance(raw_voice_mode, str) else None,
-                    "attack": max(0, min(100, int(raw_attack))) if isinstance(raw_attack, (int, float)) else None,
-                    "decay": max(0, min(100, int(raw_decay))) if isinstance(raw_decay, (int, float)) else None,
-                    "release": max(0, min(100, int(raw_release))) if isinstance(raw_release, (int, float)) else None,
-                    "brightness": max(0, min(100, int(raw_brightness))) if isinstance(raw_brightness, (int, float)) else None,
-                    "emitRange": max(5, min(20, int(raw_emit_range))) if isinstance(raw_emit_range, (int, float)) else None,
-                }
-            )
+        song_id = str(item.params.get("songId", "")).strip()
+        song_payload = self.item_service.piano_songs.get(song_id) if song_id else None
+        if isinstance(song_payload, dict):
+            keys = song_payload.get("keys")
+            compact_events = song_payload.get("events")
+            meta = song_payload.get("meta")
+            if isinstance(keys, list) and isinstance(compact_events, list):
+                instrument = None
+                voice_mode = None
+                attack = None
+                decay = None
+                release = None
+                brightness = None
+                emit_range = None
+                if isinstance(meta, dict):
+                    instrument = str(meta.get("instrument", "")).strip().lower() or None
+                    raw_voice_mode = str(meta.get("voiceMode", "")).strip().lower()
+                    voice_mode = raw_voice_mode if raw_voice_mode in {"mono", "poly"} else None
+                    attack = int(meta.get("attack", 15)) if isinstance(meta.get("attack"), (int, float)) else None
+                    decay = int(meta.get("decay", 45)) if isinstance(meta.get("decay"), (int, float)) else None
+                    release = int(meta.get("release", 35)) if isinstance(meta.get("release"), (int, float)) else None
+                    brightness = int(meta.get("brightness", 55)) if isinstance(meta.get("brightness"), (int, float)) else None
+                    emit_range = int(meta.get("emitRange", 15)) if isinstance(meta.get("emitRange"), (int, float)) else None
+                for row in compact_events:
+                    if not isinstance(row, list) or len(row) < 4:
+                        continue
+                    raw_time, raw_key_idx, raw_midi, raw_on = row[:4]
+                    if not isinstance(raw_time, (int, float)) or not isinstance(raw_key_idx, (int, float)) or not isinstance(raw_midi, (int, float)):
+                        continue
+                    key_idx = int(raw_key_idx)
+                    if key_idx < 0 or key_idx >= len(keys):
+                        continue
+                    raw_key = keys[key_idx]
+                    if not isinstance(raw_key, str) or not raw_key.strip():
+                        continue
+                    events.append(
+                        {
+                            "t": max(0, min(PIANO_RECORDING_MAX_MS, int(raw_time))),
+                            "keyId": raw_key[:32],
+                            "midi": max(0, min(127, int(raw_midi))),
+                            "on": bool(raw_on),
+                            "instrument": instrument,
+                            "voiceMode": voice_mode,
+                            "attack": max(0, min(100, attack)) if isinstance(attack, int) else None,
+                            "decay": max(0, min(100, decay)) if isinstance(decay, int) else None,
+                            "release": max(0, min(100, release)) if isinstance(release, int) else None,
+                            "brightness": max(0, min(100, brightness)) if isinstance(brightness, int) else None,
+                            "emitRange": max(5, min(20, emit_range)) if isinstance(emit_range, int) else None,
+                        }
+                    )
+        # Backward fallback for older items that still carry recording payload in params.
+        if not events:
+            raw_events = item.params.get("recording")
+            if isinstance(raw_events, list):
+                for event in raw_events:
+                    if not isinstance(event, dict):
+                        continue
+                    raw_time = event.get("t")
+                    raw_key = event.get("keyId")
+                    raw_midi = event.get("midi")
+                    raw_on = event.get("on")
+                    if not isinstance(raw_time, (int, float)) or not isinstance(raw_key, str) or not isinstance(raw_midi, (int, float)) or not isinstance(raw_on, bool):
+                        continue
+                    raw_instrument = event.get("instrument")
+                    raw_voice_mode = event.get("voiceMode")
+                    raw_attack = event.get("attack")
+                    raw_decay = event.get("decay")
+                    raw_release = event.get("release")
+                    raw_brightness = event.get("brightness")
+                    raw_emit_range = event.get("emitRange")
+                    events.append(
+                        {
+                            "t": max(0, min(PIANO_RECORDING_MAX_MS, int(raw_time))),
+                            "keyId": raw_key[:32] or "KeyA",
+                            "midi": max(0, min(127, int(raw_midi))),
+                            "on": raw_on,
+                            "instrument": str(raw_instrument).strip().lower() if isinstance(raw_instrument, str) else None,
+                            "voiceMode": str(raw_voice_mode).strip().lower() if isinstance(raw_voice_mode, str) else None,
+                            "attack": max(0, min(100, int(raw_attack))) if isinstance(raw_attack, (int, float)) else None,
+                            "decay": max(0, min(100, int(raw_decay))) if isinstance(raw_decay, (int, float)) else None,
+                            "release": max(0, min(100, int(raw_release))) if isinstance(raw_release, (int, float)) else None,
+                            "brightness": max(0, min(100, int(raw_brightness))) if isinstance(raw_brightness, (int, float)) else None,
+                            "emitRange": max(5, min(20, int(raw_emit_range))) if isinstance(raw_emit_range, (int, float)) else None,
+                        }
+                    )
         events.sort(key=lambda entry: int(entry["t"]))
         if not events:
             return
@@ -842,6 +929,10 @@ class SignalingServer:
                 auto_stop_task = recording_state.get("autoStopTask")
                 if isinstance(auto_stop_task, asyncio.Task) and not auto_stop_task.done():
                     auto_stop_task.cancel()
+            song_id = str(item.params.get("songId", "")).strip()
+            if song_id and song_id in self.item_service.piano_songs:
+                self.item_service.piano_songs.pop(song_id, None)
+                self.item_service.save_piano_songs()
             self.item_service.remove_item(item.id)
             self.item_last_use_ms.pop(item.id, None)
             await self._broadcast(ItemRemovePacket(type="item_remove", itemId=item.id))
@@ -1007,8 +1098,11 @@ class SignalingServer:
                 if item.id in self.piano_recording_state_by_item:
                     await self._send_item_result(client, False, "use", "Stop recording before playback.", item.id)
                     return
+                song_id = str(item.params.get("songId", "")).strip()
+                has_song = isinstance(self.item_service.piano_songs.get(song_id), dict) if song_id else False
                 recording = item.params.get("recording")
-                if not isinstance(recording, list) or not recording:
+                has_legacy_recording = isinstance(recording, list) and len(recording) > 0
+                if not has_song and not has_legacy_recording:
                     await self._send_item_result(client, False, "use", "No recording saved on this piano.", item.id)
                     return
                 self._cancel_piano_playback(item.id)

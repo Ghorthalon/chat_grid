@@ -36,6 +36,7 @@ DEFAULT_PARAMS: dict = {
     "release": 35,
     "brightness": 55,
     "emitRange": 15,
+    "songId": "unterlandersheimweh",
 }
 
 INSTRUMENT_OPTIONS: tuple[str, ...] = (
@@ -108,8 +109,10 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
     # Recording data is server-managed and not directly editable from client updates.
     preserved_recording = _item.params.get("recording")
     preserved_recording_length = _item.params.get("recordingLengthMs")
+    preserved_song_id = _item.params.get("songId")
     next_params.pop("recording", None)
     next_params.pop("recordingLengthMs", None)
+    next_params.pop("songId", None)
 
     instrument = str(next_params.get("instrument", "piano")).strip().lower()
     if instrument not in INSTRUMENT_OPTIONS:
@@ -181,6 +184,8 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
         next_params["recording"] = preserved_recording
     if isinstance(preserved_recording_length, (int, float)):
         next_params["recordingLengthMs"] = max(0, min(30_000, int(preserved_recording_length)))
+    if isinstance(preserved_song_id, str) and preserved_song_id.strip():
+        next_params["songId"] = preserved_song_id.strip()
 
     return next_params
 

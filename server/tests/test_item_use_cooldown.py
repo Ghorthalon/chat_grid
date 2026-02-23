@@ -550,10 +550,14 @@ async def test_piano_recording_toggle_and_save(monkeypatch: pytest.MonkeyPatch) 
     )
     assert send_payloads[-1].ok is True
     assert item.id not in server.piano_recording_state_by_item
-    recording = item.params.get("recording")
-    assert isinstance(recording, list)
-    assert len(recording) >= 2
-    assert recording[0]["keyId"] == "KeyA"
+    song_id = item.params.get("songId")
+    assert isinstance(song_id, str)
+    payload = server.item_service.piano_songs.get(song_id)
+    assert isinstance(payload, dict)
+    keys = payload.get("keys")
+    events = payload.get("events")
+    assert isinstance(keys, list) and "KeyA" in keys
+    assert isinstance(events, list) and len(events) >= 2
 
 
 @pytest.mark.asyncio

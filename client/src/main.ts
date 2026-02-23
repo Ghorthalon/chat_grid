@@ -125,6 +125,10 @@ type PianoDemoEvent = {
   brightness?: number;
   emitRange?: number;
 };
+type PianoDemoSong = {
+  id: string;
+  events: PianoDemoEvent[];
+};
 
 declare global {
   interface Window {
@@ -291,7 +295,8 @@ let activePianoDemoRunToken = 0;
 let activePianoDemoItemId: string | null = null;
 const activePianoDemoTimeoutIds: number[] = [];
 const activePianoDemoNotes = new Map<string, { runtimeKey: string; midi: number }>();
-let pianoDemoEvents: PianoDemoEvent[] = [];
+const pianoDemoSongs = new Map<string, PianoDemoSong>();
+let pianoDemoDefaultSongId = '';
 const activeRemotePianoKeys = new Set<string>();
 let pianoPreviewTimeoutId: number | null = null;
 let activeTeleport:
@@ -470,33 +475,93 @@ async function loadPianoDemo(): Promise<void> {
     if (!response.ok) {
       return;
     }
-    const data = (await response.json()) as { recording?: unknown };
-    const rawEvents = Array.isArray(data.recording) ? data.recording : [];
-    const parsed: PianoDemoEvent[] = [];
-    for (const entry of rawEvents) {
-      if (!entry || typeof entry !== 'object') continue;
-      const record = entry as Record<string, unknown>;
-      const t = Number(record.t);
-      const midi = Number(record.midi);
-      const keyId = String(record.keyId ?? '').trim();
-      const on = record.on === true;
-      if (!Number.isFinite(t) || !Number.isFinite(midi) || !keyId) continue;
-      parsed.push({
-        t: Math.max(0, Math.round(t)),
-        keyId: keyId.slice(0, 32),
-        midi: Math.max(0, Math.min(127, Math.round(midi))),
-        on,
-        instrument: typeof record.instrument === 'string' ? record.instrument : undefined,
-        voiceMode: record.voiceMode === 'mono' ? 'mono' : record.voiceMode === 'poly' ? 'poly' : undefined,
-        attack: Number.isFinite(Number(record.attack)) ? Math.max(0, Math.min(100, Math.round(Number(record.attack)))) : undefined,
-        decay: Number.isFinite(Number(record.decay)) ? Math.max(0, Math.min(100, Math.round(Number(record.decay)))) : undefined,
-        release: Number.isFinite(Number(record.release)) ? Math.max(0, Math.min(100, Math.round(Number(record.release)))) : undefined,
-        brightness: Number.isFinite(Number(record.brightness)) ? Math.max(0, Math.min(100, Math.round(Number(record.brightness)))) : undefined,
-        emitRange: Number.isFinite(Number(record.emitRange)) ? Math.max(5, Math.min(20, Math.round(Number(record.emitRange)))) : undefined,
-      });
+    const data = (await response.json()) as {
+      defaultSongId?: unknown;
+      songs?: unknown;
+      recording?: unknown;
+    };
+    pianoDemoSongs.clear();
+    pianoDemoDefaultSongId = '';
+
+    const parseLegacyEvents = (rawEvents: unknown): PianoDemoEvent[] => {
+      const parsed: PianoDemoEvent[] = [];
+      if (!Array.isArray(rawEvents)) return parsed;
+      for (const entry of rawEvents) {
+        if (!entry || typeof entry !== 'object') continue;
+        const record = entry as Record<string, unknown>;
+        const t = Number(record.t);
+        const midi = Number(record.midi);
+        const keyId = String(record.keyId ?? '').trim();
+        const on = record.on === true;
+        if (!Number.isFinite(t) || !Number.isFinite(midi) || !keyId) continue;
+        parsed.push({
+          t: Math.max(0, Math.round(t)),
+          keyId: keyId.slice(0, 32),
+          midi: Math.max(0, Math.min(127, Math.round(midi))),
+          on,
+          instrument: typeof record.instrument === 'string' ? record.instrument : undefined,
+          voiceMode: record.voiceMode === 'mono' ? 'mono' : record.voiceMode === 'poly' ? 'poly' : undefined,
+          attack: Number.isFinite(Number(record.attack)) ? Math.max(0, Math.min(100, Math.round(Number(record.attack)))) : undefined,
+          decay: Number.isFinite(Number(record.decay)) ? Math.max(0, Math.min(100, Math.round(Number(record.decay)))) : undefined,
+          release: Number.isFinite(Number(record.release)) ? Math.max(0, Math.min(100, Math.round(Number(record.release)))) : undefined,
+          brightness: Number.isFinite(Number(record.brightness)) ? Math.max(0, Math.min(100, Math.round(Number(record.brightness)))) : undefined,
+          emitRange: Number.isFinite(Number(record.emitRange)) ? Math.max(5, Math.min(20, Math.round(Number(record.emitRange)))) : undefined,
+        });
+      }
+      parsed.sort((a, b) => a.t - b.t);
+      return parsed;
+    };
+
+    if (data.songs && typeof data.songs === 'object') {
+      const songs = data.songs as Record<string, unknown>;
+      for (const [songId, rawSong] of Object.entries(songs)) {
+        if (!rawSong || typeof rawSong !== 'object') continue;
+        const song = rawSong as Record<string, unknown>;
+        const meta = song.meta as Record<string, unknown> | undefined;
+        const keys = Array.isArray(song.keys) ? song.keys.filter((value): value is string => typeof value === 'string') : [];
+        const compactEvents = Array.isArray(song.events) ? song.events : [];
+        const events: PianoDemoEvent[] = [];
+        for (const compact of compactEvents) {
+          if (!Array.isArray(compact) || compact.length < 4) continue;
+          const [rawT, rawKeyIdx, rawMidi, rawOn] = compact;
+          if (typeof rawT !== 'number' || typeof rawKeyIdx !== 'number' || typeof rawMidi !== 'number') continue;
+          const keyId = keys[Math.max(0, Math.round(rawKeyIdx))];
+          if (!keyId) continue;
+          events.push({
+            t: Math.max(0, Math.round(rawT)),
+            keyId: keyId.slice(0, 32),
+            midi: Math.max(0, Math.min(127, Math.round(rawMidi))),
+            on: Boolean(rawOn),
+            instrument: typeof meta?.instrument === 'string' ? meta.instrument : undefined,
+            voiceMode: meta?.voiceMode === 'mono' ? 'mono' : meta?.voiceMode === 'poly' ? 'poly' : undefined,
+            attack: Number.isFinite(Number(meta?.attack)) ? Math.max(0, Math.min(100, Math.round(Number(meta?.attack)))) : undefined,
+            decay: Number.isFinite(Number(meta?.decay)) ? Math.max(0, Math.min(100, Math.round(Number(meta?.decay)))) : undefined,
+            release: Number.isFinite(Number(meta?.release)) ? Math.max(0, Math.min(100, Math.round(Number(meta?.release)))) : undefined,
+            brightness: Number.isFinite(Number(meta?.brightness)) ? Math.max(0, Math.min(100, Math.round(Number(meta?.brightness)))) : undefined,
+            emitRange: Number.isFinite(Number(meta?.emitRange)) ? Math.max(5, Math.min(20, Math.round(Number(meta?.emitRange)))) : undefined,
+          });
+        }
+        events.sort((a, b) => a.t - b.t);
+        if (events.length > 0) {
+          pianoDemoSongs.set(songId, { id: songId, events });
+        }
+      }
+      const preferredId = String(data.defaultSongId ?? '').trim();
+      if (preferredId && pianoDemoSongs.has(preferredId)) {
+        pianoDemoDefaultSongId = preferredId;
+      } else {
+        pianoDemoDefaultSongId = pianoDemoSongs.keys().next().value ?? '';
+      }
+      return;
     }
-    parsed.sort((a, b) => a.t - b.t);
-    pianoDemoEvents = parsed;
+
+    // Backward fallback for legacy flat recording JSON format.
+    const legacyEvents = parseLegacyEvents(data.recording);
+    if (legacyEvents.length > 0) {
+      const legacyId = 'unterlandersheimweh';
+      pianoDemoSongs.set(legacyId, { id: legacyId, events: legacyEvents });
+      pianoDemoDefaultSongId = legacyId;
+    }
   } catch {
     // Demo remains unavailable if loading/parsing fails.
   }
@@ -1060,15 +1125,18 @@ function stopPianoDemo(sendNoteOff = true): boolean {
 /** Starts the built-in piano demo sequence from the beginning. */
 function startPianoDemo(item: WorldItem, itemId: string): void {
   stopPianoDemo(true);
-  if (pianoDemoEvents.length === 0) {
+  const requestedSongId = String(item.params.songId ?? '').trim();
+  const songId = (requestedSongId && pianoDemoSongs.has(requestedSongId) ? requestedSongId : pianoDemoDefaultSongId) || '';
+  const song = songId ? pianoDemoSongs.get(songId) ?? null : null;
+  if (!song || song.events.length === 0) {
     updateStatus('demo unavailable');
     audio.sfxUiCancel();
     return;
   }
   const runToken = activePianoDemoRunToken;
   activePianoDemoItemId = itemId;
-  for (let index = 0; index < pianoDemoEvents.length; index += 1) {
-    const event = pianoDemoEvents[index]!;
+  for (let index = 0; index < song.events.length; index += 1) {
+    const event = song.events[index]!;
     const timeoutId = window.setTimeout(() => {
       if (runToken !== activePianoDemoRunToken) return;
       const liveItem = state.items.get(itemId);
