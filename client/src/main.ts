@@ -2201,9 +2201,17 @@ updateStatus('Welcome to the Chat Grid. Press the Settings button to configure y
 try {
   if (sessionStorage.getItem(AUTO_RECONNECT_AFTER_RELOAD_KEY) === '1') {
     sessionStorage.removeItem(AUTO_RECONNECT_AFTER_RELOAD_KEY);
-    if (storedNickname) {
-      void connect();
-    }
+    window.setTimeout(() => {
+      const effectiveNickname = sanitizeName(dom.preconnectNickname.value || storedNickname);
+      if (effectiveNickname) {
+        dom.preconnectNickname.value = effectiveNickname;
+        state.player.nickname = effectiveNickname;
+        updateConnectAvailability();
+        void connect();
+        return;
+      }
+      updateConnectAvailability();
+    }, 250);
   }
 } catch {
   // Ignore sessionStorage failures.
