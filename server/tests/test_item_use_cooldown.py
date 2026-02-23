@@ -379,6 +379,8 @@ async def test_piano_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     assert item.params.get("instrument") == "drum_kit"
     assert item.params.get("attack") == 1
     assert item.params.get("decay") == 22
+    assert item.params.get("release") == 12
+    assert item.params.get("brightness") == 68
     assert item.params.get("emitRange") == 12
 
     await server._handle_message(
@@ -389,6 +391,8 @@ async def test_piano_update_and_use(monkeypatch: pytest.MonkeyPatch) -> None:
     assert item.params.get("instrument") == "nintendo"
     assert item.params.get("attack") == 2
     assert item.params.get("decay") == 28
+    assert item.params.get("release") == 18
+    assert item.params.get("brightness") == 85
 
     await server._handle_message(client, json.dumps({"type": "item_use", "itemId": item.id}))
     assert send_payloads[-1].ok is True
@@ -444,6 +448,8 @@ async def test_piano_note_packet_broadcasts(monkeypatch: pytest.MonkeyPatch) -> 
     assert getattr(packet, "instrument", "") == "organ"
     assert getattr(packet, "attack", -1) == 20
     assert getattr(packet, "decay", -1) == 60
+    assert getattr(packet, "release", -1) == 35
+    assert getattr(packet, "brightness", -1) == 55
     assert getattr(packet, "emitRange", -1) == 12
 
 
@@ -467,16 +473,16 @@ async def test_piano_note_key_cap(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_send", fake_send)
     monkeypatch.setattr(server, "_broadcast", fake_broadcast)
 
-    for index in range(32):
+    for index in range(12):
         await server._handle_message(
             sender,
             json.dumps({"type": "item_piano_note", "itemId": item.id, "keyId": f"Key{index}", "midi": 60, "on": True}),
         )
-    assert len(broadcast_payloads) == 32
+    assert len(broadcast_payloads) == 12
 
-    # 33rd distinct held key is dropped by cap.
+    # 13th distinct held key is dropped by cap.
     await server._handle_message(
         sender,
         json.dumps({"type": "item_piano_note", "itemId": item.id, "keyId": "KeyOverflow", "midi": 60, "on": True}),
     )
-    assert len(broadcast_payloads) == 32
+    assert len(broadcast_payloads) == 12

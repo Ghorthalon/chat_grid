@@ -68,7 +68,7 @@ from .models import (
 LOGGER = logging.getLogger("chgrid.server")
 PACKET_LOGGER = logging.getLogger("chgrid.server.packet")
 CLIENT_PACKET_ADAPTER = TypeAdapter(ClientPacket)
-MAX_ACTIVE_PIANO_KEYS_PER_CLIENT = 32
+MAX_ACTIVE_PIANO_KEYS_PER_CLIENT = 12
 
 
 class SignalingServer:
@@ -679,6 +679,8 @@ class SignalingServer:
             instrument = str(item.params.get("instrument", "piano")).strip().lower()
             attack = int(item.params.get("attack", 15)) if isinstance(item.params.get("attack", 15), (int, float)) else 15
             decay = int(item.params.get("decay", 45)) if isinstance(item.params.get("decay", 45), (int, float)) else 45
+            release = int(item.params.get("release", 35)) if isinstance(item.params.get("release", 35), (int, float)) else 35
+            brightness = int(item.params.get("brightness", 55)) if isinstance(item.params.get("brightness", 55), (int, float)) else 55
             emit_range = int(item.params.get("emitRange", 15)) if isinstance(item.params.get("emitRange", 15), (int, float)) else 15
             source_x = client.x if item.carrierId == client.id else item.x
             source_y = client.y if item.carrierId == client.id else item.y
@@ -693,6 +695,8 @@ class SignalingServer:
                     instrument=instrument,
                     attack=max(0, min(100, attack)),
                     decay=max(0, min(100, decay)),
+                    release=max(0, min(100, release)),
+                    brightness=max(0, min(100, brightness)),
                     x=source_x,
                     y=source_y,
                     emitRange=max(5, min(20, emit_range)),

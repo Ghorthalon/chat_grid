@@ -319,6 +319,8 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         propertyKey === 'emitRange' ||
         propertyKey === 'attack' ||
         propertyKey === 'decay' ||
+        propertyKey === 'release' ||
+        propertyKey === 'brightness' ||
         propertyKey === 'sides' ||
         propertyKey === 'number'
       ) {

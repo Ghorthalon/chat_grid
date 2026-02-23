@@ -9,7 +9,7 @@ from ..models import WorldItem
 
 LABEL = "piano"
 TOOLTIP = "Playable keyboard instrument with multiple synth voices."
-EDITABLE_PROPERTIES: tuple[str, ...] = ("title", "instrument", "attack", "decay", "emitRange")
+EDITABLE_PROPERTIES: tuple[str, ...] = ("title", "instrument", "attack", "decay", "release", "brightness", "emitRange")
 CAPABILITIES: tuple[str, ...] = ("editable", "carryable", "deletable", "usable")
 USE_SOUND: str | None = None
 EMIT_SOUND: str | None = None
@@ -21,6 +21,8 @@ DEFAULT_PARAMS: dict = {
     "instrument": "piano",
     "attack": 15,
     "decay": 45,
+    "release": 35,
+    "brightness": 55,
     "emitRange": 15,
 }
 
@@ -36,16 +38,16 @@ INSTRUMENT_OPTIONS: tuple[str, ...] = (
     "drum_kit",
 )
 
-DEFAULT_ENVELOPE_BY_INSTRUMENT: dict[str, tuple[int, int]] = {
-    "piano": (15, 45),
-    "electric_piano": (12, 40),
-    "guitar": (8, 35),
-    "organ": (25, 70),
-    "bass": (10, 35),
-    "violin": (22, 75),
-    "synth_lead": (6, 30),
-    "nintendo": (2, 28),
-    "drum_kit": (1, 22),
+DEFAULT_ENVELOPE_BY_INSTRUMENT: dict[str, tuple[int, int, int, int]] = {
+    "piano": (15, 45, 35, 55),
+    "electric_piano": (12, 40, 30, 62),
+    "guitar": (8, 35, 25, 50),
+    "organ": (25, 70, 45, 48),
+    "bass": (10, 35, 28, 38),
+    "violin": (22, 75, 55, 58),
+    "synth_lead": (6, 30, 22, 72),
+    "nintendo": (2, 28, 18, 85),
+    "drum_kit": (1, 22, 12, 68),
 }
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
@@ -59,6 +61,16 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "decay": {
         "valueType": "number",
         "tooltip": "How long notes ring out after the initial hit.",
+        "range": {"min": 0, "max": 100, "step": 1},
+    },
+    "release": {
+        "valueType": "number",
+        "tooltip": "How long notes continue after key release.",
+        "range": {"min": 0, "max": 100, "step": 1},
+    },
+    "brightness": {
+        "valueType": "number",
+        "tooltip": "Tone brightness; higher values sound brighter.",
         "range": {"min": 0, "max": 100, "step": 1},
     },
     "emitRange": {
@@ -91,11 +103,27 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
     if not (0 <= decay <= 100):
         raise ValueError("decay must be between 0 and 100.")
 
+    try:
+        release = int(next_params.get("release", 35))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("release must be an integer between 0 and 100.") from exc
+    if not (0 <= release <= 100):
+        raise ValueError("release must be between 0 and 100.")
+
+    try:
+        brightness = int(next_params.get("brightness", 55))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("brightness must be an integer between 0 and 100.") from exc
+    if not (0 <= brightness <= 100):
+        raise ValueError("brightness must be between 0 and 100.")
+
     # When instrument changes, reset envelope to instrument-appropriate defaults.
     if instrument != previous_instrument:
-        attack, decay = DEFAULT_ENVELOPE_BY_INSTRUMENT.get(instrument, (15, 45))
+        attack, decay, release, brightness = DEFAULT_ENVELOPE_BY_INSTRUMENT.get(instrument, (15, 45, 35, 55))
     next_params["attack"] = attack
     next_params["decay"] = decay
+    next_params["release"] = release
+    next_params["brightness"] = brightness
 
     try:
         emit_range = int(next_params.get("emitRange", 15))

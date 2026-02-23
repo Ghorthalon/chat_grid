@@ -128,16 +128,19 @@ const PRESETS: Record<Exclude<PianoInstrumentId, 'drum_kit'>, InstrumentPreset> 
   },
 };
 
-export const DEFAULT_ENVELOPE_BY_INSTRUMENT: Record<PianoInstrumentId, { attack: number; decay: number }> = {
-  piano: { attack: 15, decay: 45 },
-  electric_piano: { attack: 12, decay: 40 },
-  guitar: { attack: 8, decay: 35 },
-  organ: { attack: 25, decay: 70 },
-  bass: { attack: 10, decay: 35 },
-  violin: { attack: 22, decay: 75 },
-  synth_lead: { attack: 6, decay: 30 },
-  nintendo: { attack: 2, decay: 28 },
-  drum_kit: { attack: 1, decay: 22 },
+export const DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT: Record<
+  PianoInstrumentId,
+  { attack: number; decay: number; release: number; brightness: number }
+> = {
+  piano: { attack: 15, decay: 45, release: 35, brightness: 55 },
+  electric_piano: { attack: 12, decay: 40, release: 30, brightness: 62 },
+  guitar: { attack: 8, decay: 35, release: 25, brightness: 50 },
+  organ: { attack: 25, decay: 70, release: 45, brightness: 48 },
+  bass: { attack: 10, decay: 35, release: 28, brightness: 38 },
+  violin: { attack: 22, decay: 75, release: 55, brightness: 58 },
+  synth_lead: { attack: 6, decay: 30, release: 22, brightness: 72 },
+  nintendo: { attack: 2, decay: 28, release: 18, brightness: 85 },
+  drum_kit: { attack: 1, decay: 22, release: 12, brightness: 68 },
 };
 
 /** Maps 0..100 control values to note attack seconds. */
@@ -150,6 +153,18 @@ function attackPercentToSeconds(value: number): number {
 function decayPercentToSeconds(value: number): number {
   const clamped = Math.max(0, Math.min(100, value));
   return 0.05 + (clamped / 100) * 2.7;
+}
+
+/** Maps 0..100 control values to release tail seconds after note-off. */
+function releasePercentToSeconds(value: number): number {
+  const clamped = Math.max(0, Math.min(100, value));
+  return 0.03 + (clamped / 100) * 3.4;
+}
+
+/** Maps 0..100 control values to low-pass filter brightness multiplier. */
+function brightnessPercentToMultiplier(value: number): number {
+  const clamped = Math.max(0, Math.min(100, value));
+  return 0.45 + (clamped / 100) * 1.55;
 }
 
 /** Converts midi note number to frequency in hertz. */
@@ -188,12 +203,14 @@ export class PianoSynth {
     instrument: PianoInstrumentId,
     attackPercent: number,
     decayPercent: number,
+    releasePercent: number,
+    brightnessPercent: number,
     context: PianoContext,
     spatial: PianoSpatialSource,
   ): void {
     if (this.voices.has(keyId)) return;
     if (instrument === 'drum_kit') {
-      this.playDrumHit(keyId, midi, context, spatial, attackPercent, decayPercent);
+      this.playDrumHit(keyId, midi, context, spatial, attackPercent, decayPercent, releasePercent, brightnessPercent);
       return;
     }
 
@@ -201,7 +218,7 @@ export class PianoSynth {
     const now = context.audioCtx.currentTime;
     const attackSeconds = attackPercentToSeconds(attackPercent);
     const decaySeconds = decayPercentToSeconds(decayPercent);
-    const releaseSeconds = Math.max(0.02, decaySeconds * (preset.releaseScale ?? 1));
+    const releaseSeconds = Math.max(0.02, releasePercentToSeconds(releasePercent) * (preset.releaseScale ?? 1));
 
     const spatialMix = resolveSpatialMix({
       dx: spatial.x,
@@ -222,7 +239,7 @@ export class PianoSynth {
     if (preset.filter) {
       const filter = context.audioCtx.createBiquadFilter();
       filter.type = preset.filter.type;
-      filter.frequency.setValueAtTime(preset.filter.frequency, now);
+      filter.frequency.setValueAtTime(preset.filter.frequency * brightnessPercentToMultiplier(brightnessPercent), now);
       filter.Q.setValueAtTime(preset.filter.q ?? 0.7, now);
       voiceGain.connect(filter);
       tailNode = filter;
@@ -310,6 +327,8 @@ export class PianoSynth {
     spatial: PianoSpatialSource,
     attackPercent: number,
     decayPercent: number,
+    releasePercent: number,
+    brightnessPercent: number,
   ): void {
     const now = context.audioCtx.currentTime;
     const spatialMix = resolveSpatialMix({
@@ -322,7 +341,9 @@ export class PianoSynth {
     const typeIndex = Math.abs((midi % DRUM_VARIANTS.length) + this.hashKey(keyId)) % DRUM_VARIANTS.length;
     const variant = DRUM_VARIANTS[typeIndex];
     const decaySeconds = 0.03 + decayPercentToSeconds(decayPercent) * 0.5;
+    const releaseSeconds = 0.02 + releasePercentToSeconds(releasePercent) * 0.35;
     const attackSeconds = Math.max(0.001, attackPercentToSeconds(attackPercent) * 0.18);
+    const brightnessMultiplier = brightnessPercentToMultiplier(brightnessPercent);
 
     const gain = context.audioCtx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
@@ -340,34 +361,34 @@ export class PianoSynth {
     }
 
     if (variant === 'kick_808') {
-      this.playKick808(context, gain, now, decaySeconds);
+      this.playKick808(context, gain, now, decaySeconds + releaseSeconds * 0.35);
       return;
     }
     if (variant === 'tom_low') {
-      this.playTom(context, gain, now, 120, 68, decaySeconds * 0.95);
+      this.playTom(context, gain, now, 120, 68, decaySeconds * 0.95 + releaseSeconds * 0.2);
       return;
     }
     if (variant === 'tom_high') {
-      this.playTom(context, gain, now, 220, 125, decaySeconds * 0.8);
+      this.playTom(context, gain, now, 220, 125, decaySeconds * 0.8 + releaseSeconds * 0.16);
       return;
     }
     if (variant === 'hat_closed') {
-      this.playNoiseDrum(context, gain, now, decaySeconds * 0.25, 'highpass', 6500, false);
+      this.playNoiseDrum(context, gain, now, decaySeconds * 0.25, 'highpass', 6500 * brightnessMultiplier, false);
       return;
     }
     if (variant === 'hat_open') {
-      this.playNoiseDrum(context, gain, now, decaySeconds * 0.8, 'highpass', 5200, false);
+      this.playNoiseDrum(context, gain, now, decaySeconds * 0.8 + releaseSeconds * 0.2, 'highpass', 5200 * brightnessMultiplier, false);
       return;
     }
     if (variant === 'noise_8bit') {
-      this.playNoiseDrum(context, gain, now, decaySeconds * 0.45, 'bandpass', 2700, true);
+      this.playNoiseDrum(context, gain, now, decaySeconds * 0.45, 'bandpass', 2700 * brightnessMultiplier, true);
       return;
     }
     if (variant === 'clap') {
-      this.playClap(context, gain, now, decaySeconds);
+      this.playClap(context, gain, now, decaySeconds + releaseSeconds * 0.1);
       return;
     }
-    this.playSnare(context, gain, now, decaySeconds);
+    this.playSnare(context, gain, now, decaySeconds + releaseSeconds * 0.12);
   }
 
   /** 808-like kick: deep sine sweep with long-ish tail. */

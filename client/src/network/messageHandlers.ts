@@ -54,6 +54,8 @@ type MessageHandlerDeps = {
     instrument: string;
     attack: number;
     decay: number;
+    release: number;
+    brightness: number;
     x: number;
     y: number;
     emitRange: number;
@@ -275,6 +277,8 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
             instrument: message.instrument,
             attack: message.attack,
             decay: message.decay,
+            release: message.release,
+            brightness: message.brightness,
             x: message.x,
             y: message.y,
             emitRange: message.emitRange,

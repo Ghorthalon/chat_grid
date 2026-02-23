@@ -160,6 +160,8 @@ export const itemPianoNoteSchema = z.object({
   instrument: z.string(),
   attack: z.number().int().min(0).max(100),
   decay: z.number().int().min(0).max(100),
+  release: z.number().int().min(0).max(100),
+  brightness: z.number().int().min(0).max(100),
   x: z.number().int(),
   y: z.number().int(),
   emitRange: z.number().int().min(1),

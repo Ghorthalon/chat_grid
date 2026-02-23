@@ -232,6 +232,8 @@ class ItemPianoNoteBroadcastPacket(BasePacket):
     instrument: str
     attack: int
     decay: int
+    release: int
+    brightness: int
     x: int
     y: int
     emitRange: int

@@ -61,7 +61,7 @@ const DEFAULT_PIANO_INSTRUMENT_OPTIONS = [
 const DEFAULT_ITEM_TYPE_EDITABLE_PROPERTIES: Record<ItemType, string[]> = {
   radio_station: ['title', 'streamUrl', 'enabled', 'mediaVolume', 'mediaChannel', 'mediaEffect', 'mediaEffectValue', 'facing', 'emitRange'],
   dice: ['title', 'sides', 'number'],
-  piano: ['title', 'instrument', 'attack', 'decay', 'emitRange'],
+  piano: ['title', 'instrument', 'attack', 'decay', 'release', 'brightness', 'emitRange'],
   wheel: ['title', 'spaces'],
   clock: ['title', 'timeZone', 'use24Hour'],
   widget: ['title', 'enabled', 'directional', 'facing', 'emitRange', 'emitVolume', 'emitSoundSpeed', 'emitSoundTempo', 'emitEffect', 'emitEffectValue', 'useSound', 'emitSound'],
@@ -241,6 +241,8 @@ export function itemPropertyLabel(key: string): string {
   if (key === 'instrument') return 'instrument';
   if (key === 'attack') return 'attack';
   if (key === 'decay') return 'decay';
+  if (key === 'release') return 'release';
+  if (key === 'brightness') return 'brightness';
   if (key === 'useSound') return 'use sound';
   if (key === 'emitSound') return 'emit sound';
   return key;

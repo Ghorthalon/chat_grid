@@ -14,7 +14,12 @@ import {
   shouldProxyStreamUrl,
 } from './audio/radioStationRuntime';
 import { ItemEmitRuntime } from './audio/itemEmitRuntime';
-import { DEFAULT_ENVELOPE_BY_INSTRUMENT, PianoSynth, type PianoInstrumentId } from './audio/pianoSynth';
+import {
+  DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT,
+  PIANO_INSTRUMENT_OPTIONS,
+  PianoSynth,
+  type PianoInstrumentId,
+} from './audio/pianoSynth';
 import { normalizeDegrees } from './audio/spatial';
 import {
   applyPastedText,
@@ -789,7 +794,14 @@ function getItemSpatialConfig(item: WorldItem): { range: number; directional: bo
 }
 
 /** Resolves piano params with safe defaults for local play mode. */
-function getPianoParams(item: WorldItem): { instrument: PianoInstrumentId; attack: number; decay: number; emitRange: number } {
+function getPianoParams(item: WorldItem): {
+  instrument: PianoInstrumentId;
+  attack: number;
+  decay: number;
+  release: number;
+  brightness: number;
+  emitRange: number;
+} {
   const rawInstrument = String(item.params.instrument ?? 'piano').trim().toLowerCase();
   const instrument: PianoInstrumentId =
     rawInstrument === 'electric_piano' ||
@@ -804,11 +816,16 @@ function getPianoParams(item: WorldItem): { instrument: PianoInstrumentId; attac
       : 'piano';
   const rawAttack = Number(item.params.attack);
   const rawDecay = Number(item.params.decay);
+  const rawRelease = Number(item.params.release);
+  const rawBrightness = Number(item.params.brightness);
   const rawEmitRange = Number(item.params.emitRange ?? getItemTypeGlobalProperties(item.type).emitRange ?? 15);
+  const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
   return {
     instrument,
-    attack: Math.max(0, Math.min(100, Number.isFinite(rawAttack) ? Math.round(rawAttack) : 15)),
-    decay: Math.max(0, Math.min(100, Number.isFinite(rawDecay) ? Math.round(rawDecay) : 45)),
+    attack: Math.max(0, Math.min(100, Number.isFinite(rawAttack) ? Math.round(rawAttack) : defaults.attack)),
+    decay: Math.max(0, Math.min(100, Number.isFinite(rawDecay) ? Math.round(rawDecay) : defaults.decay)),
+    release: Math.max(0, Math.min(100, Number.isFinite(rawRelease) ? Math.round(rawRelease) : defaults.release)),
+    brightness: Math.max(0, Math.min(100, Number.isFinite(rawBrightness) ? Math.round(rawBrightness) : defaults.brightness)),
     emitRange: Math.max(5, Math.min(20, Number.isFinite(rawEmitRange) ? Math.round(rawEmitRange) : 15)),
   };
 }
@@ -870,7 +887,10 @@ function stopPianoUseMode(announce = true): void {
 }
 
 /** Plays one short C4 preview using the piano item's current/overridden envelope+instrument. */
-async function previewPianoSettingChange(item: WorldItem, overrides: Partial<{ instrument: PianoInstrumentId; attack: number; decay: number }>): Promise<void> {
+async function previewPianoSettingChange(
+  item: WorldItem,
+  overrides: Partial<{ instrument: PianoInstrumentId; attack: number; decay: number; release: number; brightness: number }>,
+): Promise<void> {
   if (item.type !== 'piano') return;
   await audio.ensureContext();
   const ctx = audio.context;
@@ -880,6 +900,8 @@ async function previewPianoSettingChange(item: WorldItem, overrides: Partial<{ i
   const instrument = overrides.instrument ?? current.instrument;
   const attack = Math.max(0, Math.min(100, Math.round(overrides.attack ?? current.attack)));
   const decay = Math.max(0, Math.min(100, Math.round(overrides.decay ?? current.decay)));
+  const release = Math.max(0, Math.min(100, Math.round(overrides.release ?? current.release)));
+  const brightness = Math.max(0, Math.min(100, Math.round(overrides.brightness ?? current.brightness)));
   const sourceX = item.carrierId === state.player.id ? state.player.x : item.x;
   const sourceY = item.carrierId === state.player.id ? state.player.y : item.y;
   const previewKeyId = '__piano_preview_c4__';
@@ -890,6 +912,8 @@ async function previewPianoSettingChange(item: WorldItem, overrides: Partial<{ i
     instrument,
     attack,
     decay,
+    release,
+    brightness,
     { audioCtx: ctx, destination },
     { x: sourceX - state.player.x, y: sourceY - state.player.y, range: current.emitRange },
   );
@@ -911,6 +935,8 @@ function playRemotePianoNote(note: {
   instrument: string;
   attack: number;
   decay: number;
+  release: number;
+  brightness: number;
   x: number;
   y: number;
   emitRange: number;
@@ -927,6 +953,8 @@ function playRemotePianoNote(note: {
     normalizePianoInstrument(note.instrument),
     Math.max(0, Math.min(100, Math.round(note.attack))),
     Math.max(0, Math.min(100, Math.round(note.decay))),
+    Math.max(0, Math.min(100, Math.round(note.release))),
+    Math.max(0, Math.min(100, Math.round(note.brightness))),
     { audioCtx: ctx, destination },
     {
       x: note.x - state.player.x,
@@ -1182,6 +1210,8 @@ function inferItemPropertyValueType(item: WorldItem, key: string): string | unde
     key === 'emitRange' ||
     key === 'attack' ||
     key === 'decay' ||
+    key === 'release' ||
+    key === 'brightness' ||
     key === 'sides' ||
     key === 'number' ||
     key === 'useCooldownMs'
@@ -2253,6 +2283,37 @@ function handlePianoUseModeInput(code: string): void {
     stopPianoUseMode(false);
     return;
   }
+  if (code.startsWith('Digit')) {
+    const digit = Number(code.slice(5));
+    if (Number.isInteger(digit) && digit >= 1 && digit <= 9) {
+      const instrument = PIANO_INSTRUMENT_OPTIONS[digit - 1];
+      if (instrument) {
+        const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
+        item.params.instrument = instrument;
+        item.params.attack = defaults.attack;
+        item.params.decay = defaults.decay;
+        item.params.release = defaults.release;
+        item.params.brightness = defaults.brightness;
+        signaling.send({
+          type: 'item_update',
+          itemId,
+          params: {
+            instrument,
+          },
+        });
+        void previewPianoSettingChange(item, {
+          instrument,
+          attack: defaults.attack,
+          decay: defaults.decay,
+          release: defaults.release,
+          brightness: defaults.brightness,
+        });
+        updateStatus(`Instrument ${instrument}.`);
+        audio.sfxUiBlip();
+      }
+      return;
+    }
+  }
   const midi = getPianoMidiForCode(code);
   if (midi === null) return;
   if (activePianoKeys.has(code)) return;
@@ -2269,6 +2330,8 @@ function handlePianoUseModeInput(code: string): void {
     config.instrument,
     config.attack,
     config.decay,
+    config.release,
+    config.brightness,
     { audioCtx: ctx, destination },
     { x: sourceX - state.player.x, y: sourceY - state.player.y, range: config.emitRange },
   );
@@ -2528,8 +2591,14 @@ const itemPropertyEditor = createItemPropertyEditor({
     if (item.type !== 'piano') return;
     if (key === 'instrument') {
       const instrument = normalizePianoInstrument(value);
-      const defaults = DEFAULT_ENVELOPE_BY_INSTRUMENT[instrument];
-      void previewPianoSettingChange(item, { instrument, attack: defaults.attack, decay: defaults.decay });
+      const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
+      void previewPianoSettingChange(item, {
+        instrument,
+        attack: defaults.attack,
+        decay: defaults.decay,
+        release: defaults.release,
+        brightness: defaults.brightness,
+      });
       return;
     }
     if (key === 'attack') {
@@ -2542,6 +2611,18 @@ const itemPropertyEditor = createItemPropertyEditor({
       const decay = Number(value);
       if (!Number.isFinite(decay)) return;
       void previewPianoSettingChange(item, { decay });
+      return;
+    }
+    if (key === 'release') {
+      const release = Number(value);
+      if (!Number.isFinite(release)) return;
+      void previewPianoSettingChange(item, { release });
+      return;
+    }
+    if (key === 'brightness') {
+      const brightness = Number(value);
+      if (!Number.isFinite(brightness)) return;
+      void previewPianoSettingChange(item, { brightness });
     }
   },
   updateStatus,

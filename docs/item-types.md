@@ -159,6 +159,8 @@ This is behavior-focused documentation for item types and their defaults.
   - `instrument="piano"`
   - `attack=15`
   - `decay=45`
+  - `release=35`
+  - `brightness=55`
   - `emitRange=15`
 - Global:
   - `useSound=none`
@@ -174,8 +176,10 @@ This is behavior-focused documentation for item types and their defaults.
 - `instrument`: `piano | electric_piano | guitar | organ | bass | violin | synth_lead | nintendo | drum_kit`
 - `attack`: integer `0..100`
 - `decay`: integer `0..100`
+- `release`: integer `0..100`
+- `brightness`: integer `0..100`
 - `emitRange`: integer `5..20`
-- Instrument changes reset `attack`/`decay` to instrument defaults.
+- Instrument changes reset `attack`/`decay`/`release`/`brightness` to instrument defaults.
 
 ## Adding A New Item Type (Registry V1)
 

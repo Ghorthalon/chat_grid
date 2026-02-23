@@ -165,6 +165,8 @@
   "instrument": "piano",
   "attack": 15,
   "decay": 45,
+  "release": 35,
+  "brightness": 55,
   "emitRange": 15
 }
 ```
@@ -174,6 +176,8 @@
 - Selecting a new instrument resets `attack`/`decay` to that instrument's defaults.
 - `attack`: integer, range `0-100`, default `15`.
 - `decay`: integer, range `0-100`, default `45`.
+- `release`: integer, range `0-100`, default `35`.
+- `brightness`: integer, range `0-100`, default `55`.
 - `emitRange`: integer, range `5-20`, default `15`.
 
 ## Packet Shapes
