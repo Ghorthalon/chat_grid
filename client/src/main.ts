@@ -1100,6 +1100,12 @@ function distanceDirectionPhrase(px: number, py: number, tx: number, ty: number)
   return `${distance} ${squareWord(distance)} ${direction}`;
 }
 
+/** Formats a coordinate with up to 2 decimals while trimming trailing zeros. */
+function formatCoordinate(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  return value.toFixed(2).replace(/\.?0+$/, '');
+}
+
 /** Persists current local player coordinates for reconnect/refresh restore. */
 function persistPlayerPosition(): void {
   try {
@@ -1629,7 +1635,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       return;
     }
     case 'speakCoordinates':
-      updateStatus(`${state.player.x}, ${state.player.y}`);
+      updateStatus(`${formatCoordinate(state.player.x)}, ${formatCoordinate(state.player.y)}`);
       audio.sfxUiBlip();
       return;
     case 'openMicGainEdit':
