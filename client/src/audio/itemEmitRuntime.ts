@@ -28,6 +28,7 @@ const ITEM_EMIT_BASE_GAIN = 1;
 const SUBSCRIBE_PRELOAD_SQUARES = 5;
 const UNSUBSCRIBE_HYSTERESIS_SQUARES = 8;
 const SPATIAL_RAMP_SECONDS = 0.2;
+const SPATIAL_TIME_CONSTANT_SECONDS = SPATIAL_RAMP_SECONDS / 3;
 
 /** Maps a 0-100 speed control to playback-rate range used by emitted audio. */
 function resolveEmitPlaybackRate(raw: unknown): number {
@@ -224,10 +225,10 @@ export class ItemEmitRuntime {
       const gainValue = mix?.gain ?? 0;
       const panValue = mix?.pan ?? 0;
       const emitVolume = volumePercentToGain(item.params.emitVolume, 100);
-      output.gain.gain.linearRampToValueAtTime(gainValue * emitVolume, audioCtx.currentTime + SPATIAL_RAMP_SECONDS);
+      output.gain.gain.setTargetAtTime(gainValue * emitVolume, audioCtx.currentTime, SPATIAL_TIME_CONSTANT_SECONDS);
       if (output.panner) {
         const resolvedPan = this.audio.getOutputMode() === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
-        output.panner.pan.linearRampToValueAtTime(resolvedPan, audioCtx.currentTime + SPATIAL_RAMP_SECONDS);
+        output.panner.pan.setTargetAtTime(resolvedPan, audioCtx.currentTime, SPATIAL_TIME_CONSTANT_SECONDS);
       }
     }
   }
