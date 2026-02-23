@@ -227,7 +227,6 @@ let activeTeleport:
       targetY: number;
       startedAtMs: number;
       durationMs: number;
-      lastStepAtMs: number;
       lastSyncAtMs: number;
       lastSentX: number;
       lastSentY: number;
@@ -557,12 +556,12 @@ async function applyAudioLayerState(): Promise<void> {
   await itemEmitRuntime.setLayerEnabled(audioLayers.item, state.items.values(), listenerPosition);
 }
 
-/** Refreshes distance-gated radio/item stream subscriptions on movement or timer cadence. */
-async function refreshAudioSubscriptions(force = false): Promise<void> {
+/** Refreshes distance-gated radio/item stream subscriptions for a listener position. */
+async function refreshAudioSubscriptionsAt(listenerPosition: { x: number; y: number }, force = false): Promise<void> {
   if (!state.running) return;
   const now = Date.now();
-  const tileX = Math.round(state.player.x);
-  const tileY = Math.round(state.player.y);
+  const tileX = Math.round(listenerPosition.x);
+  const tileY = Math.round(listenerPosition.y);
   const moved = tileX !== lastSubscriptionRefreshTileX || tileY !== lastSubscriptionRefreshTileY;
   if (!force && !moved && now - lastSubscriptionRefreshAt < AUDIO_SUBSCRIPTION_REFRESH_MS) {
     return;
@@ -575,7 +574,6 @@ async function refreshAudioSubscriptions(force = false): Promise<void> {
   lastSubscriptionRefreshAt = now;
   lastSubscriptionRefreshTileX = tileX;
   lastSubscriptionRefreshTileY = tileY;
-  const listenerPosition = { x: state.player.x, y: state.player.y };
   try {
     await radioRuntime.sync(state.items.values(), listenerPosition);
     await itemEmitRuntime.sync(state.items.values(), listenerPosition);
@@ -586,6 +584,15 @@ async function refreshAudioSubscriptions(force = false): Promise<void> {
       void refreshAudioSubscriptions(true);
     }
   }
+}
+
+/** Refreshes distance-gated radio/item stream subscriptions on movement or timer cadence. */
+async function refreshAudioSubscriptions(force = false): Promise<void> {
+  if (activeTeleport) {
+    await refreshAudioSubscriptionsAt({ x: activeTeleport.targetX, y: activeTeleport.targetY }, force);
+    return;
+  }
+  await refreshAudioSubscriptionsAt({ x: state.player.x, y: state.player.y }, force);
 }
 
 /** Toggles a single audio layer and applies the change immediately. */
@@ -1103,12 +1110,12 @@ function startTeleportTo(targetX: number, targetY: number, completionStatus: str
     targetY,
     startedAtMs: nowMs,
     durationMs,
-    lastStepAtMs: nowMs,
     lastSyncAtMs: nowMs,
     lastSentX: Math.round(startX),
     lastSentY: Math.round(startY),
     completionStatus,
   };
+  void refreshAudioSubscriptionsAt({ x: targetX, y: targetY }, true);
   state.keysPressed.ArrowUp = false;
   state.keysPressed.ArrowDown = false;
   state.keysPressed.ArrowLeft = false;
@@ -1124,11 +1131,6 @@ function updateTeleport(): void {
   const progress = Math.max(0, Math.min(1, elapsedMs / activeTeleport.durationMs));
   state.player.x = activeTeleport.startX + (activeTeleport.targetX - activeTeleport.startX) * progress;
   state.player.y = activeTeleport.startY + (activeTeleport.targetY - activeTeleport.startY) * progress;
-
-  if (nowMs - activeTeleport.lastStepAtMs >= MOVE_COOLDOWN_MS) {
-    activeTeleport.lastStepAtMs = nowMs;
-    void audio.playSample(randomFootstepUrl(), FOOTSTEP_GAIN, MOVE_COOLDOWN_MS);
-  }
 
   if (nowMs - activeTeleport.lastSyncAtMs >= TELEPORT_SYNC_INTERVAL_MS) {
     activeTeleport.lastSyncAtMs = nowMs;
@@ -1160,7 +1162,9 @@ function gameLoop(): void {
   if (!state.running) return;
   updateTeleport();
   handleMovement();
-  void refreshAudioSubscriptions();
+  if (!activeTeleport) {
+    void refreshAudioSubscriptions();
+  }
   audio.updateSpatialAudio(peerManager.getPeers(), { x: state.player.x, y: state.player.y });
   radioRuntime.updateSpatialAudio(state.items, { x: state.player.x, y: state.player.y });
   itemEmitRuntime.updateSpatialAudio(state.items, { x: state.player.x, y: state.player.y });
