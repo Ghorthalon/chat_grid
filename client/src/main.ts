@@ -2702,13 +2702,7 @@ function handlePianoUseModeInput(code: string): void {
     const next = Math.max(-2, Math.min(2, current + (code === 'Equal' ? 1 : -1)));
     item.params.octave = next;
     signaling.send({ type: 'item_update', itemId, params: { octave: next } });
-    void previewPianoSettingChange(item, { octave: next });
     updateStatus(`octave ${next}.`);
-    if (next === current) {
-      audio.sfxUiCancel();
-    } else {
-      audio.sfxUiBlip();
-    }
     return;
   }
   if (code.startsWith('Digit')) {
@@ -2743,7 +2737,6 @@ function handlePianoUseModeInput(code: string): void {
           brightness: defaults.brightness,
         });
         updateStatus(`Instrument ${instrument}.`);
-        audio.sfxUiBlip();
       }
       return;
     }
