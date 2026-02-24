@@ -9,7 +9,7 @@ type MessageHandlerDeps = {
   setWorldGridSize: (size: number) => void;
   setConnecting: (value: boolean) => void;
   rendererSetGridSize: (size: number) => void;
-  applyServerItemUiDefinitions: (defs: unknown) => void;
+  applyServerItemUiDefinitions: (defs: unknown) => boolean;
   state: {
     addItemTypeIndex: number;
     player: { id: string | null; nickname: string; x: number; y: number };
@@ -62,6 +62,7 @@ type MessageHandlerDeps = {
   audioUiCancel: () => void;
   NICKNAME_STORAGE_KEY: string;
   getCarriedItemId: () => string | null;
+  recomputeActiveItemPropertyKeys: (itemId: string) => void;
   itemPropertyLabel: (key: string) => string;
   getItemPropertyValue: (item: WorldItem, key: string) => string;
   getItemById: (itemId: string) => WorldItem | undefined;
@@ -82,7 +83,11 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
           deps.setWorldGridSize(message.worldConfig.gridSize);
         }
         deps.rendererSetGridSize(deps.getWorldGridSize());
-        deps.applyServerItemUiDefinitions(message.uiDefinitions);
+        const schemaReady = deps.applyServerItemUiDefinitions(message.uiDefinitions);
+        if (!schemaReady) {
+          deps.updateStatus('Item schema missing from server. Item menus unavailable.');
+          deps.audioUiCancel();
+        }
         deps.state.addItemTypeIndex = 0;
         deps.state.player.id = message.id;
         deps.state.running = true;
@@ -207,6 +212,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
           carrierId: message.item.carrierId ?? null,
         });
         deps.state.carriedItemId = deps.getCarriedItemId();
+        deps.recomputeActiveItemPropertyKeys(message.item.id);
         if (deps.state.mode === 'itemProperties' && deps.state.selectedItemId === message.item.id) {
           const key = deps.state.itemPropertyKeys[deps.state.itemPropertyIndex];
           if (key && deps.shouldAnnounceItemPropertyEcho()) {

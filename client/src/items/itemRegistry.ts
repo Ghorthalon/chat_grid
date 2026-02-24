@@ -1,6 +1,4 @@
 import { type ItemType, type WorldItem } from '../state/gameState';
-import { CLOCK_TIME_ZONE_OPTIONS } from './types/clock';
-import { DEFAULT_ITEM_TYPE_DEFINITIONS, DEFAULT_ITEM_TYPE_SEQUENCE } from './types';
 
 export type ItemPropertyValueType = 'boolean' | 'text' | 'number' | 'list' | 'sound';
 
@@ -8,6 +6,7 @@ export type ItemPropertyMetadata = {
   valueType?: ItemPropertyValueType;
   tooltip?: string;
   maxLength?: number;
+  visibleWhen?: Record<string, string | number | boolean>;
   range?: {
     min: number;
     max: number;
@@ -27,42 +26,21 @@ type UiDefinitionsPayload = {
     globalProperties?: Record<string, unknown>;
   }>;
 };
-
-let itemTypeSequence: ItemType[] = [...DEFAULT_ITEM_TYPE_SEQUENCE];
-let itemTypeLabels: Record<ItemType, string> = {} as Record<ItemType, string>;
+let itemTypeSequence: ItemType[] = [];
+let itemTypeLabels: Partial<Record<ItemType, string>> = {};
 let itemTypeTooltips: Partial<Record<ItemType, string>> = {};
-let itemTypeEditableProperties: Record<ItemType, string[]> = {} as Record<ItemType, string[]>;
-let itemTypeGlobalProperties: Record<ItemType, Record<string, string | number | boolean>> = {} as Record<
-  ItemType,
-  Record<string, string | number | boolean>
->;
+let itemTypeEditableProperties: Partial<Record<ItemType, string[]>> = {};
+let itemTypeGlobalProperties: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
 let optionItemPropertyValues: Partial<Record<string, string[]>> = {};
 let itemTypePropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
 
-for (const definition of DEFAULT_ITEM_TYPE_DEFINITIONS) {
-  itemTypeLabels[definition.type] = definition.label;
-  if (definition.tooltip) {
-    itemTypeTooltips[definition.type] = definition.tooltip;
-  }
-  itemTypeEditableProperties[definition.type] = [...definition.editableProperties];
-  itemTypeGlobalProperties[definition.type] = { ...definition.globalProperties };
-  if (definition.propertyMetadata) {
-    itemTypePropertyMetadata[definition.type] = { ...definition.propertyMetadata };
-  }
-  if (definition.propertyOptions) {
-    for (const [key, values] of Object.entries(definition.propertyOptions)) {
-      optionItemPropertyValues[key] = [...values];
-    }
-  }
-}
-
 export let EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
-  Object.values(itemTypeEditableProperties).flatMap((keys) => keys),
+  Object.values(itemTypeEditableProperties).flatMap((keys) => keys ?? []),
 );
 
 /** Rebuilds the flattened editable-key lookup after item-type definitions are replaced. */
 function rebuildEditablePropertyKeySet(): void {
-  EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(Object.values(itemTypeEditableProperties).flatMap((keys) => keys));
+  EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(Object.values(itemTypeEditableProperties).flatMap((keys) => keys ?? []));
 }
 
 /** Normalizes server-provided property metadata into strict client metadata shape. */
@@ -83,6 +61,17 @@ function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefine
       const maxLength = Number(valueObj.maxLength);
       if (Number.isFinite(maxLength) && maxLength > 0) {
         metadata.maxLength = Math.floor(maxLength);
+      }
+    }
+    if (valueObj.visibleWhen && typeof valueObj.visibleWhen === 'object') {
+      const visibleWhen: Record<string, string | number | boolean> = {};
+      for (const [conditionKey, conditionValue] of Object.entries(valueObj.visibleWhen as Record<string, unknown>)) {
+        if (typeof conditionValue === 'string' || typeof conditionValue === 'number' || typeof conditionValue === 'boolean') {
+          visibleWhen[conditionKey] = conditionValue;
+        }
+      }
+      if (Object.keys(visibleWhen).length > 0) {
+        metadata.visibleWhen = visibleWhen;
       }
     }
     const range = valueObj.range;
@@ -106,7 +95,7 @@ function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefine
 
 /** Returns current timezone option list used by clock item properties. */
 export function getClockTimeZoneOptions(): string[] {
-  return [...(optionItemPropertyValues.timeZone ?? CLOCK_TIME_ZONE_OPTIONS)];
+  return [...(optionItemPropertyValues.timeZone ?? [])];
 }
 
 /** Returns default timezone used by clock items when no override is set. */
@@ -171,7 +160,11 @@ export function itemPropertyLabel(key: string): string {
 
 /** Returns editable properties for one item instance/type. */
 export function getEditableItemPropertyKeys(item: WorldItem): string[] {
-  return [...(itemTypeEditableProperties[item.type] ?? ['title'])];
+  const rawKeys = itemTypeEditableProperties[item.type];
+  if (!rawKeys || rawKeys.length === 0) {
+    return [];
+  }
+  return rawKeys.filter((key) => isItemPropertyVisible(item, key));
 }
 
 /** Returns inspect-mode property key list (editable first, then system/global extras). */
@@ -201,6 +194,7 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
 
   const paramKeys = Object.keys(item.params).sort((a, b) => a.localeCompare(b));
   for (const key of paramKeys) {
+    if (!isItemPropertyVisible(item, key)) continue;
     if (seen.has(key)) continue;
     seen.add(key);
     allKeys.push(key);
@@ -208,6 +202,7 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
 
   const globalKeys = Object.keys(itemTypeGlobalProperties[item.type] ?? {}).sort((a, b) => a.localeCompare(b));
   for (const key of globalKeys) {
+    if (!isItemPropertyVisible(item, key)) continue;
     if (seen.has(key)) continue;
     seen.add(key);
     allKeys.push(key);
@@ -217,24 +212,30 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
 }
 
 /** Applies server-supplied UI/catalog definitions for item types, properties, and options. */
-export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload | undefined): void {
-  if (!uiDefinitions) return;
-
-  if (Array.isArray(uiDefinitions.itemTypeOrder) && uiDefinitions.itemTypeOrder.length > 0) {
-    itemTypeSequence = uiDefinitions.itemTypeOrder.filter((entry) => typeof entry === 'string') as ItemType[];
-  }
-
-  if (!Array.isArray(uiDefinitions.itemTypes) || uiDefinitions.itemTypes.length === 0) {
+export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload | undefined): boolean {
+  if (!uiDefinitions || !Array.isArray(uiDefinitions.itemTypes) || uiDefinitions.itemTypes.length === 0) {
+    itemTypeSequence = [];
+    itemTypeLabels = {};
+    itemTypeTooltips = {};
+    itemTypeEditableProperties = {};
+    itemTypeGlobalProperties = {};
+    optionItemPropertyValues = {};
+    itemTypePropertyMetadata = {};
     rebuildEditablePropertyKeySet();
-    return;
+    return false;
   }
 
-  const nextLabels = { ...itemTypeLabels };
-  const nextTooltips = { ...itemTypeTooltips };
-  const nextEditable = { ...itemTypeEditableProperties };
-  const nextGlobals = { ...itemTypeGlobalProperties };
-  const nextOptions: Partial<Record<string, string[]>> = { ...optionItemPropertyValues };
-  const nextPropertyMetadata = { ...itemTypePropertyMetadata };
+  const explicitOrder =
+    Array.isArray(uiDefinitions.itemTypeOrder) && uiDefinitions.itemTypeOrder.length > 0
+      ? (uiDefinitions.itemTypeOrder.filter((entry) => typeof entry === 'string') as ItemType[])
+      : null;
+
+  const nextLabels: Partial<Record<ItemType, string>> = {};
+  const nextTooltips: Partial<Record<ItemType, string>> = {};
+  const nextEditable: Partial<Record<ItemType, string[]>> = {};
+  const nextGlobals: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
+  const nextOptions: Partial<Record<string, string[]>> = {};
+  const nextPropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
 
   for (const definition of uiDefinitions.itemTypes) {
     if (!definition || typeof definition.type !== 'string') continue;
@@ -271,11 +272,38 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
     }
   }
 
+  const discoveredOrder: ItemType[] = [];
+  for (const definition of uiDefinitions.itemTypes) {
+    if (!definition || typeof definition.type !== 'string') continue;
+    discoveredOrder.push(definition.type as ItemType);
+  }
+
   itemTypeLabels = nextLabels;
   itemTypeTooltips = nextTooltips;
   itemTypeEditableProperties = nextEditable;
   itemTypeGlobalProperties = nextGlobals;
   optionItemPropertyValues = nextOptions;
   itemTypePropertyMetadata = nextPropertyMetadata;
+  itemTypeSequence = explicitOrder ?? discoveredOrder;
   rebuildEditablePropertyKeySet();
+  return itemTypeSequence.length > 0;
+}
+
+/** Returns whether a property is currently visible for an item based on metadata visibility rules. */
+export function isItemPropertyVisible(item: WorldItem, key: string): boolean {
+  const metadata = getItemPropertyMetadata(item.type, key);
+  const visibilityRule = (metadata as Record<string, unknown> | undefined)?.visibleWhen;
+  if (!visibilityRule || typeof visibilityRule !== 'object') {
+    return true;
+  }
+  const conditions = visibilityRule as Record<string, string | number | boolean>;
+  for (const [conditionKey, expected] of Object.entries(conditions)) {
+    const actual =
+      item.params[conditionKey] ??
+      getItemTypeGlobalProperties(item.type)[conditionKey];
+    if (actual !== expected) {
+      return false;
+    }
+  }
+  return true;
 }

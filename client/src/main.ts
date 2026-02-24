@@ -1,9 +1,7 @@
 import './styles.css';
 import { AudioEngine } from './audio/audioEngine';
 import {
-  EFFECT_IDS,
   EFFECT_SEQUENCE,
-  clampEffectLevel,
 } from './audio/effects';
 import {
   RadioStationRuntime,
@@ -235,6 +233,7 @@ let lastSubscriptionRefreshTileY = Math.round(state.player.y);
 let subscriptionRefreshInFlight = false;
 let subscriptionRefreshPending = false;
 let suppressItemPropertyEchoUntilMs = 0;
+let itemPropertiesShowAll = false;
 let activeTeleportLoopStop: (() => void) | null = null;
 let activeTeleportLoopToken = 0;
 let activeTeleport:
@@ -832,6 +831,7 @@ function beginItemSelection(context: 'pickup' | 'delete' | 'edit' | 'use' | 'ins
 
 /** Opens item property browsing/editing mode for one item. */
 function beginItemProperties(item: WorldItem, showAll = false): void {
+  itemPropertiesShowAll = showAll;
   state.selectedItemId = item.id;
   state.mode = 'itemProperties';
   state.editingPropertyKey = null;
@@ -843,10 +843,40 @@ function beginItemProperties(item: WorldItem, showAll = false): void {
     state.itemPropertyKeys = getEditableItemPropertyKeys(item);
   }
   state.itemPropertyIndex = 0;
+  if (state.itemPropertyKeys.length === 0) {
+    updateStatus('No properties available.');
+    audio.sfxUiCancel();
+    state.mode = 'normal';
+    state.selectedItemId = null;
+    return;
+  }
   const key = state.itemPropertyKeys[0];
   const value = getItemPropertyValue(item, key);
   updateStatus(`${itemPropertyLabel(key)}: ${value}`);
   audio.sfxUiBlip();
+}
+
+/** Recomputes visible property rows for the active item-property view after item updates. */
+function recomputeActiveItemPropertyKeys(itemId: string): void {
+  if (state.mode !== 'itemProperties' || state.selectedItemId !== itemId) {
+    return;
+  }
+  const item = state.items.get(itemId);
+  if (!item) {
+    return;
+  }
+  const previousKey = state.itemPropertyKeys[state.itemPropertyIndex] ?? null;
+  const nextKeys = itemPropertiesShowAll ? getInspectItemPropertyKeys(item) : getEditableItemPropertyKeys(item);
+  state.itemPropertyKeys = nextKeys;
+  if (nextKeys.length === 0) {
+    state.itemPropertyIndex = 0;
+    return;
+  }
+  if (previousKey && nextKeys.includes(previousKey)) {
+    state.itemPropertyIndex = nextKeys.indexOf(previousKey);
+    return;
+  }
+  state.itemPropertyIndex = Math.max(0, Math.min(state.itemPropertyIndex, nextKeys.length - 1));
 }
 
 /** Sends an item-use request for the selected item. */
@@ -1362,6 +1392,7 @@ const onAppMessage = createOnMessageHandler({
   audioUiCancel: () => audio.sfxUiCancel(),
   NICKNAME_STORAGE_KEY,
   getCarriedItemId: () => getCarriedItem()?.id ?? null,
+  recomputeActiveItemPropertyKeys,
   itemPropertyLabel,
   getItemPropertyValue,
   getItemById: (itemId) => state.items.get(itemId),
@@ -2121,9 +2152,6 @@ const itemPropertyEditor = createItemPropertyEditor({
   describeItemPropertyHelp,
   getItemPropertyMetadata,
   validateNumericItemPropertyInput,
-  clampEffectLevel,
-  effectIds: EFFECT_IDS as Set<string>,
-  effectSequenceIdsCsv: EFFECT_SEQUENCE.map((effect) => effect.id).join(', '),
   applyTextInputEdit,
   setReplaceTextOnNextType: (value) => {
     replaceTextOnNextType = value;

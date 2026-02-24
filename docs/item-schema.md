@@ -49,8 +49,8 @@
 
 - Persisted state stores only instance data.
 - Global/type-level properties are loaded from server registry in `server/app/item_catalog.py`.
-- Per-type use/update validation and message behavior are implemented in per-item modules under `server/app/items/` and wired in `server/app/items/registry.py`.
-- Client-side add/edit metadata is handled in `client/src/items/itemRegistry.ts`.
+- Per-type use/update validation and message behavior are implemented in per-item modules under `server/app/items/`, discovered via plugins in `server/app/items/types/*/plugin.py`.
+- Client-side add/edit metadata is consumed from `welcome.uiDefinitions` via `client/src/items/itemRegistry.ts` (no local fallback definitions).
 - End-to-end add-item template: `docs/item-type-template.md`.
 
 ## Type Params
@@ -77,7 +77,8 @@
 - `mediaChannel`: one of `stereo | mono | left | right`, default `stereo`.
 - `mediaEffect`: one of `reverb | echo | flanger | high_pass | low_pass | off`, default `off`.
 - `mediaEffectValue`: number, range `0-100`, precision `0.1`.
-- `facing`: number, range `0-360`, precision `0.1` (used when `directional=true`).
+- `facing`: number, range `0-360`, step `1` (used when `directional=true`).
+- UI visibility: `facing` is shown only when `directional=true` (`visibleWhen` metadata).
 - `emitRange`: integer, range `5-20`, default `20`.
 
 ### `dice`
@@ -148,7 +149,8 @@
 
 - `enabled`: boolean (or `on/off` in updates), default `true`.
 - `directional`: boolean (or `on/off` in updates), default `false`.
-- `facing`: number, range `0-360`, precision `0.1`.
+- `facing`: number, range `0-360`, step `1`.
+- UI visibility: `facing` is shown only when `directional=true` (`visibleWhen` metadata).
 - `emitRange`: integer, range `1-20`, default `15`.
 - `emitVolume`: integer, range `0-100`, default `100`.
 - `emitSoundSpeed`: integer, range `0-100`, default `50`; controls emitted sound speed/pitch (`0=0.5x`, `50=1.0x`, `100=2.0x`).

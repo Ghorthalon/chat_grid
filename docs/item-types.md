@@ -187,9 +187,9 @@ This is behavior-focused documentation for item types and their defaults.
 - `emitRange`: integer `5..20`
 - Instrument changes reset `voiceMode`/`octave`/`attack`/`decay`/`release`/`brightness` to instrument defaults.
 
-## Adding A New Item Type (Registry V1)
+## Adding A New Item Type (Plugin Discovery)
 
-Item types are currently code-registered on both server and client. Server item logic is split per item module and wired through one registry.
+Server is the source of truth for item type definitions and metadata. The client consumes server `welcome.uiDefinitions` and only provides UX/runtime behavior.
 
 For a full copy/paste example with plain-English explanation, see `docs/item-type-template.md`.
 
@@ -197,13 +197,15 @@ For a full copy/paste example with plain-English explanation, see `docs/item-typ
    - defaults/capabilities
    - property metadata/options
    - `validate_update` and `use_item`
-2. Server registry: add one entry in `server/app/items/registry.py`:
-   - `ITEM_MODULES`
-   - `ITEM_TYPE_ORDER` (if ordering changes)
+2. Server plugin: add `server/app/items/types/<item_type>/plugin.py` exporting `ITEM_TYPE_PLUGIN` with:
+   - `type`
+   - `order`
+   - `module`
+   The server auto-discovers plugins at boot, so no central registry edit is needed.
 3. Server models: extend `ItemType` literals in `server/app/models.py` and any packet enums that list item types.
-4. Client fallback registry: add type defaults in `client/src/items/itemRegistry.ts` (`DEFAULT_ITEM_TYPE_SEQUENCE`, editable/global fallback metadata).
-5. Client protocol/state types: update item-type unions in `client/src/network/protocol.ts` and `client/src/state/gameState.ts`.
-6. Tests: add or update server tests under `server/tests/` for use/update validation and cooldown behavior.
+4. Client protocol/state types: update item-type unions in `client/src/network/protocol.ts` and `client/src/state/gameState.ts`.
+5. Client runtime behavior: add `client/src/items/types/<item_type>/behavior.ts` only if custom client runtime is needed.
+6. Tests: add or update server tests under `server/tests/` for use/update validation, unknown-key stripping, and `uiDefinitions` completeness.
 
 ### Example Shape
 

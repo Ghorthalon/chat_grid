@@ -26,16 +26,20 @@ type EditorDeps = {
   getItemPropertyOptionValues: (key: string) => string[] | undefined;
   openItemPropertyOptionSelect: (item: WorldItem, key: string) => void;
   describeItemPropertyHelp: (item: WorldItem, key: string) => string;
-  getItemPropertyMetadata: (itemType: WorldItem['type'], key: string) => { valueType?: string; range?: { min: number; max: number; step?: number } } | undefined;
+  getItemPropertyMetadata: (
+    itemType: WorldItem['type'],
+    key: string,
+  ) => {
+    valueType?: string;
+    maxLength?: number;
+    range?: { min: number; max: number; step?: number };
+  } | undefined;
   validateNumericItemPropertyInput: (
     item: WorldItem,
     key: string,
     rawValue: string,
     requireInteger: boolean,
   ) => { ok: true; value: number } | { ok: false; message: string };
-  clampEffectLevel: (value: number) => number;
-  effectIds: Set<string>;
-  effectSequenceIdsCsv: string;
   applyTextInputEdit: (code: string, key: string, maxLength: number, ctrlKey?: boolean, allowReplaceOnNextType?: boolean) => void;
   setReplaceTextOnNextType: (value: boolean) => void;
   suppressItemPropertyEchoMs: (ms: number) => void;
@@ -115,7 +119,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
       if (metadata?.valueType === 'boolean') {
         let current = item.params[selectedKey];
         if (typeof current !== 'boolean') {
-          current = selectedKey === 'enabled' ? item.params.enabled !== false : item.params[selectedKey] === true;
+          current = item.params[selectedKey] === true;
         }
         const nextValue = !current;
         deps.suppressItemPropertyEchoMs(600);
@@ -163,24 +167,13 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         deps.sfxUiCancel();
         return;
       }
-      if (selectedKey === 'enabled') {
-        const nextEnabled = item.params.enabled === false;
-        deps.signalingSend({ type: 'item_update', itemId, params: { enabled: nextEnabled } });
-        deps.updateStatus(`enabled: ${nextEnabled ? 'on' : 'off'}`);
-        deps.sfxUiBlip();
-        return;
-      }
-      if (selectedKey === 'directional') {
-        const nextDirectional = item.params.directional !== true;
-        deps.signalingSend({ type: 'item_update', itemId, params: { directional: nextDirectional } });
-        deps.updateStatus(`directional: ${nextDirectional ? 'on' : 'off'}`);
-        deps.sfxUiBlip();
-        return;
-      }
-      if (selectedKey === 'use24Hour') {
-        const nextUse24Hour = item.params.use24Hour !== true;
-        deps.signalingSend({ type: 'item_update', itemId, params: { use24Hour: nextUse24Hour } });
-        deps.updateStatus(`${deps.itemPropertyLabel(selectedKey)}: ${nextUse24Hour ? 'on' : 'off'}`);
+      const metadata = deps.getItemPropertyMetadata(item.type, selectedKey);
+      if (metadata?.valueType === 'boolean') {
+        const current = item.params[selectedKey];
+        const nextValue = typeof current === 'boolean' ? !current : deps.getItemPropertyValue(item, selectedKey).toLowerCase() !== 'on';
+        deps.signalingSend({ type: 'item_update', itemId, params: { [selectedKey]: nextValue } });
+        deps.onPreviewPropertyChange?.(item, selectedKey, nextValue);
+        deps.updateStatus(`${deps.itemPropertyLabel(selectedKey)}: ${nextValue ? 'on' : 'off'}`);
         deps.sfxUiBlip();
         return;
       }
@@ -190,13 +183,14 @@ export function createItemPropertyEditor(deps: EditorDeps): {
       }
       deps.state.mode = 'itemPropertyEdit';
       deps.state.editingPropertyKey = selectedKey;
+      const selectedMetadata = deps.getItemPropertyMetadata(item.type, selectedKey);
       deps.state.nicknameInput =
         selectedKey === 'title'
           ? item.title
-          : selectedKey === 'enabled'
-            ? item.params.enabled === false
-              ? 'off'
-              : 'on'
+          : selectedMetadata?.valueType === 'boolean'
+            ? item.params[selectedKey] === true
+              ? 'on'
+              : 'off'
             : String(item.params[selectedKey] ?? '');
       deps.state.cursorPos = deps.state.nicknameInput.length;
       deps.setReplaceTextOnNextType(true);
@@ -271,6 +265,8 @@ export function createItemPropertyEditor(deps: EditorDeps): {
     const editAction = getEditSessionAction(code);
     if (editAction === 'submit') {
       const value = deps.state.nicknameInput.trim();
+      const metadata = deps.getItemPropertyMetadata(item.type, propertyKey);
+      const valueType = metadata?.valueType;
       const sendItemParams = (params: Record<string, unknown>): void => {
         deps.signalingSend({ type: 'item_update', itemId, params });
         for (const [key, nextValue] of Object.entries(params)) {
@@ -286,18 +282,14 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         }
         return { ok: true, value: ['on', 'true', '1', 'yes'].includes(normalized) };
       };
-      const submitNumericParam = (
-        targetKey: string,
-        requireInteger: boolean,
-        transform?: (num: number) => number,
-      ): boolean => {
-        const parsed = deps.validateNumericItemPropertyInput(item, targetKey, value, requireInteger);
+      const submitNumericParam = (targetKey: string): boolean => {
+        const parsed = deps.validateNumericItemPropertyInput(item, targetKey, value, false);
         if (!parsed.ok) {
           deps.updateStatus(parsed.message);
           deps.sfxUiCancel();
           return false;
         }
-        sendItemParams({ [targetKey]: transform ? transform(parsed.value) : parsed.value });
+        sendItemParams({ [targetKey]: parsed.value });
         return true;
       };
       if (propertyKey === 'title') {
@@ -307,62 +299,34 @@ export function createItemPropertyEditor(deps: EditorDeps): {
           return;
         }
         deps.signalingSend({ type: 'item_update', itemId, title: value });
-      } else if (propertyKey === 'streamUrl') {
-        sendItemParams({ streamUrl: value });
-      } else if (propertyKey === 'enabled' || propertyKey === 'directional') {
+      } else if (valueType === 'boolean') {
         const toggle = parseToggleValue(value, propertyKey);
         if (!toggle.ok) return;
         sendItemParams({ [propertyKey]: toggle.value });
-      } else if (
-        propertyKey === 'mediaVolume' ||
-        propertyKey === 'emitVolume' ||
-        propertyKey === 'emitRange' ||
-        propertyKey === 'octave' ||
-        propertyKey === 'attack' ||
-        propertyKey === 'decay' ||
-        propertyKey === 'release' ||
-        propertyKey === 'brightness' ||
-        propertyKey === 'sides' ||
-        propertyKey === 'number'
-      ) {
-        if (!submitNumericParam(propertyKey, true)) return;
-      } else if (propertyKey === 'emitSoundSpeed' || propertyKey === 'emitSoundTempo') {
-        if (!submitNumericParam(propertyKey, false)) return;
-      } else if (propertyKey === 'mediaEffect' || propertyKey === 'emitEffect') {
-        const normalized = value.trim().toLowerCase();
-        if (!deps.effectIds.has(normalized)) {
-          deps.updateStatus(`${deps.itemPropertyLabel(propertyKey)} must be one of: ${deps.effectSequenceIdsCsv}.`);
+      } else if (valueType === 'number') {
+        if (!submitNumericParam(propertyKey)) return;
+      } else if (valueType === 'list') {
+        const options = deps.getItemPropertyOptionValues(propertyKey) ?? [];
+        if (options.length === 0) {
+          deps.updateStatus(`${deps.itemPropertyLabel(propertyKey)} has no options.`);
           deps.sfxUiCancel();
           return;
         }
-        sendItemParams({ [propertyKey]: normalized });
-      } else if (propertyKey === 'mediaEffectValue' || propertyKey === 'emitEffectValue') {
-        if (!submitNumericParam(propertyKey, false, (num) => deps.clampEffectLevel(num))) return;
-      } else if (propertyKey === 'facing') {
-        if (!submitNumericParam(propertyKey, false)) return;
-      } else if (propertyKey === 'useSound' || propertyKey === 'emitSound') {
+        const normalized = value.toLowerCase();
+        const matched = options.find((option) => option.toLowerCase() === normalized);
+        if (!matched) {
+          deps.updateStatus(`${deps.itemPropertyLabel(propertyKey)} must be one of: ${options.join(', ')}.`);
+          deps.sfxUiCancel();
+          return;
+        }
+        sendItemParams({ [propertyKey]: matched });
+      } else {
+        if (metadata?.maxLength !== undefined && value.length > metadata.maxLength) {
+          deps.updateStatus(`${deps.itemPropertyLabel(propertyKey)} must be ${metadata.maxLength} characters or less.`);
+          deps.sfxUiCancel();
+          return;
+        }
         sendItemParams({ [propertyKey]: value });
-      } else if (propertyKey === 'spaces') {
-        const spaces = value
-          .split(',')
-          .map((token) => token.trim())
-          .filter((token) => token.length > 0);
-        if (spaces.length === 0) {
-          deps.updateStatus('spaces must include at least one comma-delimited value.');
-          deps.sfxUiCancel();
-          return;
-        }
-        if (spaces.length > 100) {
-          deps.updateStatus('spaces supports up to 100 values.');
-          deps.sfxUiCancel();
-          return;
-        }
-        if (spaces.some((token) => token.length > 80)) {
-          deps.updateStatus('each space must be 80 chars or less.');
-          deps.sfxUiCancel();
-          return;
-        }
-        sendItemParams({ spaces: spaces.join(', ') });
       }
       deps.state.mode = 'itemProperties';
       deps.state.editingPropertyKey = null;
@@ -377,7 +341,8 @@ export function createItemPropertyEditor(deps: EditorDeps): {
       deps.sfxUiCancel();
       return;
     }
-    deps.applyTextInputEdit(code, key, 500, ctrlKey, true);
+    const maxLength = deps.getItemPropertyMetadata(item.type, propertyKey)?.maxLength ?? 500;
+    deps.applyTextInputEdit(code, key, maxLength, ctrlKey, true);
   }
 
   function handleItemPropertyOptionSelectModeInput(code: string, key: string): void {
