@@ -1,3 +1,2 @@
 export { pianoDefinition } from './definition';
-export { PianoController } from './runtime';
-
+export { createPianoBehavior } from './behavior';

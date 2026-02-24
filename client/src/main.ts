@@ -57,7 +57,7 @@ import {
 } from './items/itemRegistry';
 import { createItemPropertyEditor } from './items/itemPropertyEditor';
 import { createItemPropertyPresentation } from './items/itemPropertyPresentation';
-import { PianoController } from './items/types/piano';
+import { ItemBehaviorRegistry } from './items/types/behaviorRegistry';
 import { NICKNAME_STORAGE_KEY, SettingsStore } from './settings/settingsStore';
 import { runConnectFlow, runDisconnectFlow, type ConnectFlowDeps } from './session/connectionFlow';
 import { MediaSession } from './session/mediaSession';
@@ -281,12 +281,13 @@ const mediaSession = new MediaSession({
   micInputGainStep: MIC_INPUT_GAIN_STEP,
 });
 
-const pianoController = new PianoController({
+const itemBehaviorRegistry = new ItemBehaviorRegistry({
   state,
   audio,
   signalingSend: (message) => signaling.send(message),
   updateStatus,
   openHelpViewer: (lines, returnMode) => openHelpViewer(lines, returnMode),
+  withBase,
 });
 
 audio.setOutputMode(outputMode);
@@ -296,8 +297,7 @@ loadAudioLayerState();
 loadMicInputGain();
 loadMasterVolume();
 void loadHelp();
-void pianoController.loadHelpFromUrl(withBase('piano.json'));
-void pianoController.loadDemoFromUrl(withBase('piano_demo.json'));
+void itemBehaviorRegistry.initialize();
 void loadChangelog();
 
 /** Fetches a required DOM element and casts it to the requested element type. */
@@ -1308,7 +1308,7 @@ function disconnect(): void {
   lastSubscriptionRefreshTileY = Math.round(state.player.y);
   stopTeleportLoopAudio();
   activeTeleport = null;
-  pianoController.cleanup();
+  itemBehaviorRegistry.cleanup();
 }
 
 const onAppMessage = createOnMessageHandler({
@@ -1344,9 +1344,9 @@ const onAppMessage = createOnMessageHandler({
       gain,
     );
   },
-  playRemotePianoNote: (note) => pianoController.playRemoteNote(note),
-  stopRemotePianoNote: (senderId, keyId) => pianoController.stopRemoteNote(senderId, keyId),
-  stopAllRemotePianoNotesForSender: (senderId) => pianoController.stopAllRemoteNotesForSender(senderId),
+  handleItemActionResultStatus: (message) => itemBehaviorRegistry.onActionResultStatus(message),
+  handleRemotePianoNote: (message) => itemBehaviorRegistry.onRemotePianoNote(message),
+  stopAllRemoteNotesForSender: (senderId) => itemBehaviorRegistry.stopAllRemoteNotesForSender(senderId),
   TELEPORT_SOUND_URL,
   TELEPORT_START_SOUND_URL,
   getAudioLayers: () => audioLayers,
@@ -1408,21 +1408,8 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
     startHeartbeat();
   }
   await onAppMessage(message);
-  pianoController.onUseResultMessage(message);
-  if (
-    message.type === 'item_action_result' &&
-    message.ok &&
-    message.action === 'use' &&
-    typeof message.itemId === 'string' &&
-    typeof message.message === 'string' &&
-    message.message.toLowerCase().includes('begin playing')
-  ) {
-    const item = state.items.get(message.itemId);
-    if (item?.type === 'piano') {
-      await pianoController.startUseMode(item.id);
-    }
-  }
-  pianoController.syncAfterWorldUpdate();
+  itemBehaviorRegistry.onUseResultMessage(message);
+  itemBehaviorRegistry.onWorldUpdate();
   applyConfiguredPeerListenGains();
   if (restartAnnouncement) {
     setConnectionStatus(restartAnnouncement);
@@ -2145,7 +2132,7 @@ const itemPropertyEditor = createItemPropertyEditor({
     suppressItemPropertyEchoUntilMs = Math.max(suppressItemPropertyEchoUntilMs, Date.now() + Math.max(0, ms));
   },
   onPreviewPropertyChange: (item, key, value) => {
-    pianoController.onPreviewPropertyChange(item, key, value);
+    itemBehaviorRegistry.onPropertyPreviewChange(item, key, value);
   },
   updateStatus,
   sfxUiBlip: () => audio.sfxUiBlip(),
@@ -2299,7 +2286,9 @@ function setupInputHandlers(): void {
         nickname: handleNicknameModeInput,
         chat: handleChatModeInput,
         micGainEdit: handleMicGainEditModeInput,
-        pianoUse: (currentCode) => pianoController.handleModeInput(currentCode),
+        pianoUse: (currentCode) => {
+          itemBehaviorRegistry.handleModeInput(state.mode, currentCode);
+        },
         effectSelect: (currentCode, currentKey) => handleEffectSelectModeInput(currentCode, currentKey),
         helpView: (currentCode) => handleHelpViewModeInput(currentCode),
         listUsers: (currentCode, currentKey) => handleListModeInput(currentCode, currentKey),
@@ -2321,7 +2310,7 @@ function setupInputHandlers(): void {
   document.addEventListener('keyup', (event) => {
     const code = normalizeInputCode(event);
     if (state.mode === 'pianoUse' && code) {
-      pianoController.handleModeKeyUp(code);
+      itemBehaviorRegistry.handleModeKeyUp(state.mode, code);
     }
     if (code) {
       state.keysPressed[code] = false;

@@ -46,24 +46,9 @@ type MessageHandlerDeps = {
   sanitizeName: (value: string) => string;
   randomFootstepUrl: () => string;
   playRemoteSpatialStepOrTeleport: (url: string, peerX: number, peerY: number) => void;
-  playRemotePianoNote: (note: {
-    itemId: string;
-    senderId: string;
-    keyId: string;
-    midi: number;
-    instrument: string;
-    voiceMode: 'mono' | 'poly';
-    octave: number;
-    attack: number;
-    decay: number;
-    release: number;
-    brightness: number;
-    x: number;
-    y: number;
-    emitRange: number;
-  }) => void;
-  stopRemotePianoNote: (senderId: string, keyId: string) => void;
-  stopAllRemotePianoNotesForSender: (senderId: string) => void;
+  handleItemActionResultStatus: (message: Extract<IncomingMessage, { type: 'item_action_result' }>) => boolean;
+  handleRemotePianoNote: (message: Extract<IncomingMessage, { type: 'item_piano_note' }>) => void;
+  stopAllRemoteNotesForSender: (senderId: string) => void;
   TELEPORT_SOUND_URL: string;
   TELEPORT_START_SOUND_URL: string;
   getAudioLayers: () => { world: boolean; item: boolean };
@@ -177,7 +162,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         if (peer) {
           deps.updateStatus(`${peer.nickname} has left.`);
         }
-        deps.stopAllRemotePianoNotesForSender(message.id);
+        deps.stopAllRemoteNotesForSender(message.id);
         deps.state.peers.delete(message.id);
         deps.peerManager.removePeer(message.id);
         break;
@@ -241,23 +226,12 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
       }
 
       case 'item_action_result': {
-        const pianoStatusMessages = new Set([
-          'record',
-          'pause',
-          'resume',
-          'play',
-          'stop',
-          'No recording saved on this piano.',
-          'Stop recording before playback.',
-          'This piano is already recording.',
-        ]);
+        const handledByItemBehavior = deps.handleItemActionResultStatus(message);
+        if (handledByItemBehavior) {
+          break;
+        }
         if (message.ok) {
           if (message.action === 'use') {
-            if (pianoStatusMessages.has(message.message)) {
-              deps.updateStatus(message.message);
-              deps.audioUiBlip();
-              break;
-            }
             deps.pushChatMessage(message.message);
             const item = message.itemId ? deps.getItemById(message.itemId) : null;
             if (!item?.useSound && item && item.type !== 'piano') {
@@ -268,11 +242,6 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
             deps.audioUiConfirm();
           }
         } else {
-          if (message.action === 'use' && pianoStatusMessages.has(message.message)) {
-            deps.updateStatus(message.message);
-            deps.audioUiCancel();
-            break;
-          }
           deps.pushChatMessage(message.message);
           deps.audioUiCancel();
         }
@@ -290,26 +259,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
 
       case 'item_piano_note': {
         if (!deps.getAudioLayers().item) break;
-        if (message.on) {
-          deps.playRemotePianoNote({
-            itemId: message.itemId,
-            senderId: message.senderId,
-            keyId: message.keyId,
-            midi: message.midi,
-            instrument: message.instrument,
-            voiceMode: message.voiceMode,
-            octave: message.octave,
-            attack: message.attack,
-            decay: message.decay,
-            release: message.release,
-            brightness: message.brightness,
-            x: message.x,
-            y: message.y,
-            emitRange: message.emitRange,
-          });
-        } else {
-          deps.stopRemotePianoNote(message.senderId, message.keyId);
-        }
+        deps.handleRemotePianoNote(message);
         break;
       }
     }
