@@ -55,8 +55,8 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
         "tooltip": "Playback media volume percent for this radio.",
         "range": {"min": 0, "max": 100, "step": 1},
     },
-    "mediaChannel": {"valueType": "list", "tooltip": "Select how the station audio channels are rendered."},
-    "mediaEffect": {"valueType": "list", "tooltip": "Select the active radio effect."},
+    "mediaChannel": {"valueType": "list", "tooltip": "Select how the station audio channels are rendered.", "options": list(CHANNEL_OPTIONS)},
+    "mediaEffect": {"valueType": "list", "tooltip": "Select the active radio effect.", "options": list(EFFECT_OPTIONS)},
     "mediaEffectValue": {
         "valueType": "number",
         "tooltip": "Amount for the selected effect.",

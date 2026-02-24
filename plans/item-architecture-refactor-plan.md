@@ -338,7 +338,7 @@ Implementation:
   - Keep compile-time unions only where they materially improve safety and can be generated/centralized.
 Acceptance criteria:
 - Adding a new item plugin does not require editing multiple type-literal lists in unrelated files.
-- New type appears in add/edit flows after server metadata update with minimal client changes (or none for generic items).
+- New type appears in add/edit flows after server metadata update with minimal client changes.
 
 3. **Include `capabilities` in `welcome.uiDefinitions.itemTypes` (medium).**  
 Scope:
@@ -360,8 +360,7 @@ Problem today:
 Implementation:
 - Server emits list options at `propertyMetadata[key].options`.
 - Client reads options from metadata first.
-- Deprecate/remove separate `propertyOptions` map after migration.
-- Keep transition shim only during one deploy window if needed.
+- Remove separate `propertyOptions` map.
 Acceptance criteria:
 - One canonical place (`propertyMetadata`) defines type, range, tooltip, options, and visibility for each property.
 - New list property requires server-only metadata changes for options.

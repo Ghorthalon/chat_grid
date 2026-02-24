@@ -33,15 +33,16 @@ def test_ui_definitions_are_complete_for_all_item_types() -> None:
         assert isinstance(entry.get("type"), str)
         assert isinstance(entry.get("label"), str)
         assert isinstance(entry.get("editableProperties"), list)
+        assert isinstance(entry.get("capabilities"), list)
         assert isinstance(entry.get("propertyMetadata"), dict)
-        assert isinstance(entry.get("propertyOptions"), dict)
         assert isinstance(entry.get("globalProperties"), dict)
 
         editable_properties = entry["editableProperties"]
+        capabilities = entry["capabilities"]
         property_metadata = entry["propertyMetadata"]
-        property_options = entry["propertyOptions"]
         global_properties = entry["globalProperties"]
 
+        assert capabilities
         assert required_global_keys.issubset(set(global_properties.keys()))
         for property_key in editable_properties:
             if property_key == "title":
@@ -50,7 +51,7 @@ def test_ui_definitions_are_complete_for_all_item_types() -> None:
             metadata = property_metadata[property_key]
             assert isinstance(metadata, dict)
             if metadata.get("valueType") == "list":
-                options = property_options.get(property_key)
+                options = metadata.get("options")
                 assert isinstance(options, list)
                 assert options
 

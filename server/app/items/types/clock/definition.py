@@ -60,6 +60,6 @@ PARAM_KEYS: tuple[str, ...] = ("timeZone", "use24Hour")
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item.", "maxLength": 80},
-    "timeZone": {"valueType": "list", "tooltip": "Timezone used when the clock speaks time."},
+    "timeZone": {"valueType": "list", "tooltip": "Timezone used when the clock speaks time.", "options": list(TIME_ZONE_OPTIONS)},
     "use24Hour": {"valueType": "boolean", "tooltip": "Use 24 hour format instead of AM/PM."},
 }

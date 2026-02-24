@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const itemSchema = z.object({
   id: z.string(),
-  type: z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget', 'piano']),
+  type: z.string().min(1),
   title: z.string(),
   x: z.number().int(),
   y: z.number().int(),
@@ -42,21 +42,24 @@ export const welcomeMessageSchema = z.object({
     .optional(),
   uiDefinitions: z
     .object({
-      itemTypeOrder: z.array(z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget', 'piano'])),
+      itemTypeOrder: z.array(z.string().min(1)),
       itemTypes: z.array(
         z.object({
-          type: z.enum(['radio_station', 'dice', 'wheel', 'clock', 'widget', 'piano']),
+          type: z.string().min(1),
           label: z.string().optional(),
           tooltip: z.string().optional(),
           editableProperties: z.array(z.string()),
-          propertyOptions: z.record(z.string(), z.array(z.string())).optional(),
+          capabilities: z.array(z.string()).optional(),
           propertyMetadata: z
             .record(
               z.string(),
               z.object({
                 valueType: z.enum(['boolean', 'text', 'number', 'list', 'sound']).optional(),
+                label: z.string().optional(),
                 tooltip: z.string().optional(),
                 maxLength: z.number().int().positive().optional(),
+                options: z.array(z.string()).optional(),
+                visibleWhen: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
                 range: z
                   .object({
                     min: z.number(),
@@ -193,7 +196,7 @@ export type OutgoingMessage =
   | { type: 'update_nickname'; nickname: string }
   | { type: 'chat_message'; message: string }
   | { type: 'ping'; clientSentAt: number }
-  | { type: 'item_add'; itemType: 'radio_station' | 'dice' | 'wheel' | 'clock' | 'widget' | 'piano' }
+  | { type: 'item_add'; itemType: string }
   | { type: 'item_pickup'; itemId: string }
   | { type: 'item_drop'; itemId: string; x: number; y: number }
   | { type: 'item_delete'; itemId: string }

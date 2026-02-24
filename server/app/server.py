@@ -25,14 +25,15 @@ from .config import load_config
 from .item_catalog import (
     CLOCK_DEFAULT_TIME_ZONE,
     CLOCK_TIME_ZONE_OPTIONS,
-    ITEM_PROPERTY_OPTIONS,
     ITEM_TYPE_EDITABLE_PROPERTIES,
     ITEM_TYPE_LABELS,
     ITEM_TYPE_PROPERTY_METADATA,
     ITEM_TYPE_SEQUENCE,
     ITEM_TYPE_TOOLTIPS,
+    get_item_definition,
     get_item_global_properties,
     get_item_use_cooldown_ms,
+    is_known_item_type,
 )
 from .item_type_handlers import get_item_type_handler
 from .item_service import ItemService
@@ -708,18 +709,13 @@ class SignalingServer:
         item_types: list[dict] = []
         for item_type in ITEM_TYPE_SEQUENCE:
             editable = list(ITEM_TYPE_EDITABLE_PROPERTIES.get(item_type, ("title",)))
-            property_options: dict[str, list[str]] = {}
-            for key in editable:
-                options = ITEM_PROPERTY_OPTIONS.get(key)
-                if options:
-                    property_options[key] = list(options)
             item_types.append(
                 {
                     "type": item_type,
                     "label": ITEM_TYPE_LABELS.get(item_type, item_type),
                     "tooltip": ITEM_TYPE_TOOLTIPS.get(item_type),
+                    "capabilities": list(get_item_definition(item_type).capabilities),
                     "editableProperties": editable,
-                    "propertyOptions": property_options,
                     "propertyMetadata": ITEM_TYPE_PROPERTY_METADATA.get(item_type, {}),
                     "globalProperties": get_item_global_properties(item_type),
                 }
@@ -897,6 +893,9 @@ class SignalingServer:
             return
 
         if isinstance(packet, ItemAddPacket):
+            if not is_known_item_type(packet.itemType):
+                await self._send_item_result(client, False, "add", "Unknown item type.")
+                return
             item = self.item_service.default_item(client, packet.itemType)
             self.item_service.add_item(item)
             await self._broadcast_item(item)

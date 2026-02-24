@@ -4,8 +4,10 @@ export type ItemPropertyValueType = 'boolean' | 'text' | 'number' | 'list' | 'so
 
 export type ItemPropertyMetadata = {
   valueType?: ItemPropertyValueType;
+  label?: string;
   tooltip?: string;
   maxLength?: number;
+  options?: string[];
   visibleWhen?: Record<string, string | number | boolean>;
   range?: {
     min: number;
@@ -20,8 +22,8 @@ type UiDefinitionsPayload = {
     type: ItemType;
     label?: string;
     tooltip?: string;
+    capabilities?: string[];
     editableProperties?: string[];
-    propertyOptions?: Record<string, string[]>;
     propertyMetadata?: Record<string, unknown>;
     globalProperties?: Record<string, unknown>;
   }>;
@@ -30,8 +32,8 @@ let itemTypeSequence: ItemType[] = [];
 let itemTypeLabels: Partial<Record<ItemType, string>> = {};
 let itemTypeTooltips: Partial<Record<ItemType, string>> = {};
 let itemTypeEditableProperties: Partial<Record<ItemType, string[]>> = {};
+let itemTypeCapabilities: Partial<Record<ItemType, string[]>> = {};
 let itemTypeGlobalProperties: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
-let optionItemPropertyValues: Partial<Record<string, string[]>> = {};
 let itemTypePropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
 
 export let EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
@@ -54,6 +56,9 @@ function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefine
     if (valueObj.valueType === 'boolean' || valueObj.valueType === 'text' || valueObj.valueType === 'number' || valueObj.valueType === 'list' || valueObj.valueType === 'sound') {
       metadata.valueType = valueObj.valueType;
     }
+    if (typeof valueObj.label === 'string' && valueObj.label.trim().length > 0) {
+      metadata.label = valueObj.label.trim();
+    }
     if (typeof valueObj.tooltip === 'string' && valueObj.tooltip.trim().length > 0) {
       metadata.tooltip = valueObj.tooltip.trim();
     }
@@ -61,6 +66,12 @@ function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefine
       const maxLength = Number(valueObj.maxLength);
       if (Number.isFinite(maxLength) && maxLength > 0) {
         metadata.maxLength = Math.floor(maxLength);
+      }
+    }
+    if (Array.isArray(valueObj.options)) {
+      const options = valueObj.options.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+      if (options.length > 0) {
+        metadata.options = options;
       }
     }
     if (valueObj.visibleWhen && typeof valueObj.visibleWhen === 'object') {
@@ -95,7 +106,7 @@ function normalizePropertyMetadataRecord(raw: Record<string, unknown> | undefine
 
 /** Returns current timezone option list used by clock item properties. */
 export function getClockTimeZoneOptions(): string[] {
-  return [...(optionItemPropertyValues.timeZone ?? [])];
+  return [...(getItemPropertyMetadata('clock', 'timeZone')?.options ?? [])];
 }
 
 /** Returns default timezone used by clock items when no override is set. */
@@ -124,8 +135,8 @@ export function getItemPropertyMetadata(itemType: ItemType, key: string): ItemPr
 }
 
 /** Returns option-list values for list-based properties, if defined. */
-export function getItemPropertyOptionValues(key: string): string[] | undefined {
-  return optionItemPropertyValues[key];
+export function getItemPropertyOptionValues(itemType: ItemType, key: string): string[] | undefined {
+  return itemTypePropertyMetadata[itemType]?.[key]?.options;
 }
 
 /** Returns human-facing label for an item type. */
@@ -133,8 +144,17 @@ export function itemTypeLabel(type: ItemType): string {
   return itemTypeLabels[type] ?? type;
 }
 
+/** Returns server-defined capabilities for one item type, if provided. */
+export function getItemTypeCapabilities(itemType: ItemType): string[] {
+  return [...(itemTypeCapabilities[itemType] ?? [])];
+}
+
 /** Returns human-facing label for a property key. */
 export function itemPropertyLabel(key: string): string {
+  const metadataLabel = Object.values(itemTypePropertyMetadata)
+    .map((entry) => entry?.[key]?.label)
+    .find((label) => typeof label === 'string' && label.trim().length > 0);
+  if (metadataLabel) return metadataLabel;
   if (key === 'use24Hour') return 'use 24 hour format';
   if (key === 'emitRange') return 'emit range';
   if (key === 'mediaVolume') return 'media volume';
@@ -218,8 +238,8 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
     itemTypeLabels = {};
     itemTypeTooltips = {};
     itemTypeEditableProperties = {};
+    itemTypeCapabilities = {};
     itemTypeGlobalProperties = {};
-    optionItemPropertyValues = {};
     itemTypePropertyMetadata = {};
     rebuildEditablePropertyKeySet();
     return false;
@@ -233,8 +253,8 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
   const nextLabels: Partial<Record<ItemType, string>> = {};
   const nextTooltips: Partial<Record<ItemType, string>> = {};
   const nextEditable: Partial<Record<ItemType, string[]>> = {};
+  const nextCapabilities: Partial<Record<ItemType, string[]>> = {};
   const nextGlobals: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
-  const nextOptions: Partial<Record<string, string[]>> = {};
   const nextPropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
 
   for (const definition of uiDefinitions.itemTypes) {
@@ -249,6 +269,9 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
     if (Array.isArray(definition.editableProperties) && definition.editableProperties.length > 0) {
       nextEditable[itemType] = definition.editableProperties.filter((entry) => typeof entry === 'string');
     }
+    if (Array.isArray(definition.capabilities) && definition.capabilities.length > 0) {
+      nextCapabilities[itemType] = definition.capabilities.filter((entry) => typeof entry === 'string');
+    }
     if (definition.propertyMetadata && typeof definition.propertyMetadata === 'object') {
       nextPropertyMetadata[itemType] = normalizePropertyMetadataRecord(definition.propertyMetadata);
     }
@@ -261,15 +284,6 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
       }
       nextGlobals[itemType] = normalized;
     }
-    if (definition.propertyOptions && typeof definition.propertyOptions === 'object') {
-      for (const [propertyKey, values] of Object.entries(definition.propertyOptions)) {
-        if (!Array.isArray(values) || values.length === 0) continue;
-        const normalizedValues = values.filter((entry) => typeof entry === 'string');
-        if (normalizedValues.length > 0) {
-          nextOptions[propertyKey] = normalizedValues;
-        }
-      }
-    }
   }
 
   const discoveredOrder: ItemType[] = [];
@@ -281,8 +295,8 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
   itemTypeLabels = nextLabels;
   itemTypeTooltips = nextTooltips;
   itemTypeEditableProperties = nextEditable;
+  itemTypeCapabilities = nextCapabilities;
   itemTypeGlobalProperties = nextGlobals;
-  optionItemPropertyValues = nextOptions;
   itemTypePropertyMetadata = nextPropertyMetadata;
   itemTypeSequence = explicitOrder ?? discoveredOrder;
   rebuildEditablePropertyKeySet();

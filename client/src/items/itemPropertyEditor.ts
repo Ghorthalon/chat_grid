@@ -23,7 +23,7 @@ type EditorDeps = {
   getItemPropertyValue: (item: WorldItem, key: string) => string;
   itemPropertyLabel: (key: string) => string;
   isItemPropertyEditable: (item: WorldItem, key: string) => boolean;
-  getItemPropertyOptionValues: (key: string) => string[] | undefined;
+  getItemPropertyOptionValues: (itemType: WorldItem['type'], key: string) => string[] | undefined;
   openItemPropertyOptionSelect: (item: WorldItem, key: string) => void;
   describeItemPropertyHelp: (item: WorldItem, key: string) => string;
   getItemPropertyMetadata: (
@@ -98,7 +98,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         deps.sfxUiCancel();
         return;
       }
-      const options = deps.getItemPropertyOptionValues(selectedKey);
+      const options = deps.getItemPropertyOptionValues(item.type, selectedKey);
       if (options && options.length > 0) {
         const currentRaw = String(item.params[selectedKey] ?? '').trim().toLowerCase();
         const currentIndex = Math.max(
@@ -177,7 +177,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
         deps.sfxUiBlip();
         return;
       }
-      if (deps.getItemPropertyOptionValues(selectedKey)) {
+      if (deps.getItemPropertyOptionValues(item.type, selectedKey)) {
         deps.openItemPropertyOptionSelect(item, selectedKey);
         return;
       }
@@ -306,7 +306,7 @@ export function createItemPropertyEditor(deps: EditorDeps): {
       } else if (valueType === 'number') {
         if (!submitNumericParam(propertyKey)) return;
       } else if (valueType === 'list') {
-        const options = deps.getItemPropertyOptionValues(propertyKey) ?? [];
+        const options = deps.getItemPropertyOptionValues(item.type, propertyKey) ?? [];
         if (options.length === 0) {
           deps.updateStatus(`${deps.itemPropertyLabel(propertyKey)} has no options.`);
           deps.sfxUiCancel();

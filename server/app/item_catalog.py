@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import TypeAlias, cast
 
 from .items.registry import ITEM_MODULES, ITEM_TYPE_ORDER
 
-ItemType = Literal["radio_station", "dice", "wheel", "clock", "widget", "piano"]
+ItemType: TypeAlias = str
 ITEM_TYPE_SEQUENCE: tuple[ItemType, ...] = cast(tuple[ItemType, ...], ITEM_TYPE_ORDER)
 ITEM_TYPE_LABELS: dict[ItemType, str] = {item_type: ITEM_MODULES[item_type].LABEL for item_type in ITEM_TYPE_SEQUENCE}
 ITEM_TYPE_EDITABLE_PROPERTIES: dict[ItemType, tuple[str, ...]] = {
@@ -75,15 +75,6 @@ ITEM_DEFINITIONS: dict[ItemType, ItemDefinition] = {
     for item_type in ITEM_TYPE_SEQUENCE
 }
 
-ITEM_PROPERTY_OPTIONS: dict[str, tuple[str, ...]] = {
-    "mediaEffect": RADIO_EFFECT_OPTIONS,
-    "emitEffect": RADIO_EFFECT_OPTIONS,
-    "mediaChannel": RADIO_CHANNEL_OPTIONS,
-    "timeZone": CLOCK_TIME_ZONE_OPTIONS,
-    "instrument": PIANO_INSTRUMENT_OPTIONS,
-    "voiceMode": PIANO_VOICE_MODE_OPTIONS,
-}
-
 ITEM_TYPE_TOOLTIPS: dict[ItemType, str] = {
     item_type: ITEM_MODULES[item_type].TOOLTIP for item_type in ITEM_TYPE_SEQUENCE
 }
@@ -123,6 +114,12 @@ def get_item_definition(item_type: ItemType) -> ItemDefinition:
     """Return catalog definition for a known item type."""
 
     return ITEM_DEFINITIONS[item_type]
+
+
+def is_known_item_type(item_type: str) -> bool:
+    """Return whether a string item type id exists in discovered plugins."""
+
+    return item_type in ITEM_DEFINITIONS
 
 
 def get_item_use_cooldown_ms(item_type: ItemType) -> int:

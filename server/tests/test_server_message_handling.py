@@ -83,3 +83,24 @@ async def test_broadcast_fanout_is_concurrent(monkeypatch: pytest.MonkeyPatch) -
     assert ws1 in send_started_at
     assert ws2 in send_started_at
     assert abs(send_started_at[ws1] - send_started_at[ws2]) < 0.02
+
+
+@pytest.mark.asyncio
+async def test_item_add_rejects_unknown_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=6)
+    server.clients[ws] = client
+
+    send_payloads: list[object] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+
+    await server._handle_message(client, json.dumps({"type": "item_add", "itemType": "not_a_type"}))
+
+    assert send_payloads
+    assert send_payloads[-1].ok is False
+    assert "unknown item type" in send_payloads[-1].message.lower()

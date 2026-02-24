@@ -8,8 +8,6 @@ import time
 import uuid
 from copy import deepcopy
 from pathlib import Path
-from typing import Literal
-
 from .client import ClientConnection
 from .item_catalog import get_item_definition
 from .models import PersistedWorldItem, WorldItem
@@ -36,7 +34,7 @@ class ItemService:
 
         return int(time.time() * 1000)
 
-    def default_item(self, client: ClientConnection, item_type: Literal["radio_station", "dice", "wheel", "clock", "widget", "piano"]) -> WorldItem:
+    def default_item(self, client: ClientConnection, item_type: str) -> WorldItem:
         """Create a new server-authoritative item at the caller's position."""
 
         item_def = get_item_definition(item_type)

@@ -83,7 +83,7 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
         "tooltip": "Playback tempo percent for emitted sound. 50 is normal, 0 is half, 100 is double. Using speed and tempo together may sound weird.",
         "range": {"min": 0, "max": 100, "step": 0.1},
     },
-    "emitEffect": {"valueType": "list", "tooltip": "Effect applied to emitted sound."},
+    "emitEffect": {"valueType": "list", "tooltip": "Effect applied to emitted sound.", "options": list(EFFECT_OPTIONS)},
     "emitEffectValue": {
         "valueType": "number",
         "tooltip": "Amount for emit effect.",

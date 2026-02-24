@@ -64,8 +64,8 @@ DEFAULT_ENVELOPE_BY_INSTRUMENT: dict[str, tuple[int, int, int, int, str, int]] =
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item.", "maxLength": 80},
-    "instrument": {"valueType": "list", "tooltip": "Instrument voice used when playing this piano."},
-    "voiceMode": {"valueType": "list", "tooltip": "Mono plays one note at a time; poly allows chords."},
+    "instrument": {"valueType": "list", "tooltip": "Instrument voice used when playing this piano.", "options": list(INSTRUMENT_OPTIONS)},
+    "voiceMode": {"valueType": "list", "tooltip": "Mono plays one note at a time; poly allows chords.", "options": list(VOICE_MODE_OPTIONS)},
     "octave": {
         "valueType": "number",
         "tooltip": "Shifts played notes in octaves. -1 is one octave down.",

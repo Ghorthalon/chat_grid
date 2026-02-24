@@ -886,7 +886,7 @@ function useItem(item: WorldItem): void {
 
 /** Opens option-list selection mode for list-based item properties. */
 function openItemPropertyOptionSelect(item: WorldItem, key: string): void {
-  const options = getItemPropertyOptionValues(key);
+  const options = getItemPropertyOptionValues(item.type, key);
   if (!options || options.length === 0) {
     return;
   }

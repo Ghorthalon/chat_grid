@@ -153,7 +153,7 @@ export function createItemPropertyPresentation(deps: PresentationDeps): {
       const stepText = metadata.range.step !== undefined ? ` step ${metadata.range.step}` : '';
       parts.push(`Range: ${metadata.range.min} to ${metadata.range.max}${stepText}.`);
     } else {
-      const options = getItemPropertyOptionValues(key);
+      const options = getItemPropertyOptionValues(item.type, key);
       if (options && options.length > 0) {
         parts.push(`Options: ${options.join(', ')}.`);
       }
@@ -205,4 +205,3 @@ export function createItemPropertyPresentation(deps: PresentationDeps): {
     validateNumericItemPropertyInput,
   };
 }
-

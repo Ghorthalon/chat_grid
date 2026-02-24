@@ -2,7 +2,7 @@ export const GRID_SIZE = 41;
 export const HEARING_RADIUS = 20;
 export const MOVE_COOLDOWN_MS = 200;
 
-export type ItemType = 'radio_station' | 'dice' | 'wheel' | 'clock' | 'widget' | 'piano';
+export type ItemType = string;
 
 export type WorldItem = {
   id: string;

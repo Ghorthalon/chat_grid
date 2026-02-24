@@ -51,9 +51,9 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `welcome.uiDefinitions`: server-provided item UI definitions:
   - `itemTypeOrder`: add-item menu order
   - `itemTypes[].tooltip`: item-level tooltip/help text
+  - `itemTypes[].capabilities`: server-declared actions supported by the type
   - `itemTypes[].editableProperties`: editable property keys by item type
-  - `itemTypes[].propertyOptions`: menu options for property keys (for example clock `timeZone`)
-  - `itemTypes[].propertyMetadata`: property-level metadata (`valueType`, optional `range`, optional `tooltip`, optional `maxLength`, optional `visibleWhen`)
+  - `itemTypes[].propertyMetadata`: property-level metadata (`valueType`, optional `label`, optional `range`, optional `tooltip`, optional `maxLength`, optional `options`, optional `visibleWhen`)
   - `itemTypes[].globalProperties`: non-editable global values (`useSound`, `emitSound`, `useCooldownMs`, `emitRange`, `directional`, `emitSoundSpeed`, `emitSoundTempo`)
 - Client item UI requires this metadata from the server; there is no fallback item definition map.
 
