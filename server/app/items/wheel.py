@@ -7,6 +7,7 @@ from typing import Callable
 
 from ..item_types import ItemUseResult
 from ..models import WorldItem
+from .helpers import keep_only_known_params
 
 LABEL = "wheel"
 TOOLTIP = "Spin to win fabulous prizes."
@@ -19,6 +20,7 @@ EMIT_RANGE = 15
 DIRECTIONAL = False
 DEFAULT_TITLE = "wheel"
 DEFAULT_PARAMS: dict = {"spaces": "yes, no"}
+PARAM_KEYS: tuple[str, ...] = ("spaces",)
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item.", "maxLength": 80},
@@ -46,7 +48,7 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
     if any(len(token) > 80 for token in spaces):
         raise ValueError("each space must be 80 chars or less.")
     next_params["spaces"] = ", ".join(spaces)
-    return next_params
+    return keep_only_known_params(next_params, PARAM_KEYS)
 
 
 def use_item(item: WorldItem, nickname: str, _clock_formatter: Callable[[dict], str]) -> ItemUseResult:

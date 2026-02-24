@@ -41,3 +41,9 @@ def toggle_bool_param(params: dict, key: str, *, default: bool = True) -> bool:
     current = parse_bool_like(params.get(key), default=default)
     return not current
 
+
+def keep_only_known_params(params: dict, allowed_keys: tuple[str, ...]) -> dict:
+    """Return a copy containing only explicitly allowed item param keys."""
+
+    allowed = set(allowed_keys)
+    return {key: value for key, value in params.items() if key in allowed}

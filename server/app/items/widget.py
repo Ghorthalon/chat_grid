@@ -6,7 +6,7 @@ from typing import Callable
 
 from ..item_types import ItemUseResult
 from ..models import WorldItem
-from .helpers import parse_bool_like, toggle_bool_param
+from .helpers import keep_only_known_params, parse_bool_like, toggle_bool_param
 
 LABEL = "widget"
 TOOLTIP = "A basic item. Make it a beacon or whatever you want."
@@ -44,6 +44,19 @@ DEFAULT_PARAMS: dict = {
     "useSound": "",
     "emitSound": "",
 }
+PARAM_KEYS: tuple[str, ...] = (
+    "enabled",
+    "directional",
+    "facing",
+    "emitRange",
+    "emitVolume",
+    "emitSoundSpeed",
+    "emitSoundTempo",
+    "emitEffect",
+    "emitEffectValue",
+    "useSound",
+    "emitSound",
+)
 EFFECT_OPTIONS: tuple[str, ...] = ("reverb", "echo", "flanger", "high_pass", "low_pass", "off")
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
@@ -54,6 +67,7 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
         "valueType": "number",
         "tooltip": "Facing direction in degrees used when directional is on.",
         "range": {"min": 0, "max": 360, "step": 1},
+        "visibleWhen": {"directional": True},
     },
     "emitRange": {
         "valueType": "number",
@@ -181,7 +195,7 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
         raise ValueError("useSound must be 2048 characters or less.")
     if len(next_params["emitSound"]) > 2048:
         raise ValueError("emitSound must be 2048 characters or less.")
-    return next_params
+    return keep_only_known_params(next_params, PARAM_KEYS)
 
 
 def use_item(item: WorldItem, nickname: str, _clock_formatter: Callable[[dict], str]) -> ItemUseResult:

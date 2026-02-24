@@ -7,6 +7,7 @@ from typing import Callable
 
 from ..item_types import ItemUseResult
 from ..models import WorldItem
+from .helpers import keep_only_known_params
 
 LABEL = "dice"
 TOOLTIP = "Great for drinking games or boredom."
@@ -19,6 +20,7 @@ EMIT_RANGE = 15
 DIRECTIONAL = False
 DEFAULT_TITLE = "Dice"
 DEFAULT_PARAMS: dict = {"sides": 6, "number": 2}
+PARAM_KEYS: tuple[str, ...] = ("sides", "number")
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item.", "maxLength": 80},
@@ -47,7 +49,7 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
         raise ValueError("Dice sides and number must be between 1 and 100.")
     next_params["sides"] = sides
     next_params["number"] = number
-    return next_params
+    return keep_only_known_params(next_params, PARAM_KEYS)
 
 
 def use_item(item: WorldItem, nickname: str, _clock_formatter: Callable[[dict], str]) -> ItemUseResult:

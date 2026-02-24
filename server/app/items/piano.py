@@ -6,6 +6,7 @@ from typing import Callable
 
 from ..item_types import ItemUseResult
 from ..models import WorldItem
+from .helpers import keep_only_known_params
 
 LABEL = "piano"
 TOOLTIP = "Playable keyboard instrument with multiple synth voices."
@@ -38,6 +39,7 @@ DEFAULT_PARAMS: dict = {
     "emitRange": 15,
     "songId": "unterlandersheimweh",
 }
+PARAM_KEYS: tuple[str, ...] = ("instrument", "voiceMode", "octave", "attack", "decay", "release", "brightness", "emitRange", "songId")
 
 INSTRUMENT_OPTIONS: tuple[str, ...] = (
     "piano",
@@ -179,7 +181,7 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
     if isinstance(preserved_song_id, str) and preserved_song_id.strip():
         next_params["songId"] = preserved_song_id.strip()
 
-    return next_params
+    return keep_only_known_params(next_params, PARAM_KEYS)
 
 
 def use_item(item: WorldItem, nickname: str, _clock_formatter: Callable[[dict], str]) -> ItemUseResult:

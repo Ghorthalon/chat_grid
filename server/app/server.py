@@ -1005,7 +1005,11 @@ class SignalingServer:
                 return
 
             if use_result.updated_params is not None:
-                item.params = use_result.updated_params
+                try:
+                    item.params = handler.validate_update(item, {**item.params, **use_result.updated_params})
+                except ValueError as exc:
+                    await self._send_item_result(client, False, "use", str(exc), item.id)
+                    return
                 item.updatedAt = now_ms
                 self.item_service.save_state()
                 await self._broadcast_item(item)

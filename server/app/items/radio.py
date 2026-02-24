@@ -6,7 +6,7 @@ from typing import Callable
 
 from ..item_types import ItemUseResult
 from ..models import WorldItem
-from .helpers import toggle_bool_param
+from .helpers import keep_only_known_params, toggle_bool_param
 
 LABEL = "radio"
 TOOLTIP = "Can play stations from the Internet. Tune multiple to the same station and they will sync up."
@@ -38,6 +38,16 @@ DEFAULT_PARAMS: dict = {
     "facing": 0,
     "emitRange": 20,
 }
+PARAM_KEYS: tuple[str, ...] = (
+    "streamUrl",
+    "enabled",
+    "mediaVolume",
+    "mediaChannel",
+    "mediaEffect",
+    "mediaEffectValue",
+    "facing",
+    "emitRange",
+)
 
 CHANNEL_OPTIONS: tuple[str, ...] = ("stereo", "mono", "left", "right")
 EFFECT_OPTIONS: tuple[str, ...] = ("reverb", "echo", "flanger", "high_pass", "low_pass", "off")
@@ -62,6 +72,7 @@ PROPERTY_METADATA: dict[str, dict[str, object]] = {
         "valueType": "number",
         "tooltip": "Facing direction in degrees used for directional emit.",
         "range": {"min": 0, "max": 360, "step": 1},
+        "visibleWhen": {"directional": True},
     },
     "emitRange": {
         "valueType": "number",
@@ -77,7 +88,6 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
     stream_url = str(next_params.get("streamUrl", "")).strip()
     if len(stream_url) > 2048:
         raise ValueError("streamUrl must be 2048 characters or less.")
-    previous_stream_url = str(item.params.get("streamUrl", "")).strip()
     next_params["streamUrl"] = stream_url
 
     enabled_value = next_params.get("enabled", True)
@@ -95,10 +105,6 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
             raise ValueError("enabled must be true/false or on/off.")
     else:
         raise ValueError("enabled must be true/false or on/off.")
-    if stream_url and stream_url != previous_stream_url:
-        enabled = True
-    if not stream_url:
-        enabled = False
     next_params["enabled"] = enabled
 
     try:
@@ -142,7 +148,7 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
     if not (5 <= emit_range <= 20):
         raise ValueError("emitRange must be between 5 and 20.")
     next_params["emitRange"] = emit_range
-    return next_params
+    return keep_only_known_params(next_params, PARAM_KEYS)
 
 
 def use_item(item: WorldItem, nickname: str, _clock_formatter: Callable[[dict], str]) -> ItemUseResult:

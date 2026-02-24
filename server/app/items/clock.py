@@ -6,7 +6,7 @@ from typing import Callable
 
 from ..item_types import ItemUseResult
 from ..models import WorldItem
-from .helpers import parse_bool_like_or_none
+from .helpers import keep_only_known_params, parse_bool_like_or_none
 
 LABEL = "clock"
 TOOLTIP = "It tells the time. What did you think it did?"
@@ -62,6 +62,7 @@ TIME_ZONE_OPTIONS: tuple[str, ...] = (
     "UTC",
 )
 DEFAULT_PARAMS: dict = {"timeZone": DEFAULT_TIME_ZONE, "use24Hour": False}
+PARAM_KEYS: tuple[str, ...] = ("timeZone", "use24Hour")
 
 PROPERTY_METADATA: dict[str, dict[str, object]] = {
     "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item.", "maxLength": 80},
@@ -81,7 +82,7 @@ def validate_update(_item: WorldItem, next_params: dict) -> dict:
         raise ValueError("use24Hour must be on/off.")
     next_params["timeZone"] = time_zone
     next_params["use24Hour"] = use_24_hour
-    return next_params
+    return keep_only_known_params(next_params, PARAM_KEYS)
 
 
 def use_item(item: WorldItem, nickname: str, clock_formatter: Callable[[dict], str]) -> ItemUseResult:
