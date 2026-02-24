@@ -298,5 +298,5 @@ When adding a new item type:
 ### Notes
 - Client item-specific runtime is now reduced to only `piano`; simple items (`dice`, `wheel`, `clock`, `radio_station`, `widget`) run through generic client flows with no custom behavior module.
 - Server item implementations now live inside per-type folders (`server/app/items/types/*/module.py`) and plugins point directly to those modules.
-- Remaining optional future work:
-  - split server type modules into `definition.py`/`validator.py`/`actions.py` files per type if we want finer-grained plugin internals.
+- Server type packages are now split into `definition.py` / `validator.py` / `actions.py` plus a thin `module.py` export surface.
+- Added docs sample folder at `docs/examples/item-type-sample/` and updated template docs to reflect the package layout.

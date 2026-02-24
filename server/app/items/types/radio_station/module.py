@@ -1,163 +1,41 @@
-"""Radio item schema metadata and behavior."""
+"""Radio item plugin module surface."""
 
 from __future__ import annotations
 
-from typing import Callable
-
-from ....item_types import ItemUseResult
-from ....models import WorldItem
-from ...helpers import keep_only_known_params, toggle_bool_param
-
-LABEL = "radio"
-TOOLTIP = "Can play stations from the Internet. Tune multiple to the same station and they will sync up."
-EDITABLE_PROPERTIES: tuple[str, ...] = (
-    "title",
-    "streamUrl",
-    "enabled",
-    "mediaVolume",
-    "mediaChannel",
-    "mediaEffect",
-    "mediaEffectValue",
-    "facing",
-    "emitRange",
+from .actions import use_item
+from .definition import (
+    CAPABILITIES,
+    CHANNEL_OPTIONS,
+    DEFAULT_PARAMS,
+    DEFAULT_TITLE,
+    DIRECTIONAL,
+    EDITABLE_PROPERTIES,
+    EFFECT_OPTIONS,
+    EMIT_RANGE,
+    EMIT_SOUND,
+    LABEL,
+    PROPERTY_METADATA,
+    TOOLTIP,
+    USE_COOLDOWN_MS,
+    USE_SOUND,
 )
-CAPABILITIES: tuple[str, ...] = ("editable", "carryable", "deletable", "usable")
-USE_SOUND: str | None = None
-EMIT_SOUND: str | None = None
-USE_COOLDOWN_MS = 1000
-EMIT_RANGE = 20
-DIRECTIONAL = True
-DEFAULT_TITLE = "radio"
-DEFAULT_PARAMS: dict = {
-    "streamUrl": "",
-    "enabled": True,
-    "mediaVolume": 50,
-    "mediaChannel": "stereo",
-    "mediaEffect": "off",
-    "mediaEffectValue": 50,
-    "facing": 0,
-    "emitRange": 20,
-}
-PARAM_KEYS: tuple[str, ...] = (
-    "streamUrl",
-    "enabled",
-    "mediaVolume",
-    "mediaChannel",
-    "mediaEffect",
-    "mediaEffectValue",
-    "facing",
-    "emitRange",
-)
+from .validator import validate_update
 
-CHANNEL_OPTIONS: tuple[str, ...] = ("stereo", "mono", "left", "right")
-EFFECT_OPTIONS: tuple[str, ...] = ("reverb", "echo", "flanger", "high_pass", "low_pass", "off")
-
-PROPERTY_METADATA: dict[str, dict[str, object]] = {
-    "title": {"valueType": "text", "tooltip": "Display name spoken and shown for this item.", "maxLength": 80},
-    "streamUrl": {"valueType": "text", "tooltip": "Audio stream URL used by this radio.", "maxLength": 2048},
-    "enabled": {"valueType": "boolean", "tooltip": "Turns playback on or off for this radio."},
-    "mediaVolume": {
-        "valueType": "number",
-        "tooltip": "Playback media volume percent for this radio.",
-        "range": {"min": 0, "max": 100, "step": 1},
-    },
-    "mediaChannel": {"valueType": "list", "tooltip": "Select how the station audio channels are rendered."},
-    "mediaEffect": {"valueType": "list", "tooltip": "Select the active radio effect."},
-    "mediaEffectValue": {
-        "valueType": "number",
-        "tooltip": "Amount for the selected effect.",
-        "range": {"min": 0, "max": 100, "step": 0.1},
-    },
-    "facing": {
-        "valueType": "number",
-        "tooltip": "Facing direction in degrees used for directional emit.",
-        "range": {"min": 0, "max": 360, "step": 1},
-        "visibleWhen": {"directional": True},
-    },
-    "emitRange": {
-        "valueType": "number",
-        "tooltip": "Maximum distance in squares for this radio's emitted audio.",
-        "range": {"min": 5, "max": 20, "step": 1},
-    },
-}
-
-
-def validate_update(item: WorldItem, next_params: dict) -> dict:
-    """Validate and normalize radio params."""
-
-    stream_url = str(next_params.get("streamUrl", "")).strip()
-    if len(stream_url) > 2048:
-        raise ValueError("streamUrl must be 2048 characters or less.")
-    next_params["streamUrl"] = stream_url
-
-    enabled_value = next_params.get("enabled", True)
-    if isinstance(enabled_value, bool):
-        enabled = enabled_value
-    elif isinstance(enabled_value, (int, float)):
-        enabled = bool(enabled_value)
-    elif isinstance(enabled_value, str):
-        token = enabled_value.strip().lower()
-        if token in {"on", "true", "1", "yes"}:
-            enabled = True
-        elif token in {"off", "false", "0", "no"}:
-            enabled = False
-        else:
-            raise ValueError("enabled must be true/false or on/off.")
-    else:
-        raise ValueError("enabled must be true/false or on/off.")
-    next_params["enabled"] = enabled
-
-    try:
-        media_volume = int(next_params.get("mediaVolume", 50))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("mediaVolume must be a number.") from exc
-    if not (0 <= media_volume <= 100):
-        raise ValueError("mediaVolume must be between 0 and 100.")
-    next_params["mediaVolume"] = media_volume
-
-    effect = str(next_params.get("mediaEffect", "off")).strip().lower()
-    if effect not in EFFECT_OPTIONS:
-        raise ValueError("mediaEffect must be one of reverb, echo, flanger, high_pass, low_pass, off.")
-    next_params["mediaEffect"] = effect
-
-    channel = str(next_params.get("mediaChannel", "stereo")).strip().lower()
-    if channel not in CHANNEL_OPTIONS:
-        raise ValueError("mediaChannel must be one of stereo, mono, left, right.")
-    next_params["mediaChannel"] = channel
-
-    try:
-        effect_value = float(next_params.get("mediaEffectValue", 50))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("mediaEffectValue must be a number.") from exc
-    if not (0 <= effect_value <= 100):
-        raise ValueError("mediaEffectValue must be between 0 and 100.")
-    next_params["mediaEffectValue"] = round(effect_value, 1)
-
-    try:
-        facing = float(next_params.get("facing", item.params.get("facing", 0)))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("facing must be a number between 0 and 360.") from exc
-    if not (0 <= facing <= 360):
-        raise ValueError("facing must be between 0 and 360.")
-    next_params["facing"] = int(round(facing))
-
-    try:
-        emit_range = int(next_params.get("emitRange", item.params.get("emitRange", 20)))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("emitRange must be an integer between 5 and 20.") from exc
-    if not (5 <= emit_range <= 20):
-        raise ValueError("emitRange must be between 5 and 20.")
-    next_params["emitRange"] = emit_range
-    return keep_only_known_params(next_params, PARAM_KEYS)
-
-
-def use_item(item: WorldItem, nickname: str, _clock_formatter: Callable[[dict], str]) -> ItemUseResult:
-    """Toggle radio on/off when used."""
-
-    next_enabled = toggle_bool_param(item.params, "enabled", default=True)
-    state_text = "on" if next_enabled else "off"
-    return ItemUseResult(
-        self_message=f"You turn {state_text} {item.title}.",
-        others_message=f"{nickname} turns {state_text} {item.title}.",
-        updated_params={**item.params, "enabled": next_enabled},
-    )
+__all__ = [
+    "LABEL",
+    "TOOLTIP",
+    "EDITABLE_PROPERTIES",
+    "CAPABILITIES",
+    "USE_SOUND",
+    "EMIT_SOUND",
+    "USE_COOLDOWN_MS",
+    "EMIT_RANGE",
+    "DIRECTIONAL",
+    "DEFAULT_TITLE",
+    "DEFAULT_PARAMS",
+    "PROPERTY_METADATA",
+    "CHANNEL_OPTIONS",
+    "EFFECT_OPTIONS",
+    "validate_update",
+    "use_item",
+]

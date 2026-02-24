@@ -1,4 +1,4 @@
-"""Dice item plugin module surface."""
+"""Counter item plugin module surface."""
 
 from __future__ import annotations
 
@@ -18,20 +18,3 @@ from .definition import (
     USE_SOUND,
 )
 from .validator import validate_update
-
-__all__ = [
-    "LABEL",
-    "TOOLTIP",
-    "EDITABLE_PROPERTIES",
-    "CAPABILITIES",
-    "USE_SOUND",
-    "EMIT_SOUND",
-    "USE_COOLDOWN_MS",
-    "EMIT_RANGE",
-    "DIRECTIONAL",
-    "DEFAULT_TITLE",
-    "DEFAULT_PARAMS",
-    "PROPERTY_METADATA",
-    "validate_update",
-    "use_item",
-]

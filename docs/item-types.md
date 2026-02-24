@@ -193,10 +193,11 @@ Server is the source of truth for item type definitions and metadata. The client
 
 For a full copy/paste example with plain-English explanation, see `docs/item-type-template.md`.
 
-1. Server item module: add a new file under `server/app/items/types/<item_type>/module.py` with:
-   - defaults/capabilities
-   - property metadata/options
-   - `validate_update` and `use_item`
+1. Server item package: add a new folder under `server/app/items/types/<item_type>/` with:
+   - `definition.py` (defaults/capabilities/metadata/options)
+   - `validator.py` (`validate_update`)
+   - `actions.py` (`use_item`)
+   - `module.py` (thin exported surface)
 2. Server plugin: add `server/app/items/types/<item_type>/plugin.py` exporting `ITEM_TYPE_PLUGIN` with:
    - `type`
    - `order`
