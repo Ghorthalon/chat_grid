@@ -38,6 +38,7 @@ This creates:
 - `/home/bestmidi/chgrid/server/.venv`
 - `/home/bestmidi/chgrid/server/config.toml` (if missing)
 - `/home/bestmidi/chgrid/server/.env` with `CHGRID_AUTH_SECRET` (if missing)
+- `/etc/sysconfig/chat-grid` with `CHGRID_AUTH_SECRET` for systemd (created/updated automatically)
 - On first run only, if no admin exists, it prompts to create one immediately.
 
 Edit `/home/bestmidi/chgrid/server/config.toml`:
@@ -85,6 +86,10 @@ cd /home/bestmidi/chgrid
 cd /home/bestmidi/chgrid
 ./deploy/scripts/install_service.sh /home/bestmidi/chgrid
 ```
+
+Notes:
+- `install_service.sh` creates a systemd drop-in at `/etc/systemd/system/chat-grid.service.d/env.conf`
+  pointing `EnvironmentFile` to `/etc/sysconfig/chat-grid`.
 
 Logs:
 
