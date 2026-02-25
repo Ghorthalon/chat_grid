@@ -23,9 +23,12 @@
 ## Coding Style & Naming Conventions
 - TypeScript: strict typing, `camelCase`, small focused modules.
 - Python: PEP 8, 4 spaces, `snake_case`, typed Pydantic models.
+- Architecture: server-first by default. Keep grid/world rules, authoritative validation, and canonical definitions on server whenever practical.
+- Client scope: UI/UX, rendering, input, and audio presentation. Avoid client-owned gameplay/business rules when server can own them.
 - Backward compatibility: not required during current development phase; prefer simpler clean-cut changes over compatibility shims/migrations unless the user asks otherwise.
 - Python docstrings: for `server/app` changes, include module docstring, class docstring, and docstrings for public functions/methods where behavior/contracts matter.
 - Shared logic first: when behavior is reused across modes/features, implement it in shared helpers/modules rather than duplicating branch-specific logic.
+- Keep `main.ts` as orchestration glue. Move reusable feature logic to focused modules; ask before large/structural refactors.
 - Keep protocol changes synced in `client/src/network/protocol.ts` and `server/app/models.py`.
 
 ## Documentation Maintenance

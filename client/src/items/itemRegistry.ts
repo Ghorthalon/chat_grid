@@ -35,6 +35,7 @@ let itemTypeEditableProperties: Partial<Record<ItemType, string[]>> = {};
 let itemTypeCapabilities: Partial<Record<ItemType, string[]>> = {};
 let itemTypeGlobalProperties: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
 let itemTypePropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
+let propertyLabelByKey: Record<string, string> = {};
 
 export let EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
   Object.values(itemTypeEditableProperties).flatMap((keys) => keys ?? []),
@@ -151,31 +152,14 @@ export function getItemTypeCapabilities(itemType: ItemType): string[] {
 
 /** Returns human-facing label for a property key. */
 export function itemPropertyLabel(key: string): string {
-  const metadataLabel = Object.values(itemTypePropertyMetadata)
-    .map((entry) => entry?.[key]?.label)
-    .find((label) => typeof label === 'string' && label.trim().length > 0);
+  const metadataLabel = propertyLabelByKey[key];
   if (metadataLabel) return metadataLabel;
-  if (key === 'use24Hour') return 'use 24 hour format';
-  if (key === 'emitRange') return 'emit range';
-  if (key === 'mediaVolume') return 'media volume';
-  if (key === 'emitVolume') return 'emit volume';
-  if (key === 'emitSoundSpeed') return 'emit sound speed';
-  if (key === 'emitSoundTempo') return 'emit sound tempo';
-  if (key === 'mediaChannel') return 'media channel';
-  if (key === 'mediaEffect') return 'media effect';
-  if (key === 'mediaEffectValue') return 'media effect value';
-  if (key === 'emitEffect') return 'emit effect';
-  if (key === 'emitEffectValue') return 'emit effect value';
-  if (key === 'instrument') return 'instrument';
-  if (key === 'voiceMode') return 'voice mode';
-  if (key === 'octave') return 'octave';
-  if (key === 'attack') return 'attack';
-  if (key === 'decay') return 'decay';
-  if (key === 'release') return 'release';
-  if (key === 'brightness') return 'brightness';
-  if (key === 'useSound') return 'use sound';
-  if (key === 'emitSound') return 'emit sound';
-  return key;
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words || key;
 }
 
 /** Returns editable properties for one item instance/type. */
@@ -241,6 +225,7 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
     itemTypeCapabilities = {};
     itemTypeGlobalProperties = {};
     itemTypePropertyMetadata = {};
+    propertyLabelByKey = {};
     rebuildEditablePropertyKeySet();
     return false;
   }
@@ -256,6 +241,7 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
   const nextCapabilities: Partial<Record<ItemType, string[]>> = {};
   const nextGlobals: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
   const nextPropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
+  const nextPropertyLabels: Record<string, string> = {};
 
   for (const definition of uiDefinitions.itemTypes) {
     if (!definition || typeof definition.type !== 'string') continue;
@@ -273,7 +259,13 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
       nextCapabilities[itemType] = definition.capabilities.filter((entry) => typeof entry === 'string');
     }
     if (definition.propertyMetadata && typeof definition.propertyMetadata === 'object') {
-      nextPropertyMetadata[itemType] = normalizePropertyMetadataRecord(definition.propertyMetadata);
+      const normalizedMetadata = normalizePropertyMetadataRecord(definition.propertyMetadata);
+      nextPropertyMetadata[itemType] = normalizedMetadata;
+      for (const [propertyKey, propertyMetadata] of Object.entries(normalizedMetadata)) {
+        if (typeof propertyMetadata.label === 'string' && propertyMetadata.label.trim().length > 0) {
+          nextPropertyLabels[propertyKey] = propertyMetadata.label.trim();
+        }
+      }
     }
     if (definition.globalProperties && typeof definition.globalProperties === 'object') {
       const normalized: Record<string, string | number | boolean> = {};
@@ -298,6 +290,7 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
   itemTypeCapabilities = nextCapabilities;
   itemTypeGlobalProperties = nextGlobals;
   itemTypePropertyMetadata = nextPropertyMetadata;
+  propertyLabelByKey = nextPropertyLabels;
   itemTypeSequence = explicitOrder ?? discoveredOrder;
   rebuildEditablePropertyKeySet();
   return itemTypeSequence.length > 0;
