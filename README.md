@@ -1,8 +1,9 @@
-# Chat Grid
+#Chat Grid
+##A Mostly Vibed, Audio-first Interactive Playground
 
-Realtime spatial chat grid with:
-- `client/` TypeScript web app
-- `server/` Python websocket signaling server
+Chat Grid is one of those projects that started with a random idea, and then grew to be many things, but most with spacial audio as its core. Briefly put, Chat Grid allows users to move around a grid and interact with each other, or with items placed on the grid. Your voice, as well as items are shared as positional audio. Item types currently range from dice and a wheel to a fully-playable toy piano and media players with directional audio. New item types can be added as plugins.
+
+Chat Grid is designed to be run on a secure server with users connecting via a web client. The client works best currently with Windows browsers, with minimal testing on mobile/Mac. Ideally, client apps would be better in the long-run, especially for mobile.
 
 ## Local Run
 
@@ -10,17 +11,29 @@ Realtime spatial chat grid with:
 ```bash
 cd server
 cp config.example.toml config.toml
-uv run python main.py --config config.toml
+uv run python main.py
 ```
 
 2) Start client
 ```bash
 cd client
 npm install
-npm run dev -- --host 0.0.0.0 --port 5173
+npm run dev
 ```
 
 3) Open `http://localhost:5173`
+
+Notes:
+- Server defaults to `config.toml` when present.
+- Server bind/port defaults are `127.0.0.1:8765` unless changed in config or CLI flags.
+- Client dev defaults to Vite local host/port (`localhost:5173`) unless flags override.
+- Auth requires `CHGRID_AUTH_SECRET` in server environment; `deploy/scripts/install_server.sh` creates `server/.env` with this value automatically if missing.
+
+Common server overrides:
+- `uv run python main.py --config /path/to/config.toml`
+- `uv run python main.py --host 0.0.0.0 --port 9000`
+- `uv run python main.py --ssl-cert /path/fullchain.pem --ssl-key /path/privkey.pem`
+- `uv run python main.py --bootstrap-admin` (one-time admin creation)
 
 ## Production Deploy (quick path)
 
@@ -48,3 +61,13 @@ Summary:
 - Protocol behavior notes: `docs/protocol-notes.md`
 - Item schema reference: `docs/item-schema.md`
 - Local dev commands: `docs/local.md`
+
+##Contributing
+Contributions and ideas are welcome. The grid is already home to several rather absurd ideas, and yours may fit right in. Please look over the docs and other files for guidance, or ask for help.
+
+##Notes on AI Coding
+This project has been largely coded using AI tools, with a lot of human prompting and hand-holding to enforce best practices. All ideas for improving the project or its design are welcome.
+
+## License
+- MIT
+This project is licensed under the MIT License. See `LICENSE`.
