@@ -112,7 +112,7 @@ export function getClockTimeZoneOptions(): string[] {
 
 /** Returns default timezone used by clock items when no override is set. */
 export function getDefaultClockTimeZone(): string {
-  return getClockTimeZoneOptions()[0] ?? 'America/Detroit';
+  return getClockTimeZoneOptions()[0] ?? '';
 }
 
 /** Returns item-type display order for add-item menus. */

@@ -35,59 +35,6 @@ export function createItemPropertyPresentation(deps: PresentationDeps): {
     return segments[segments.length - 1] ?? raw;
   };
 
-  const inferItemPropertyValueType = (item: WorldItem, key: string): string | undefined => {
-    if (key === 'useSound' || key === 'emitSound') return 'sound';
-    if (key === 'enabled' || key === 'use24Hour' || key === 'directional') return 'boolean';
-    if (key === 'mediaChannel' || key === 'mediaEffect' || key === 'emitEffect' || key === 'timeZone' || key === 'instrument' || key === 'voiceMode') return 'list';
-    if (
-      key === 'x' ||
-      key === 'y' ||
-      key === 'version' ||
-      key === 'mediaVolume' ||
-      key === 'emitVolume' ||
-      key === 'emitSoundSpeed' ||
-      key === 'emitSoundTempo' ||
-      key === 'mediaEffectValue' ||
-      key === 'emitEffectValue' ||
-      key === 'facing' ||
-      key === 'emitRange' ||
-      key === 'octave' ||
-      key === 'attack' ||
-      key === 'decay' ||
-      key === 'release' ||
-      key === 'brightness' ||
-      key === 'sides' ||
-      key === 'number' ||
-      key === 'useCooldownMs'
-    ) {
-      return 'number';
-    }
-    if (key in item.params || key in getItemTypeGlobalProperties(item.type)) {
-      const value = item.params[key] ?? getItemTypeGlobalProperties(item.type)?.[key];
-      if (typeof value === 'boolean') return 'boolean';
-      if (typeof value === 'number') return 'number';
-      if (typeof value === 'string') return 'text';
-    }
-    return 'text';
-  };
-
-  const getFallbackInspectPropertyTooltip = (key: string): string | undefined => {
-    if (key === 'type') return 'The item type identifier.';
-    if (key === 'x') return 'X coordinate on the grid.';
-    if (key === 'y') return 'Y coordinate on the grid.';
-    if (key === 'carrierId') return 'Current carrier user id, or none when on the ground.';
-    if (key === 'version') return 'Server version for this item, incremented after each update.';
-    if (key === 'createdBy') return 'User id of who created this item.';
-    if (key === 'createdAt') return 'Timestamp when this item was created.';
-    if (key === 'updatedAt') return 'Timestamp when this item was last updated.';
-    if (key === 'capabilities') return 'Server-declared actions supported by this item.';
-    if (key === 'useSound') return 'One-shot sound played when use succeeds.';
-    if (key === 'emitSound') return 'Looping emitted sound source for this item.';
-    if (key === 'useCooldownMs') return 'Global cooldown in milliseconds between uses.';
-    if (key === 'directional') return 'Whether emitted audio favors item facing direction.';
-    return undefined;
-  };
-
   const getItemPropertyValue = (item: WorldItem, key: string): string => {
     if (key === 'title') return item.title;
     if (key === 'type') return item.type;
@@ -137,15 +84,10 @@ export function createItemPropertyPresentation(deps: PresentationDeps): {
   const describeItemPropertyHelp = (item: WorldItem, key: string): string => {
     const metadata = getItemPropertyMetadata(item.type, key);
     const parts: string[] = [];
-    const tooltip = metadata?.tooltip ?? getFallbackInspectPropertyTooltip(key);
-    if (tooltip) {
-      parts.push(tooltip);
-    } else {
-      parts.push('No tooltip available.');
-    }
+    parts.push(metadata?.tooltip ?? 'No tooltip available.');
 
-    const valueType = metadata?.valueType ?? inferItemPropertyValueType(item, key);
-    if (valueType) {
+    if (metadata?.valueType) {
+      const valueType = metadata.valueType;
       parts.push(`Type: ${valueType}.`);
     }
 
