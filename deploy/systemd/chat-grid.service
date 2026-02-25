@@ -4,14 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=bestmidi
-Group=bestmidi
-WorkingDirectory=/home/bestmidi/chgrid/server
-Environment=PATH=/home/bestmidi/chgrid/server/.venv/bin:/usr/bin:/bin
-ExecStartPre=/usr/bin/mkdir -p /home/bestmidi/chgrid/server/runtime
-ExecStart=/home/bestmidi/chgrid/server/run_server.sh
-StandardOutput=append:/home/bestmidi/chgrid/server/runtime/server.log
-StandardError=append:/home/bestmidi/chgrid/server/runtime/server.log
+# This file is a reference example.
+# Use deploy/scripts/install_service.sh to generate an environment-specific unit.
 Restart=always
 RestartSec=3
 

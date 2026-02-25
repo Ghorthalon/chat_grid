@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="${1:-/home/bestmidi/chgrid}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${1:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 INCLUDE_PATH="${2:-}"
 RESTART_CMD="${3:-/usr/local/cpanel/scripts/restartsrv_httpd}"
 SNIPPET_PATH="$REPO_ROOT/deploy/apache/chgrid-vhost-snippet.conf"
 
 if [[ -z "$INCLUDE_PATH" ]]; then
   echo "usage: $0 <repo_root> <apache_include_path> [restart_cmd]" >&2
-  echo "example: $0 /home/bestmidi/chgrid /etc/apache2/conf.d/userdata/ssl/2_4/bestmidi/example.com/chgrid.conf" >&2
+  echo "example: $0 $REPO_ROOT /etc/apache2/conf.d/userdata/ssl/2_4/account/example.com/chgrid.conf" >&2
   exit 1
 fi
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="${1:-/home/bestmidi/chgrid}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${1:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 SERVER_DIR="$REPO_ROOT/server"
 PYTHON_SPEC="${PYTHON_SPEC:-3.13}"
 
@@ -16,7 +17,7 @@ if [[ ! -d "$SERVER_DIR" ]]; then
 fi
 if [[ ! -f "$SERVER_DIR/pyproject.toml" ]]; then
   echo "error: missing $SERVER_DIR/pyproject.toml" >&2
-  echo "       verify repository files were copied to /home/bestmidi/chgrid/server" >&2
+  echo "       verify repository files were copied to the expected repo directory" >&2
   exit 1
 fi
 

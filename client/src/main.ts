@@ -2690,6 +2690,19 @@ function setupUiHandlers(): void {
   dom.registerEmail.addEventListener('input', () => {
     updateConnectAvailability();
   });
+
+  const submitAuthOnEnter = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter') return;
+    if (dom.connectButton.disabled) return;
+    event.preventDefault();
+    connect();
+  };
+  dom.authUsername.addEventListener('keydown', submitAuthOnEnter);
+  dom.authPassword.addEventListener('keydown', submitAuthOnEnter);
+  dom.registerUsername.addEventListener('keydown', submitAuthOnEnter);
+  dom.registerPassword.addEventListener('keydown', submitAuthOnEnter);
+  dom.registerPasswordConfirm.addEventListener('keydown', submitAuthOnEnter);
+  dom.registerEmail.addEventListener('keydown', submitAuthOnEnter);
 }
 
 setupInputHandlers();

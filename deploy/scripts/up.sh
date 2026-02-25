@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="${1:-/home/bestmidi/chgrid}"
-PUBLISH_DIR="${2:-/home/bestmidi/public_html/chgrid}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${1:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+PUBLISH_DIR="${2:-$REPO_ROOT/deploy/publish/chgrid}"
 BASE_PATH="${3:-/chgrid/}"
 SERVICE_NAME="${4:-chat-grid.service}"
 
