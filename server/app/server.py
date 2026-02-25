@@ -126,7 +126,7 @@ class SignalingServer:
         self.max_message_size = max_message_size
         self._ssl_context = self._build_ssl_context(ssl_cert, ssl_key)
         self.clients: dict[ServerConnection, ClientConnection] = {}
-        resolved_auth_db_path = auth_db_path or Path.cwd() / "runtime" / f"chatgrid_auth_{uuid.uuid4().hex}.db"
+        resolved_auth_db_path = auth_db_path or Path.cwd() / "runtime" / "chatgrid.db"
         self.auth_service = AuthService(
             db_path=resolved_auth_db_path,
             token_hash_secret=auth_token_hash_secret,
