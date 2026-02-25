@@ -73,6 +73,8 @@ type MessageHandlerDeps = {
   playLocateToneAt: (x: number, y: number) => void;
   resolveIncomingSoundUrl: (url: string) => string;
   playIncomingItemUseSound: (url: string, x: number, y: number) => void;
+  handleAuthRequired: (message: string) => void;
+  handleAuthResult: (message: Extract<IncomingMessage, { type: 'auth_result' }>) => Promise<void>;
 };
 
 /**
@@ -81,6 +83,14 @@ type MessageHandlerDeps = {
 export function createOnMessageHandler(deps: MessageHandlerDeps): (message: IncomingMessage) => Promise<void> {
   return async function onMessage(message: IncomingMessage): Promise<void> {
     switch (message.type) {
+      case 'auth_required':
+        deps.handleAuthRequired(message.message);
+        break;
+
+      case 'auth_result':
+        await deps.handleAuthResult(message);
+        break;
+
       case 'welcome':
         if (message.worldConfig?.gridSize && Number.isInteger(message.worldConfig.gridSize) && message.worldConfig.gridSize > 0) {
           deps.setWorldGridSize(message.worldConfig.gridSize);

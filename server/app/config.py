@@ -49,6 +49,16 @@ class WorldConfigSection(BaseModel):
     grid_size: int = Field(default=41, ge=1)
 
 
+class AuthConfigSection(BaseModel):
+    """Authentication persistence and validation settings."""
+
+    db_file: str = "runtime/chatgrid.db"
+    password_min_length: int = Field(default=8, ge=1)
+    password_max_length: int = Field(default=32, ge=1)
+    username_min_length: int = Field(default=2, ge=1)
+    username_max_length: int = Field(default=32, ge=1)
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration document."""
 
@@ -58,6 +68,7 @@ class AppConfig(BaseModel):
     logging: LoggingConfigSection = LoggingConfigSection()
     storage: StorageConfigSection = StorageConfigSection()
     world: WorldConfigSection = WorldConfigSection()
+    auth: AuthConfigSection = AuthConfigSection()
 
 
 def load_config(path: Path | None) -> AppConfig:

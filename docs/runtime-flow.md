@@ -3,10 +3,13 @@
 ## Connect Flow
 
 1. User clicks connect.
-2. Client validates nickname and sets up local media.
+2. Client validates auth form/session token and sets up local media.
 3. Client connects signaling websocket.
-4. Server sends `welcome` with users/items snapshot.
-5. Client:
+4. Server sends `auth_required`.
+5. Client sends `auth_login`, `auth_register`, or `auth_resume`.
+6. Server sends `auth_result`.
+7. Server sends `welcome` with users/items snapshot.
+8. Client:
    - applies `welcome.worldConfig.gridSize` for authoritative grid bounds/rendering
    - applies `welcome.worldConfig.movementTickMs` as movement pacing guidance
    - applies `welcome.worldConfig.movementMaxStepsPerTick` for movement-rate parity
@@ -38,6 +41,8 @@ Each frame:
 Core incoming message effects:
 
 - `signal`: WebRTC negotiation and ICE exchange.
+- `auth_required`: prompt client to authenticate before gameplay messages.
+- `auth_result`: auth success/failure with optional session token + account metadata.
 - `update_position`: update peer position; may play movement/teleport world sound.
 - `teleport_complete`: play peer teleport landing sound at final tile.
 - `update_nickname`: update peer display name.

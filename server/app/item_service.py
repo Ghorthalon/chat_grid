@@ -45,7 +45,7 @@ class ItemService:
             title=item_def.default_title,
             x=client.x,
             y=client.y,
-            createdBy=client.id,
+            createdBy=client.username or client.nickname or client.id,
             createdAt=now,
             updatedAt=now,
             version=1,

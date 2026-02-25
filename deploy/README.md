@@ -37,6 +37,7 @@ Notes:
 This creates:
 - `/home/bestmidi/chgrid/server/.venv`
 - `/home/bestmidi/chgrid/server/config.toml` (if missing)
+- `/home/bestmidi/chgrid/server/.env` with `CHGRID_AUTH_SECRET` (if missing)
 
 Edit `/home/bestmidi/chgrid/server/config.toml`:
 - `server.bind_ip = "127.0.0.1"`
@@ -45,6 +46,7 @@ Edit `/home/bestmidi/chgrid/server/config.toml`:
 - `tls.cert_file = ""`
 - `tls.key_file = ""`
 - `storage.state_file = "runtime/items.json"`
+- `auth.db_file = "runtime/chatgrid.db"`
 
 ## 4) Build and publish client
 

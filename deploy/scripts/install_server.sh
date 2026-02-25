@@ -49,5 +49,17 @@ fi
 
 mkdir -p runtime
 
+if [[ ! -f .env ]]; then
+  AUTH_SECRET="$(
+    python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(64))
+PY
+  )"
+  printf "CHGRID_AUTH_SECRET=%s\n" "$AUTH_SECRET" > .env
+  chmod 600 .env
+  echo "created $SERVER_DIR/.env with CHGRID_AUTH_SECRET"
+fi
+
 echo "server install complete"
 echo "next: edit $SERVER_DIR/config.toml (TLS, bind_ip, port)"

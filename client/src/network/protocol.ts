@@ -48,6 +48,14 @@ export const welcomeMessageSchema = z.object({
       version: z.string().optional(),
     })
     .optional(),
+  auth: z
+    .object({
+      authenticated: z.boolean(),
+      userId: z.string().nullable().optional(),
+      username: z.string().nullable().optional(),
+      role: z.string().nullable().optional(),
+    })
+    .optional(),
   uiDefinitions: z
     .object({
       itemTypeOrder: z.array(z.string().min(1)),
@@ -83,6 +91,21 @@ export const welcomeMessageSchema = z.object({
       ),
     })
     .optional(),
+});
+
+export const authRequiredSchema = z.object({
+  type: z.literal('auth_required'),
+  message: z.string(),
+});
+
+export const authResultSchema = z.object({
+  type: z.literal('auth_result'),
+  ok: z.boolean(),
+  message: z.string(),
+  sessionToken: z.string().optional(),
+  username: z.string().optional(),
+  role: z.string().optional(),
+  nickname: z.string().optional(),
 });
 
 export const signalMessageSchema = z.object({
@@ -203,6 +226,8 @@ export const itemPianoStatusSchema = z.object({
 });
 
 export const incomingMessageSchema = z.discriminatedUnion('type', [
+  authRequiredSchema,
+  authResultSchema,
   welcomeMessageSchema,
   signalMessageSchema,
   updatePositionSchema,
@@ -223,6 +248,10 @@ export const incomingMessageSchema = z.discriminatedUnion('type', [
 export type IncomingMessage = z.infer<typeof incomingMessageSchema>;
 
 export type OutgoingMessage =
+  | { type: 'auth_register'; username: string; password: string; email?: string }
+  | { type: 'auth_login'; username: string; password: string }
+  | { type: 'auth_resume'; sessionToken: string }
+  | { type: 'auth_logout' }
   | { type: 'signal'; targetId: string; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit }
   | { type: 'update_position'; x: number; y: number }
   | { type: 'teleport_complete'; x: number; y: number }

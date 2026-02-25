@@ -13,6 +13,11 @@ class ClientConnection:
 
     websocket: ServerConnection
     id: str
+    authenticated: bool = False
+    user_id: str | None = None
+    username: str | None = None
+    role: str = "user"
+    session_token: str | None = None
     nickname: str = "user..."
     x: int = 20
     y: int = 20

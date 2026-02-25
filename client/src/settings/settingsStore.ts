@@ -11,6 +11,8 @@ const MIC_INPUT_GAIN_STORAGE_KEY = 'chatGridMicInputGain';
 const MASTER_VOLUME_STORAGE_KEY = 'chatGridMasterVolume';
 const PEER_LISTEN_GAINS_STORAGE_KEY = 'chatGridPeerListenGains';
 const NICKNAME_STORAGE_KEY = 'spatialChatNickname';
+const AUTH_SESSION_TOKEN_STORAGE_KEY = 'chatGridAuthSessionToken';
+const AUTH_USERNAME_STORAGE_KEY = 'chatGridAuthUsername';
 
 type DevicePreference = {
   id: string;
@@ -111,6 +113,30 @@ export class SettingsStore {
 
   saveNickname(value: string): void {
     localStorage.setItem(NICKNAME_STORAGE_KEY, value);
+  }
+
+  loadAuthSessionToken(): string {
+    return localStorage.getItem(AUTH_SESSION_TOKEN_STORAGE_KEY) || '';
+  }
+
+  saveAuthSessionToken(token: string): void {
+    if (token) {
+      localStorage.setItem(AUTH_SESSION_TOKEN_STORAGE_KEY, token);
+      return;
+    }
+    localStorage.removeItem(AUTH_SESSION_TOKEN_STORAGE_KEY);
+  }
+
+  loadAuthUsername(): string {
+    return localStorage.getItem(AUTH_USERNAME_STORAGE_KEY) || '';
+  }
+
+  saveAuthUsername(username: string): void {
+    if (username) {
+      localStorage.setItem(AUTH_USERNAME_STORAGE_KEY, username);
+      return;
+    }
+    localStorage.removeItem(AUTH_USERNAME_STORAGE_KEY);
   }
 
   loadOutputMode(): 'mono' | 'stereo' {

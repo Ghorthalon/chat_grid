@@ -29,6 +29,7 @@ export type ConnectFlowDeps = {
   mediaDescribeError: (error: unknown) => string;
   mediaStopLocalMedia: () => void;
   signalingConnect: (onMessage: (message: unknown) => Promise<void>) => Promise<void>;
+  signalingSendAuth: () => void;
   signalingDisconnect: () => void;
   onMessage: (message: unknown) => Promise<void>;
   persistPlayerPosition: () => void;
@@ -46,14 +47,11 @@ export async function runConnectFlow(deps: ConnectFlowDeps): Promise<void> {
     return;
   }
   const nickname = deps.sanitizeName(deps.dom.preconnectNickname.value);
-  if (!nickname) {
-    deps.updateStatus('Nickname is required.');
-    deps.updateConnectAvailability();
-    return;
-  }
-  deps.state.player.nickname = nickname;
+  deps.state.player.nickname = nickname || deps.state.player.nickname;
   deps.dom.preconnectNickname.value = nickname;
-  deps.settingsSaveNickname(nickname);
+  if (nickname) {
+    deps.settingsSaveNickname(nickname);
+  }
   deps.mediaSetConnecting(true);
   deps.updateConnectAvailability();
 
@@ -85,6 +83,7 @@ export async function runConnectFlow(deps: ConnectFlowDeps): Promise<void> {
 
   try {
     await deps.signalingConnect(deps.onMessage);
+    deps.signalingSendAuth();
     window.setTimeout(() => {
       if (deps.state.running || !deps.mediaIsConnecting()) {
         return;

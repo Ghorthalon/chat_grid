@@ -10,6 +10,10 @@ This is a behavior guide for packet semantics beyond raw schemas.
 
 ## Client -> Server
 
+- `auth_register`: create account with username/password and optional email.
+- `auth_login`: authenticate with username/password.
+- `auth_resume`: resume prior session via stored session token.
+- `auth_logout`: revoke current session and disconnect.
 - `update_position`: client movement intent; server enforces world bounds and movement rate policy.
 - `teleport_complete`: client signals teleport landing; server rebroadcasts spatial landing cue.
 - `update_nickname`: nickname change request (server enforces uniqueness).
@@ -21,6 +25,8 @@ This is a behavior guide for packet semantics beyond raw schemas.
 
 ## Server -> Client
 
+- `auth_required`: authentication challenge after websocket connect.
+- `auth_result`: auth success/failure and session/account metadata.
 - `welcome`: initial snapshot with users/items plus server UI/world metadata.
 - `signal`: forwarded WebRTC offer/answer/ICE.
 - `update_position`, `update_nickname`, `user_left`: presence updates.
@@ -51,6 +57,11 @@ This is a behavior guide for packet semantics beyond raw schemas.
 
 ## Welcome Metadata
 
+- `welcome.auth`: authenticated account identity:
+  - `authenticated`
+  - `userId`
+  - `username`
+  - `role`
 - `welcome.worldConfig.gridSize`: server-authoritative grid size used by clients for bounds/drawing.
 - `welcome.worldConfig.movementTickMs`: server movement-rate window used for client movement pacing.
 - `welcome.worldConfig.movementMaxStepsPerTick`: max allowed grid steps per movement window.

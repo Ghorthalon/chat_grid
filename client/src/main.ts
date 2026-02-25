@@ -90,12 +90,22 @@ declare global {
 type Dom = {
   connectionStatus: HTMLElement;
   appVersion: HTMLElement;
+  loginView: HTMLElement;
+  registerView: HTMLElement;
+  authUsername: HTMLInputElement;
+  authPassword: HTMLInputElement;
+  registerUsername: HTMLInputElement;
+  registerPassword: HTMLInputElement;
+  registerEmail: HTMLInputElement;
+  showRegisterButton: HTMLButtonElement;
+  showLoginButton: HTMLButtonElement;
   updatesSection: HTMLElement;
   updatesToggle: HTMLButtonElement;
   updatesPanel: HTMLDivElement;
   nicknameContainer: HTMLDivElement;
   preconnectNickname: HTMLInputElement;
   connectButton: HTMLButtonElement;
+  logoutButton: HTMLButtonElement;
   disconnectButton: HTMLButtonElement;
   focusGridButton: HTMLButtonElement;
   settingsButton: HTMLButtonElement;
@@ -113,12 +123,22 @@ type Dom = {
 const dom: Dom = {
   connectionStatus: requiredById('connectionStatus'),
   appVersion: requiredById('appVersion'),
+  loginView: requiredById('loginView'),
+  registerView: requiredById('registerView'),
+  authUsername: requiredById('authUsername'),
+  authPassword: requiredById('authPassword'),
+  registerUsername: requiredById('registerUsername'),
+  registerPassword: requiredById('registerPassword'),
+  registerEmail: requiredById('registerEmail'),
+  showRegisterButton: requiredById('showRegisterButton'),
+  showLoginButton: requiredById('showLoginButton'),
   updatesSection: requiredById('updatesSection'),
   updatesToggle: requiredById('updatesToggle'),
   updatesPanel: requiredById('updatesPanel'),
   nicknameContainer: requiredById('nicknameContainer'),
   preconnectNickname: requiredById('preconnectNickname'),
   connectButton: requiredById('connectButton'),
+  logoutButton: requiredById('logoutButton'),
   disconnectButton: requiredById('disconnectButton'),
   focusGridButton: requiredById('focusGridButton'),
   settingsButton: requiredById('settingsButton'),
@@ -203,6 +223,10 @@ let lastFocusedElement: Element | null = null;
 let lastAnnouncementText = '';
 let lastAnnouncementAt = 0;
 let outputMode = settings.loadOutputMode();
+let authMode: 'login' | 'register' = 'login';
+let authSessionToken = settings.loadAuthSessionToken();
+let authUsername = settings.loadAuthUsername();
+let pendingAuthRequest = false;
 const messageBuffer: string[] = [];
 let messageCursor = -1;
 const radioRuntime = new RadioStationRuntime(audio, getItemSpatialConfig);
@@ -482,14 +506,33 @@ function sanitizeName(value: string): string {
   return value.replace(/[\u0000-\u001F\u007F<>]/g, '').trim().slice(0, NICKNAME_MAX_LENGTH);
 }
 
+/** Normalizes auth username according to server policy. */
+function sanitizeAuthUsername(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 32);
+}
+
 /** Enables/disables the connect button based on state and nickname validity. */
 function updateConnectAvailability(): void {
+  dom.logoutButton.disabled = !authSessionToken.trim() && !state.running;
   if (state.running) {
     dom.connectButton.disabled = true;
+    dom.loginView.classList.add('hidden');
+    dom.registerView.classList.add('hidden');
     return;
   }
-  const hasNickname = sanitizeName(dom.preconnectNickname.value).length > 0;
-  dom.connectButton.disabled = mediaSession.isConnecting() || !hasNickname;
+  dom.loginView.classList.toggle('hidden', authMode !== 'login');
+  dom.registerView.classList.toggle('hidden', authMode !== 'register');
+  const hasSessionToken = authSessionToken.trim().length > 0;
+  const hasLoginCredentials =
+    sanitizeAuthUsername(dom.authUsername.value).length >= 2 && dom.authPassword.value.trim().length >= 8;
+  const hasRegisterCredentials =
+    sanitizeAuthUsername(dom.registerUsername.value).length >= 2 && dom.registerPassword.value.trim().length >= 8;
+  const authReady = hasSessionToken || (authMode === 'login' ? hasLoginCredentials : hasRegisterCredentials);
+  dom.connectButton.disabled = mediaSession.isConnecting() || !authReady;
 }
 
 /** Restores persisted outbound effect levels from local storage. */
@@ -1294,6 +1337,112 @@ async function reconnectWithRetry(reason: 'heartbeat' | 'socketClose'): Promise<
   reconnectInFlight = false;
 }
 
+/** Switches pre-connect auth view between login and register modes. */
+function setAuthMode(mode: 'login' | 'register'): void {
+  authMode = mode;
+  dom.loginView.classList.toggle('hidden', mode !== 'login');
+  dom.registerView.classList.toggle('hidden', mode !== 'register');
+  updateConnectAvailability();
+}
+
+/** Builds outbound auth packet from local token or active auth form. */
+function buildAuthRequestPacket(): OutgoingMessage | null {
+  const token = authSessionToken.trim();
+  if (token) {
+    return { type: 'auth_resume', sessionToken: token };
+  }
+  if (authMode === 'register') {
+    const username = sanitizeAuthUsername(dom.registerUsername.value);
+    const password = dom.registerPassword.value;
+    const email = dom.registerEmail.value.trim();
+    if (!username || !password) return null;
+    return { type: 'auth_register', username, password, ...(email ? { email } : {}) };
+  }
+  const username = sanitizeAuthUsername(dom.authUsername.value);
+  const password = dom.authPassword.value;
+  if (!username || !password) return null;
+  return { type: 'auth_login', username, password };
+}
+
+/** Sends current auth request over signaling websocket after socket open. */
+function sendAuthRequest(): void {
+  const packet = buildAuthRequestPacket();
+  if (!packet) {
+    updateStatus('Enter username and password.');
+    audio.sfxUiCancel();
+    mediaSession.setConnecting(false);
+    updateConnectAvailability();
+    signaling.disconnect();
+    return;
+  }
+  pendingAuthRequest = true;
+  setConnectionStatus('Authenticating...');
+  signaling.send(packet);
+}
+
+/** Handles server auth-required prompts prior to world welcome. */
+function handleAuthRequired(message: string): void {
+  setConnectionStatus('Authentication required.');
+  updateStatus(message);
+}
+
+/** Applies auth result state and terminates failed auth attempts quickly. */
+async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_result' }>): Promise<void> {
+  pendingAuthRequest = false;
+  if (!message.ok) {
+    dom.authPassword.value = '';
+    dom.registerPassword.value = '';
+    if (message.message.toLowerCase().includes('session')) {
+      authSessionToken = '';
+      settings.saveAuthSessionToken('');
+    }
+    updateStatus(message.message);
+    audio.sfxUiCancel();
+    mediaSession.setConnecting(false);
+    updateConnectAvailability();
+    signaling.disconnect();
+    setConnectionStatus('Authentication failed.');
+    return;
+  }
+
+  if (message.sessionToken) {
+    authSessionToken = message.sessionToken;
+    settings.saveAuthSessionToken(message.sessionToken);
+  }
+  if (message.username) {
+    authUsername = message.username;
+    settings.saveAuthUsername(message.username);
+    dom.authUsername.value = message.username;
+    dom.registerUsername.value = message.username;
+  }
+  if (message.nickname) {
+    const resolved = sanitizeName(message.nickname);
+    if (resolved) {
+      state.player.nickname = resolved;
+      dom.preconnectNickname.value = resolved;
+      settings.saveNickname(resolved);
+    }
+  }
+  dom.authPassword.value = '';
+  dom.registerPassword.value = '';
+  setConnectionStatus('Authenticated. Joining world...');
+}
+
+/** Clears stored auth session and returns UI to login mode. */
+function logOutAccount(): void {
+  authSessionToken = '';
+  authUsername = '';
+  settings.saveAuthSessionToken('');
+  settings.saveAuthUsername('');
+  if (state.running) {
+    signaling.send({ type: 'auth_logout' });
+    disconnect();
+  }
+  setAuthMode('login');
+  updateStatus('Logged out.');
+  updateConnectAvailability();
+}
+
 /** Builds dependencies shared by connect/disconnect flow helpers. */
 function getConnectionFlowDeps(): ConnectFlowDeps {
   return {
@@ -1322,6 +1471,7 @@ function getConnectionFlowDeps(): ConnectFlowDeps {
     mediaDescribeError: (error) => describeMediaError(error),
     mediaStopLocalMedia: () => stopLocalMedia(),
     signalingConnect: (handler) => signaling.connect(handler as (message: IncomingMessage) => Promise<void>),
+    signalingSendAuth: () => sendAuthRequest(),
     signalingDisconnect: () => signaling.disconnect(),
     onMessage: (message) => onSignalingMessage(message as IncomingMessage),
     persistPlayerPosition,
@@ -1423,6 +1573,8 @@ const onAppMessage = createOnMessageHandler({
   playIncomingItemUseSound: (url, x, y) => {
     void audio.playSpatialSample(url, { x, y }, { x: state.player.x, y: state.player.y }, 1);
   },
+  handleAuthRequired,
+  handleAuthResult,
 });
 
 /** Handles signaling packets with heartbeat/restart metadata before app-level dispatch. */
@@ -2429,20 +2581,51 @@ function setupUiHandlers(): void {
       persistPlayerPosition();
     },
   });
+  dom.showRegisterButton.addEventListener('click', () => {
+    setAuthMode('register');
+    dom.registerUsername.focus();
+  });
+  dom.showLoginButton.addEventListener('click', () => {
+    setAuthMode('login');
+    dom.authUsername.focus();
+  });
+  dom.logoutButton.addEventListener('click', () => {
+    logOutAccount();
+  });
+  dom.authUsername.addEventListener('input', () => {
+    dom.authUsername.value = sanitizeAuthUsername(dom.authUsername.value);
+    updateConnectAvailability();
+  });
+  dom.authPassword.addEventListener('input', () => {
+    updateConnectAvailability();
+  });
+  dom.registerUsername.addEventListener('input', () => {
+    dom.registerUsername.value = sanitizeAuthUsername(dom.registerUsername.value);
+    updateConnectAvailability();
+  });
+  dom.registerPassword.addEventListener('input', () => {
+    updateConnectAvailability();
+  });
+  dom.registerEmail.addEventListener('input', () => {
+    updateConnectAvailability();
+  });
 }
 
 setupInputHandlers();
 setupUiHandlers();
+dom.authUsername.value = sanitizeAuthUsername(authUsername);
+dom.registerUsername.value = sanitizeAuthUsername(authUsername);
 const storedNickname = sanitizeName(settings.loadNickname());
 dom.preconnectNickname.value = storedNickname;
 if (storedNickname) {
   state.player.nickname = storedNickname;
 }
+setAuthMode('login');
 updateConnectAvailability();
 updateDeviceSummary();
 updateStatus(
   isVersionReloadedSession()
     ? 'Client updated, please reconnect.'
-    : 'Welcome to the Chat Grid. Press the Settings button to configure your audio, then Connect to join the grid.',
+    : 'Welcome to the Chat Grid. Log in or register, configure audio if needed, then Connect to join the grid.',
 );
 setConnectionStatus(isVersionReloadedSession() ? 'Client updated, please reconnect.' : 'Not connected.');

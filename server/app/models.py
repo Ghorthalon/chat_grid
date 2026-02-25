@@ -41,6 +41,28 @@ class ChatMessagePacket(BasePacket):
     message: str = Field(min_length=1, max_length=500)
 
 
+class AuthRegisterPacket(BasePacket):
+    type: Literal["auth_register"]
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+    email: str | None = Field(default=None, max_length=320)
+
+
+class AuthLoginPacket(BasePacket):
+    type: Literal["auth_login"]
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AuthResumePacket(BasePacket):
+    type: Literal["auth_resume"]
+    sessionToken: str = Field(min_length=1, max_length=512)
+
+
+class AuthLogoutPacket(BasePacket):
+    type: Literal["auth_logout"]
+
+
 class PingPacket(BasePacket):
     type: Literal["ping"]
     clientSentAt: int
@@ -100,6 +122,10 @@ ClientPacket = (
     | TeleportCompletePacket
     | UpdateNicknamePacket
     | ChatMessagePacket
+    | AuthRegisterPacket
+    | AuthLoginPacket
+    | AuthResumePacket
+    | AuthLogoutPacket
     | PingPacket
     | ItemAddPacket
     | ItemPickupPacket
@@ -128,6 +154,22 @@ class WelcomePacket(BasePacket):
     worldConfig: dict | None = None
     uiDefinitions: dict | None = None
     serverInfo: dict | None = None
+    auth: dict | None = None
+
+
+class AuthRequiredPacket(BasePacket):
+    type: Literal["auth_required"]
+    message: str
+
+
+class AuthResultPacket(BasePacket):
+    type: Literal["auth_result"]
+    ok: bool
+    message: str
+    sessionToken: str | None = None
+    username: str | None = None
+    role: str | None = None
+    nickname: str | None = None
 
 
 class UserLeftPacket(BasePacket):

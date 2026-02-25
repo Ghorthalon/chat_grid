@@ -29,3 +29,13 @@ state_save_max_delay_ms = 1000
 [world]
 # Grid width/height in cells. Valid coordinates are 0..grid_size-1.
 grid_size = 41
+
+[auth]
+# SQLite file for account/session data. Relative paths resolve from this config file directory.
+db_file = "runtime/chatgrid.db"
+# Password length policy.
+password_min_length = 8
+password_max_length = 32
+# Username length policy.
+username_min_length = 2
+username_max_length = 32
