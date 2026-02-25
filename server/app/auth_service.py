@@ -83,11 +83,16 @@ class AuthService:
     def bootstrap_admin(self, username: str, password: str, email: str | None = None) -> AuthUser:
         """Create the first admin account, or fail if one already exists."""
 
-        existing = self._conn.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone()
-        if existing is not None:
+        if self.has_admin():
             raise AuthError("An admin account already exists.")
         created = self.register(username, password, email=email, role="admin")
         return created.user
+
+    def has_admin(self) -> bool:
+        """Return True when at least one admin account exists."""
+
+        existing = self._conn.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+        return existing is not None
 
     def register(
         self,

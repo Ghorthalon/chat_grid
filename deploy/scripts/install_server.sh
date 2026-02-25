@@ -61,5 +61,63 @@ PY
   echo "created $SERVER_DIR/.env with CHGRID_AUTH_SECRET"
 fi
 
+# Load generated/shared auth secret for bootstrap checks.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
+if [[ -n "${CHGRID_AUTH_SECRET:-}" ]]; then
+  HAS_ADMIN="$(
+    .venv/bin/python - <<'PY'
+from pathlib import Path
+import os
+from app.auth_service import AuthService
+from app.config import load_config
+
+cfg = load_config(Path("config.toml"))
+secret = os.getenv("CHGRID_AUTH_SECRET", "").strip()
+if not secret:
+    print("unknown")
+    raise SystemExit(0)
+db_file = cfg.auth.db_file.strip() or "runtime/chatgrid.db"
+db_path = Path(db_file)
+if not db_path.is_absolute():
+    db_path = Path.cwd() / db_path
+svc = AuthService(
+    db_path=db_path,
+    token_hash_secret=secret,
+    password_min_length=cfg.auth.password_min_length,
+    password_max_length=cfg.auth.password_max_length,
+    username_min_length=cfg.auth.username_min_length,
+    username_max_length=cfg.auth.username_max_length,
+)
+try:
+    print("yes" if svc.has_admin() else "no")
+finally:
+    svc.close()
+PY
+  )"
+
+  if [[ "$HAS_ADMIN" == "no" ]]; then
+    if [[ -t 0 ]]; then
+      read -r -p "No admin account found. Create one now? [y/N] " CREATE_ADMIN_NOW
+      case "${CREATE_ADMIN_NOW:-}" in
+        y|Y|yes|YES)
+          .venv/bin/python main.py --config config.toml --bootstrap-admin
+          ;;
+        *)
+          echo "skipped admin bootstrap (you can run: .venv/bin/python main.py --config config.toml --bootstrap-admin)"
+          ;;
+      esac
+    else
+      echo "no admin account found (non-interactive run)."
+      echo "run once to bootstrap: .venv/bin/python main.py --config config.toml --bootstrap-admin"
+    fi
+  fi
+fi
+
 echo "server install complete"
 echo "next: edit $SERVER_DIR/config.toml (TLS, bind_ip, port)"
