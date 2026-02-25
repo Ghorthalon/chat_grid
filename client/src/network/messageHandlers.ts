@@ -219,10 +219,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
 
       case 'nickname_result': {
         deps.state.player.nickname = deps.sanitizeName(message.effectiveNickname) || 'user...';
-        if (message.accepted) {
-          deps.updateStatus(`Nickname set to ${deps.state.player.nickname}`);
-          deps.audioUiConfirm();
-        } else {
+        if (!message.accepted) {
           deps.pushChatMessage(message.reason || 'Nickname unavailable.');
           deps.audioUiCancel();
         }

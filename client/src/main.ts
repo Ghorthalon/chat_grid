@@ -482,6 +482,9 @@ async function loadChangelog(): Promise<void> {
 
 /** Announces status text via ARIA with brief de-duplication and auto-clear timing. */
 function updateStatus(message: string): void {
+  if (!state.running) {
+    return;
+  }
   const normalized = String(message)
     .replace(/\s*\n+\s*/g, ' ')
     .replace(/\s{2,}/g, ' ')
@@ -1424,7 +1427,7 @@ function buildAuthRequestPacket(): OutgoingMessage | null {
 function sendAuthRequest(): void {
   const packet = buildAuthRequestPacket();
   if (!packet) {
-    updateStatus('Enter username and password.');
+    setConnectionStatus('Enter username and password.');
     audio.sfxUiCancel();
     mediaSession.setConnecting(false);
     updateConnectAvailability();
@@ -1455,12 +1458,11 @@ async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_
       authSessionToken = '';
       settings.saveAuthSessionToken('');
     }
-    updateStatus(message.message);
+    setConnectionStatus(message.message);
     audio.sfxUiCancel();
     mediaSession.setConnecting(false);
     updateConnectAvailability();
     signaling.disconnect();
-    setConnectionStatus('Authentication failed.');
     return;
   }
 
@@ -1508,6 +1510,10 @@ function getConnectionFlowDeps(): ConnectFlowDeps {
     dom,
     sanitizeName,
     updateStatus: (message) => {
+      if (!state.running) {
+        setConnectionStatus(message);
+        return;
+      }
       if (message === 'Disconnected.') {
         setConnectionStatus('Disconnected.');
       } else if (message.startsWith('Connect failed.')) {
@@ -2672,9 +2678,8 @@ loadPersistedAuthPolicy();
 setAuthMode('login');
 updateConnectAvailability();
 updateDeviceSummary();
-updateStatus(
+setConnectionStatus(
   isVersionReloadedSession()
     ? 'Client updated, please reconnect.'
     : 'Welcome to the Chat Grid. Log in or register, configure audio if needed, then Connect to join the grid.',
 );
-setConnectionStatus(isVersionReloadedSession() ? 'Client updated, please reconnect.' : 'Not connected.');
