@@ -76,6 +76,8 @@ CLIENT_PACKET_ADAPTER = TypeAdapter(ClientPacket)
 MAX_ACTIVE_PIANO_KEYS_PER_CLIENT = 12
 PIANO_RECORDING_MAX_MS = 30_000
 PIANO_RECORDING_MAX_EVENTS = 4096
+MOVEMENT_TICK_MS = 200
+MOVEMENT_MAX_STEPS_PER_TICK = 1
 
 
 class SignalingServer:
@@ -90,8 +92,6 @@ class SignalingServer:
         max_message_size: int = 2_000_000,
         state_file: Path | None = None,
         grid_size: int = 41,
-        movement_tick_ms: int = 100,
-        movement_max_steps_per_tick: int = 2,
         state_save_debounce_ms: int = 200,
         state_save_max_delay_ms: int = 1000,
     ):
@@ -108,8 +108,8 @@ class SignalingServer:
         self.piano_recording_state_by_item: dict[str, dict] = {}
         self.piano_playback_tasks_by_item: dict[str, asyncio.Task[None]] = {}
         self.grid_size = max(1, grid_size)
-        self.movement_tick_ms = max(1, int(movement_tick_ms))
-        self.movement_max_steps_per_tick = max(1, int(movement_max_steps_per_tick))
+        self.movement_tick_ms = MOVEMENT_TICK_MS
+        self.movement_max_steps_per_tick = MOVEMENT_MAX_STEPS_PER_TICK
         self.instance_id = str(uuid.uuid4())
         self.server_version = self._resolve_server_version()
         self.state_save_debounce_ms = max(1, int(state_save_debounce_ms))
@@ -1454,8 +1454,6 @@ def run() -> None:
         max_message_size=config.network.max_message_bytes,
         state_file=state_file,
         grid_size=config.world.grid_size,
-        movement_tick_ms=config.world.movement_tick_ms,
-        movement_max_steps_per_tick=config.world.movement_max_steps_per_tick,
         state_save_debounce_ms=config.storage.state_save_debounce_ms,
         state_save_max_delay_ms=config.storage.state_save_max_delay_ms,
     )

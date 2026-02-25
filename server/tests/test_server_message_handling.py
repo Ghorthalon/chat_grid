@@ -108,7 +108,9 @@ async def test_item_add_rejects_unknown_type(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.asyncio
 async def test_update_position_enforces_cumulative_budget_per_tick(monkeypatch: pytest.MonkeyPatch) -> None:
-    server = SignalingServer("127.0.0.1", 8765, None, None, grid_size=41, movement_tick_ms=100, movement_max_steps_per_tick=2)
+    server = SignalingServer("127.0.0.1", 8765, None, None, grid_size=41)
+    server.movement_tick_ms = 100
+    server.movement_max_steps_per_tick = 2
     ws = _fake_ws()
     client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=5)
     server.clients[ws] = client
