@@ -16,6 +16,10 @@ def _fake_ws() -> ServerConnection:
     return cast(ServerConnection, object())
 
 
+def _packet_types(payloads: list[object]) -> list[str]:
+    return [getattr(packet, "type", "") for packet in payloads]
+
+
 @pytest.mark.asyncio
 async def test_update_position_rejects_out_of_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
     server = SignalingServer("127.0.0.1", 8765, None, None, grid_size=41)
@@ -35,6 +39,68 @@ async def test_update_position_rejects_out_of_bounds(monkeypatch: pytest.MonkeyP
     assert client.x == 5
     assert client.y == 6
     assert broadcast_payloads == []
+
+
+@pytest.mark.asyncio
+async def test_auth_login_uses_hash_offload(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    server.auth_service.register("alpha", "password99")
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester")
+
+    send_payloads: list[object] = []
+    offload_calls: list[str] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        return None
+
+    async def fake_run_auth_hash_task(func, /, *args, **kwargs):
+        offload_calls.append(getattr(func, "__name__", "unknown"))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server, "_run_auth_hash_task", fake_run_auth_hash_task)
+
+    await server._handle_message(client, json.dumps({"type": "auth_login", "username": "alpha", "password": "password99"}))
+
+    assert "login" in offload_calls
+    auth_results = [packet for packet in send_payloads if getattr(packet, "type", "") == "auth_result"]
+    assert auth_results
+    assert auth_results[-1].ok is True
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_blocks_before_hash(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester")
+
+    send_payloads: list[object] = []
+    called_login = False
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    def fake_login(username: str, password: str):  # pragma: no cover - should never run
+        nonlocal called_login
+        called_login = True
+        raise RuntimeError("unexpected login call")
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_sleep_auth_failure_jitter", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(server.auth_service, "login", fake_login)
+    monkeypatch.setattr(server, "_is_auth_rate_limited", lambda _client, _packet: True)
+
+    await server._handle_message(client, json.dumps({"type": "auth_login", "username": "alpha", "password": "wrongpass"}))
+
+    assert called_login is False
+    assert send_payloads
+    assert send_payloads[-1].ok is False
+    assert "too many" in send_payloads[-1].message.lower()
 
 
 @pytest.mark.asyncio

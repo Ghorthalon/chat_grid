@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+import threading
 import time
 
 
@@ -19,6 +20,25 @@ SALT_BYTES = 16
 PBKDF2_ITERATIONS = 310_000
 PBKDF2_DKLEN = 32
 USERNAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
+
+
+def _build_dummy_password_hash() -> str:
+    """Build one deterministic PBKDF2 hash used to equalize login miss timing."""
+
+    salt = b"chgrid_dummy_salt"
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        b"chgrid_dummy_password",
+        salt,
+        PBKDF2_ITERATIONS,
+        dklen=PBKDF2_DKLEN,
+    )
+    salt_b64 = base64.b64encode(salt).decode("ascii")
+    digest_b64 = base64.b64encode(digest).decode("ascii")
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt_b64}${digest_b64}"
+
+
+DUMMY_PASSWORD_HASH = _build_dummy_password_hash()
 
 
 @dataclass(frozen=True)
@@ -74,12 +94,14 @@ class AuthService:
         self._token_secret = secret.encode("utf-8")
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn_lock = threading.RLock()
         self._ensure_schema()
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
 
-        self._conn.close()
+        with self._conn_lock:
+            self._conn.close()
 
     def bootstrap_admin(self, username: str, password: str, email: str | None = None) -> AuthUser:
         """Create the first admin account, or fail if one already exists."""
@@ -92,7 +114,7 @@ class AuthService:
     def has_admin(self) -> bool:
         """Return True when at least one admin account exists."""
 
-        existing = self._conn.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+        existing = self._db_fetchone("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1")
         return existing is not None
 
     def register(
@@ -105,160 +127,166 @@ class AuthService:
     ) -> AuthSession:
         """Register an account and issue a session token."""
 
-        normalized_username = self._normalize_username(username)
-        self._validate_username(normalized_username)
-        self._validate_password(password)
-        normalized_email = self._normalize_email(email)
-        if role not in {"user", "admin"}:
-            raise AuthError("role must be user or admin.")
-        now_ms = self.now_ms()
-        password_hash = self._hash_password(password)
-        try:
-            self._conn.execute(
+        with self._conn_lock:
+            normalized_username = self._normalize_username(username)
+            self._validate_username(normalized_username)
+            self._validate_password(password)
+            normalized_email = self._normalize_email(email)
+            if role not in {"user", "admin"}:
+                raise AuthError("role must be user or admin.")
+            now_ms = self.now_ms()
+            password_hash = self._hash_password(password)
+            try:
+                self._db_execute(
+                    """
+                    INSERT INTO users (
+                        username, password_hash, email, role, status, created_at_ms, updated_at_ms, last_login_at_ms
+                    ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+                    """,
+                    (normalized_username, password_hash, normalized_email, role, now_ms, now_ms, now_ms),
+                )
+                self._db_commit()
+            except sqlite3.IntegrityError as exc:
+                message = str(exc).lower()
+                if "users.username" in message:
+                    raise AuthError("Username is already taken.") from exc
+                if "users.email" in message:
+                    raise AuthError("Email is already in use.") from exc
+                raise
+            user = self._get_user_by_username(normalized_username)
+            if user is None:
+                raise AuthError("Failed to load newly created user.")
+            self._db_execute(
                 """
-                INSERT INTO users (
-                    username, password_hash, email, role, status, created_at_ms, updated_at_ms, last_login_at_ms
-                ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+                INSERT OR IGNORE INTO user_state (user_id, last_nickname, last_x, last_y, updated_at_ms)
+                VALUES (?, ?, NULL, NULL, ?)
                 """,
-                (normalized_username, password_hash, normalized_email, role, now_ms, now_ms, now_ms),
+                (int(user.id), user.username, now_ms),
             )
-            self._conn.commit()
-        except sqlite3.IntegrityError as exc:
-            message = str(exc).lower()
-            if "users.username" in message:
-                raise AuthError("Username is already taken.") from exc
-            if "users.email" in message:
-                raise AuthError("Email is already in use.") from exc
-            raise
-        user = self._get_user_by_username(normalized_username)
-        if user is None:
-            raise AuthError("Failed to load newly created user.")
-        self._conn.execute(
-            """
-            INSERT OR IGNORE INTO user_state (user_id, last_nickname, last_x, last_y, updated_at_ms)
-            VALUES (?, ?, NULL, NULL, ?)
-            """,
-            (int(user.id), user.username, now_ms),
-        )
-        self._conn.commit()
-        user = AuthUser(
-            id=user.id,
-            username=user.username,
-            role=user.role,
-            status=user.status,
-            email=user.email,
-            last_nickname=user.username,
-            last_x=user.last_x,
-            last_y=user.last_y,
-        )
-        return self._create_session(user)
+            self._db_commit()
+            user = AuthUser(
+                id=user.id,
+                username=user.username,
+                role=user.role,
+                status=user.status,
+                email=user.email,
+                last_nickname=user.username,
+                last_x=user.last_x,
+                last_y=user.last_y,
+            )
+            return self._create_session(user)
 
     def login(self, username: str, password: str) -> AuthSession:
         """Authenticate credentials and issue a fresh session."""
 
-        normalized_username = self._normalize_username(username)
-        user_row = self._conn.execute(
-            """
-            SELECT
-                u.id,
-                u.username,
-                u.password_hash,
-                u.email,
-                u.role,
-                u.status,
-                us.last_nickname,
-                us.last_x,
-                us.last_y
-            FROM users u
-            LEFT JOIN user_state us ON us.user_id = u.id
-            WHERE u.username = ?
-            """,
-            (normalized_username,),
-        ).fetchone()
-        if user_row is None:
-            raise AuthError("Invalid username or password.")
-        if user_row["status"] != "active":
-            raise AuthError("Account is disabled.")
-        if not self._verify_password(password, user_row["password_hash"]):
-            raise AuthError("Invalid username or password.")
-        user = self._row_to_user(user_row)
-        if not user.last_nickname:
-            self.set_last_nickname(user.id, user.username)
-            user = AuthUser(
-                id=user.id,
-                username=user.username,
-                role=user.role,
-                status=user.status,
-                email=user.email,
-                last_nickname=user.username,
-                last_x=user.last_x,
-                last_y=user.last_y,
+        with self._conn_lock:
+            normalized_username = self._normalize_username(username)
+            user_row = self._db_fetchone(
+                """
+                SELECT
+                    u.id,
+                    u.username,
+                    u.password_hash,
+                    u.email,
+                    u.role,
+                    u.status,
+                    us.last_nickname,
+                    us.last_x,
+                    us.last_y
+                FROM users u
+                LEFT JOIN user_state us ON us.user_id = u.id
+                WHERE u.username = ?
+                """,
+                (normalized_username,),
             )
-        self._conn.execute(
-            "UPDATE users SET last_login_at_ms = ?, updated_at_ms = ? WHERE id = ?",
-            (self.now_ms(), self.now_ms(), user.id),
-        )
-        self._conn.commit()
-        return self._create_session(user)
+            if user_row is None:
+                # Keep response timing aligned with existing-user password checks.
+                self._verify_password(password, DUMMY_PASSWORD_HASH)
+                raise AuthError("Invalid username or password.")
+            if user_row["status"] != "active":
+                raise AuthError("Account is disabled.")
+            if not self._verify_password(password, user_row["password_hash"]):
+                raise AuthError("Invalid username or password.")
+            user = self._row_to_user(user_row)
+            if not user.last_nickname:
+                self.set_last_nickname(user.id, user.username)
+                user = AuthUser(
+                    id=user.id,
+                    username=user.username,
+                    role=user.role,
+                    status=user.status,
+                    email=user.email,
+                    last_nickname=user.username,
+                    last_x=user.last_x,
+                    last_y=user.last_y,
+                )
+            now_ms = self.now_ms()
+            self._db_execute(
+                "UPDATE users SET last_login_at_ms = ?, updated_at_ms = ? WHERE id = ?",
+                (now_ms, now_ms, user.id),
+            )
+            self._db_commit()
+            return self._create_session(user)
 
     def resume(self, token: str) -> AuthSession:
         """Validate a session token and apply rolling expiry."""
 
-        cleaned = token.strip()
-        if not cleaned:
-            raise AuthError("Missing session token.")
-        token_hash = self._hash_token(cleaned)
-        row = self._conn.execute(
-            """
-            SELECT s.id AS session_id, s.user_id, s.expires_at_ms, s.revoked_at_ms,
-                   u.username, u.role, u.status, u.email, us.last_nickname, us.last_x, us.last_y
-            FROM sessions s
-            JOIN users u ON u.id = s.user_id
-            LEFT JOIN user_state us ON us.user_id = u.id
-            WHERE s.token_hash = ?
-            """,
-            (token_hash,),
-        ).fetchone()
-        if row is None:
-            raise AuthError("Invalid session.")
-        if row["revoked_at_ms"] is not None:
-            raise AuthError("Session has been revoked.")
-        now_ms = self.now_ms()
-        if int(row["expires_at_ms"]) <= now_ms:
-            self._conn.execute("UPDATE sessions SET revoked_at_ms = ? WHERE id = ?", (now_ms, row["session_id"]))
-            self._conn.commit()
-            raise AuthError("Session has expired.")
-        if row["status"] != "active":
-            raise AuthError("Account is disabled.")
-        new_expiry = now_ms + SESSION_TTL_MS
-        self._conn.execute(
-            "UPDATE sessions SET last_seen_at_ms = ?, expires_at_ms = ? WHERE id = ?",
-            (now_ms, new_expiry, row["session_id"]),
-        )
-        self._conn.commit()
-        user = AuthUser(
-            id=str(row["user_id"]),
-            username=row["username"],
-            role=row["role"],
-            status=row["status"],
-            email=row["email"],
-            last_nickname=row["last_nickname"],
-            last_x=row["last_x"] if "last_x" in row.keys() else None,
-            last_y=row["last_y"] if "last_y" in row.keys() else None,
-        )
-        if not user.last_nickname:
-            self.set_last_nickname(user.id, user.username)
-            user = AuthUser(
-                id=user.id,
-                username=user.username,
-                role=user.role,
-                status=user.status,
-                email=user.email,
-                last_nickname=user.username,
-                last_x=user.last_x,
-                last_y=user.last_y,
+        with self._conn_lock:
+            cleaned = token.strip()
+            if not cleaned:
+                raise AuthError("Missing session token.")
+            token_hash = self._hash_token(cleaned)
+            row = self._db_fetchone(
+                """
+                SELECT s.id AS session_id, s.user_id, s.expires_at_ms, s.revoked_at_ms,
+                       u.username, u.role, u.status, u.email, us.last_nickname, us.last_x, us.last_y
+                FROM sessions s
+                JOIN users u ON u.id = s.user_id
+                LEFT JOIN user_state us ON us.user_id = u.id
+                WHERE s.token_hash = ?
+                """,
+                (token_hash,),
             )
-        return AuthSession(session_id=row["session_id"], token=cleaned, user=user)
+            if row is None:
+                raise AuthError("Invalid session.")
+            if row["revoked_at_ms"] is not None:
+                raise AuthError("Session has been revoked.")
+            now_ms = self.now_ms()
+            if int(row["expires_at_ms"]) <= now_ms:
+                self._db_execute("UPDATE sessions SET revoked_at_ms = ? WHERE id = ?", (now_ms, row["session_id"]))
+                self._db_commit()
+                raise AuthError("Session has expired.")
+            if row["status"] != "active":
+                raise AuthError("Account is disabled.")
+            new_expiry = now_ms + SESSION_TTL_MS
+            self._db_execute(
+                "UPDATE sessions SET last_seen_at_ms = ?, expires_at_ms = ? WHERE id = ?",
+                (now_ms, new_expiry, row["session_id"]),
+            )
+            self._db_commit()
+            user = AuthUser(
+                id=str(row["user_id"]),
+                username=row["username"],
+                role=row["role"],
+                status=row["status"],
+                email=row["email"],
+                last_nickname=row["last_nickname"],
+                last_x=row["last_x"] if "last_x" in row.keys() else None,
+                last_y=row["last_y"] if "last_y" in row.keys() else None,
+            )
+            if not user.last_nickname:
+                self.set_last_nickname(user.id, user.username)
+                user = AuthUser(
+                    id=user.id,
+                    username=user.username,
+                    role=user.role,
+                    status=user.status,
+                    email=user.email,
+                    last_nickname=user.username,
+                    last_x=user.last_x,
+                    last_y=user.last_y,
+                )
+            return AuthSession(session_id=row["session_id"], token=cleaned, user=user)
 
     def revoke(self, token: str) -> None:
         """Revoke a session token if it exists."""
@@ -267,11 +295,11 @@ class AuthService:
         if not cleaned:
             return
         token_hash = self._hash_token(cleaned)
-        self._conn.execute(
+        self._db_execute(
             "UPDATE sessions SET revoked_at_ms = ? WHERE token_hash = ? AND revoked_at_ms IS NULL",
             (self.now_ms(), token_hash),
         )
-        self._conn.commit()
+        self._db_commit()
 
     def set_last_nickname(self, user_id: str, nickname: str) -> None:
         """Persist the most recent nickname for one user."""
@@ -284,7 +312,7 @@ class AuthService:
         except (TypeError, ValueError):
             return
         try:
-            self._conn.execute(
+            self._db_execute(
                 """
                 INSERT INTO user_state (user_id, last_nickname, last_x, last_y, updated_at_ms)
                 VALUES (?, ?, NULL, NULL, ?)
@@ -294,9 +322,9 @@ class AuthService:
                 """,
                 (user_id_value, cleaned, self.now_ms()),
             )
-            self._conn.commit()
+            self._db_commit()
         except sqlite3.IntegrityError:
-            self._conn.rollback()
+            self._db_rollback()
 
     def set_last_position(self, user_id: str, x: int, y: int) -> None:
         """Persist last known world position for one user."""
@@ -306,7 +334,7 @@ class AuthService:
         except (TypeError, ValueError):
             return
         try:
-            self._conn.execute(
+            self._db_execute(
                 """
                 INSERT INTO user_state (user_id, last_nickname, last_x, last_y, updated_at_ms)
                 VALUES (?, NULL, ?, ?, ?)
@@ -317,9 +345,9 @@ class AuthService:
                 """,
                 (user_id_value, int(x), int(y), self.now_ms()),
             )
-            self._conn.commit()
+            self._db_commit()
         except sqlite3.IntegrityError:
-            self._conn.rollback()
+            self._db_rollback()
 
     @staticmethod
     def now_ms() -> int:
@@ -330,8 +358,9 @@ class AuthService:
     def _ensure_schema(self) -> None:
         """Create required auth tables and indexes when missing."""
 
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        self._conn.execute(
+        with self._conn_lock:
+            self._db_execute("PRAGMA foreign_keys = ON")
+            self._db_execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -346,7 +375,7 @@ class AuthService:
             )
             """
         )
-        self._conn.execute(
+            self._db_execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -362,7 +391,7 @@ class AuthService:
             )
             """
         )
-        self._conn.execute(
+            self._db_execute(
             """
             CREATE TABLE IF NOT EXISTS user_state (
                 user_id INTEGER PRIMARY KEY,
@@ -374,15 +403,15 @@ class AuthService:
             )
             """
         )
-        self._conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)")
-        self._conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
-        )
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at_ms)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_user_state_updated ON user_state(updated_at_ms)")
-        self._conn.commit()
+            self._db_execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+            self._db_execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
+            )
+            self._db_execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
+            self._db_execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at_ms)")
+            self._db_execute("CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)")
+            self._db_execute("CREATE INDEX IF NOT EXISTS idx_user_state_updated ON user_state(updated_at_ms)")
+            self._db_commit()
 
     def _create_session(self, user: AuthUser) -> AuthSession:
         """Issue and persist a new session token for a user."""
@@ -391,21 +420,24 @@ class AuthService:
         token_hash = self._hash_token(token)
         now_ms = self.now_ms()
         expires_at_ms = now_ms + SESSION_TTL_MS
-        self._conn.execute(
+        self._db_execute(
             """
             INSERT INTO sessions (user_id, token_hash, created_at_ms, last_seen_at_ms, expires_at_ms, revoked_at_ms, ip, user_agent)
             VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)
             """,
             (user.id, token_hash, now_ms, now_ms, expires_at_ms),
         )
-        session_id = str(self._conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])
-        self._conn.commit()
+        row = self._db_fetchone("SELECT last_insert_rowid() AS id")
+        if row is None:
+            raise AuthError("Failed to create session.")
+        session_id = str(row["id"])
+        self._db_commit()
         return AuthSession(session_id=session_id, token=token, user=user)
 
     def _get_user_by_username(self, username: str) -> AuthUser | None:
         """Fetch one user by normalized username."""
 
-        row = self._conn.execute(
+        row = self._db_fetchone(
             """
             SELECT
                 u.id,
@@ -421,10 +453,34 @@ class AuthService:
             WHERE u.username = ?
             """,
             (username,),
-        ).fetchone()
+        )
         if row is None:
             return None
         return self._row_to_user(row)
+
+    def _db_execute(self, sql: str, params: tuple | None = None) -> sqlite3.Cursor:
+        """Run one SQL statement with a thread-safe connection lock."""
+
+        with self._conn_lock:
+            return self._conn.execute(sql, params or ())
+
+    def _db_fetchone(self, sql: str, params: tuple | None = None) -> sqlite3.Row | None:
+        """Run one query and fetch a single row with connection locking."""
+
+        with self._conn_lock:
+            return self._conn.execute(sql, params or ()).fetchone()
+
+    def _db_commit(self) -> None:
+        """Commit pending DB writes with connection locking."""
+
+        with self._conn_lock:
+            self._conn.commit()
+
+    def _db_rollback(self) -> None:
+        """Rollback pending DB writes with connection locking."""
+
+        with self._conn_lock:
+            self._conn.rollback()
 
     @staticmethod
     def _row_to_user(row: sqlite3.Row) -> AuthUser:
