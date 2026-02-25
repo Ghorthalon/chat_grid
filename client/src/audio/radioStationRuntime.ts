@@ -168,12 +168,15 @@ const UNSUBSCRIBE_HYSTERESIS_SQUARES = 8;
 const SPATIAL_RAMP_SECONDS = 0.2;
 const SPATIAL_TIME_CONSTANT_SECONDS = SPATIAL_RAMP_SECONDS / 3;
 const STREAM_PLAY_RETRY_MS = 5000;
+const STREAM_PLAY_MAX_RETRIES = 6;
+const STREAM_PLAY_RESET_COOLDOWN_MS = 60000;
 
 export class RadioStationRuntime {
   private readonly sharedRadioSources = new Map<string, SharedRadioSource>();
   private readonly itemRadioOutputs = new Map<string, ItemRadioOutput>();
   private readonly pendingSharedStarts = new Set<string>();
   private readonly nextSharedStartAtMs = new Map<string, number>();
+  private readonly sharedStartFailureCount = new Map<string, number>();
   private layerEnabled = true;
   private listenerPositions: Array<{ x: number; y: number }> = [];
 
@@ -339,6 +342,7 @@ export class RadioStationRuntime {
     this.sharedRadioSources.delete(streamUrl);
     this.pendingSharedStarts.delete(streamUrl);
     this.nextSharedStartAtMs.delete(streamUrl);
+    this.sharedStartFailureCount.delete(streamUrl);
   }
 
   private getOrCreateSharedSource(streamUrl: string): SharedRadioSource | null {
@@ -390,8 +394,16 @@ export class RadioStationRuntime {
       .play()
       .then(() => {
         this.nextSharedStartAtMs.delete(shared.streamUrl);
+        this.sharedStartFailureCount.delete(shared.streamUrl);
       })
       .catch(() => {
+        const failures = (this.sharedStartFailureCount.get(shared.streamUrl) ?? 0) + 1;
+        if (failures >= STREAM_PLAY_MAX_RETRIES) {
+          this.sharedStartFailureCount.set(shared.streamUrl, 0);
+          this.nextSharedStartAtMs.set(shared.streamUrl, Date.now() + STREAM_PLAY_RESET_COOLDOWN_MS);
+          return;
+        }
+        this.sharedStartFailureCount.set(shared.streamUrl, failures);
         this.nextSharedStartAtMs.set(shared.streamUrl, Date.now() + STREAM_PLAY_RETRY_MS);
       })
       .finally(() => {

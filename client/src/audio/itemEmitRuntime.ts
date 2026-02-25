@@ -30,6 +30,8 @@ const UNSUBSCRIBE_HYSTERESIS_SQUARES = 8;
 const SPATIAL_RAMP_SECONDS = 0.2;
 const SPATIAL_TIME_CONSTANT_SECONDS = SPATIAL_RAMP_SECONDS / 3;
 const STREAM_PLAY_RETRY_MS = 5000;
+const STREAM_PLAY_MAX_RETRIES = 6;
+const STREAM_PLAY_RESET_COOLDOWN_MS = 60000;
 
 /** Maps a 0-100 speed control to playback-rate range used by emitted audio. */
 function resolveEmitPlaybackRate(raw: unknown): number {
@@ -67,6 +69,7 @@ export class ItemEmitRuntime {
   private readonly outputs = new Map<string, EmitOutput>();
   private readonly pendingEmitStarts = new Set<string>();
   private readonly nextEmitStartAtMs = new Map<string, number>();
+  private readonly emitStartFailureCount = new Map<string, number>();
   private layerEnabled = true;
   private listenerPositions: Array<{ x: number; y: number }> = [];
 
@@ -89,6 +92,7 @@ export class ItemEmitRuntime {
     this.outputs.delete(itemId);
     this.pendingEmitStarts.delete(itemId);
     this.nextEmitStartAtMs.delete(itemId);
+    this.emitStartFailureCount.delete(itemId);
   }
 
   cleanupAll(): void {
@@ -278,8 +282,16 @@ export class ItemEmitRuntime {
       .play()
       .then(() => {
         this.nextEmitStartAtMs.delete(itemId);
+        this.emitStartFailureCount.delete(itemId);
       })
       .catch(() => {
+        const failures = (this.emitStartFailureCount.get(itemId) ?? 0) + 1;
+        if (failures >= STREAM_PLAY_MAX_RETRIES) {
+          this.emitStartFailureCount.set(itemId, 0);
+          this.nextEmitStartAtMs.set(itemId, Date.now() + STREAM_PLAY_RESET_COOLDOWN_MS);
+          return;
+        }
+        this.emitStartFailureCount.set(itemId, failures);
         this.nextEmitStartAtMs.set(itemId, Date.now() + STREAM_PLAY_RETRY_MS);
       })
       .finally(() => {
