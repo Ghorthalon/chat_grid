@@ -578,7 +578,10 @@ function loadPersistedAuthPolicy(): void {
 
 /** Enables/disables the connect button based on state and nickname validity. */
 function updateConnectAvailability(): void {
-  dom.logoutButton.disabled = !authSessionToken.trim() && !state.running;
+  const hasSessionToken = authSessionToken.trim().length > 0;
+  const showLogout = state.running || hasSessionToken;
+  dom.logoutButton.classList.toggle('hidden', !showLogout);
+  dom.logoutButton.disabled = !showLogout;
   if (state.running) {
     dom.connectButton.textContent = 'Connect';
     dom.connectButton.disabled = true;
@@ -588,7 +591,6 @@ function updateConnectAvailability(): void {
   }
   dom.loginView.classList.toggle('hidden', authMode !== 'login');
   dom.registerView.classList.toggle('hidden', authMode !== 'register');
-  const hasSessionToken = authSessionToken.trim().length > 0;
   const usernameMin = authPolicy?.usernameMinLength ?? 1;
   const passwordMin = authPolicy?.passwordMinLength ?? 1;
   const hasLoginCredentials =

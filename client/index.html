@@ -20,7 +20,7 @@
           <input id="authPassword" type="password" maxlength="64" autocomplete="current-password" />
         </div>
         <p id="authPolicyHintLogin" class="auth-hint"></p>
-        <button id="showRegisterButton" type="button">Create account</button>
+        <button id="showRegisterButton" type="button">Need an account? Register</button>
       </section>
       <section id="registerView" class="auth-panel hidden">
         <h2>Register</h2>
@@ -37,11 +37,11 @@
           <input id="registerEmail" type="email" maxlength="320" autocomplete="email" />
         </div>
         <p id="authPolicyHintRegister" class="auth-hint"></p>
-        <button id="showLoginButton" type="button">Back to login</button>
+        <button id="showLoginButton" type="button">Have an account? Log in</button>
       </section>
       <div class="controls" id="button-container">
         <button id="connectButton">Connect</button>
-        <button id="logoutButton">Log out</button>
+        <button id="logoutButton" class="hidden">Log out</button>
         <button id="settingsButton">Settings</button>
         <button id="disconnectButton" class="hidden">Disconnect</button>
         <button id="focusGridButton" class="hidden" aria-controls="gameCanvas">Chat Grid</button>
