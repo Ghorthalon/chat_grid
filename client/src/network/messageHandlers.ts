@@ -71,6 +71,8 @@ type MessageHandlerDeps = {
   playIncomingItemUseSound: (url: string, x: number, y: number) => void;
   handleAuthRequired: (message: Extract<IncomingMessage, { type: 'auth_required' }>) => void;
   handleAuthResult: (message: Extract<IncomingMessage, { type: 'auth_result' }>) => Promise<void>;
+  isPeerNegotiationReady: () => boolean;
+  enqueuePendingSignal: (message: Extract<IncomingMessage, { type: 'signal' }>) => void;
 };
 
 /**
@@ -117,7 +119,6 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
 
         for (const user of message.users) {
           deps.state.peers.set(user.id, { ...user });
-          await deps.peerManager.createOrGetPeer(user.id, true, user);
         }
         deps.state.items.clear();
         for (const item of message.items || []) {
@@ -132,6 +133,18 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         break;
 
       case 'signal': {
+        if (!deps.isPeerNegotiationReady()) {
+          deps.enqueuePendingSignal(message);
+          if (!deps.state.peers.has(message.senderId)) {
+            deps.state.peers.set(message.senderId, {
+              id: message.senderId,
+              nickname: deps.sanitizeName(message.senderNickname || 'user...') || 'user...',
+              x: Number.isFinite(message.x) ? message.x : 20,
+              y: Number.isFinite(message.y) ? message.y : 20,
+            });
+          }
+          break;
+        }
         const peer = await deps.peerManager.handleSignal(message);
         if (!deps.state.peers.has(peer.id)) {
           deps.state.peers.set(peer.id, {

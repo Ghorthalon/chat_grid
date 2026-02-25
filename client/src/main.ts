@@ -257,6 +257,8 @@ let heartbeatAwaitingPong = false;
 let reconnectInFlight = false;
 let activeServerInstanceId: string | null = null;
 let reloadScheduledForVersionMismatch = false;
+let peerNegotiationReady = false;
+let pendingSignalMessages: Array<Extract<IncomingMessage, { type: 'signal' }>> = [];
 let peerListenGainByNickname = settings.loadPeerListenGains();
 let audioLayers: AudioLayerState = {
   voice: true,
@@ -1571,7 +1573,25 @@ function disconnect(): void {
   lastSubscriptionRefreshTileY = Math.round(state.player.y);
   stopTeleportLoopAudio();
   activeTeleport = null;
+  peerNegotiationReady = false;
+  pendingSignalMessages = [];
   itemBehaviorRegistry.cleanup();
+}
+
+/** Starts peer negotiation only after welcome + media setup sequencing is complete. */
+async function activatePeerNegotiation(): Promise<void> {
+  if (!state.running) return;
+  if (peerNegotiationReady) return;
+  peerNegotiationReady = true;
+  for (const peer of state.peers.values()) {
+    await peerManager.createOrGetPeer(peer.id, true, peer);
+  }
+  if (pendingSignalMessages.length === 0) return;
+  const queued = pendingSignalMessages;
+  pendingSignalMessages = [];
+  for (const signal of queued) {
+    await onAppMessage(signal);
+  }
 }
 
 const onAppMessage = createOnMessageHandler({
@@ -1640,6 +1660,13 @@ const onAppMessage = createOnMessageHandler({
   },
   handleAuthRequired,
   handleAuthResult,
+  isPeerNegotiationReady: () => peerNegotiationReady,
+  enqueuePendingSignal: (message) => {
+    pendingSignalMessages.push(message);
+    if (pendingSignalMessages.length > 500) {
+      pendingSignalMessages.splice(0, pendingSignalMessages.length - 500);
+    }
+  },
 });
 
 /** Handles signaling packets with heartbeat/restart metadata before app-level dispatch. */
@@ -1701,12 +1728,14 @@ async function setupMediaAfterAuth(): Promise<void> {
   const canProceed = await checkMicPermission();
   if (!canProceed) {
     setConnectionStatus('Microphone access is required.');
+    await activatePeerNegotiation();
     return;
   }
   try {
     await populateAudioDevices();
     if (dom.audioInputSelect.options.length === 0) {
       setConnectionStatus('No audio input device found. Open Audio setup or connect a microphone.');
+      await activatePeerNegotiation();
       return;
     }
     const inputDeviceId = dom.audioInputSelect.value || mediaSession.getPreferredInputDeviceId();
@@ -1714,6 +1743,8 @@ async function setupMediaAfterAuth(): Promise<void> {
   } catch (error) {
     console.error(error);
     setConnectionStatus(describeMediaError(error));
+  } finally {
+    await activatePeerNegotiation();
   }
 }
 
