@@ -26,12 +26,12 @@ This is behavior-focused documentation for item types and their defaults.
   - `mediaEffect="off"`
   - `mediaEffectValue=50`
   - `facing=0`
-  - `emitRange=20`
+  - `emitRange=10`
 - Global:
   - `useSound=none`
   - `emitSound=none`
   - `useCooldownMs=1000`
-  - `emitRange=20`
+  - `emitRange=10`
   - `directional=true`
 
 ### Use

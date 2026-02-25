@@ -19,7 +19,7 @@ CAPABILITIES: tuple[str, ...] = ("editable", "carryable", "deletable", "usable")
 USE_SOUND: str | None = None
 EMIT_SOUND: str | None = None
 USE_COOLDOWN_MS = 1000
-EMIT_RANGE = 20
+EMIT_RANGE = 10
 DIRECTIONAL = True
 DEFAULT_TITLE = "radio"
 DEFAULT_PARAMS: dict = {
@@ -30,7 +30,7 @@ DEFAULT_PARAMS: dict = {
     "mediaEffect": "off",
     "mediaEffectValue": 50,
     "facing": 0,
-    "emitRange": 20,
+    "emitRange": 10,
 }
 PARAM_KEYS: tuple[str, ...] = (
     "streamUrl",

@@ -69,7 +69,7 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
     next_params["facing"] = int(round(facing))
 
     try:
-        emit_range = int(next_params.get("emitRange", item.params.get("emitRange", 20)))
+        emit_range = int(next_params.get("emitRange", item.params.get("emitRange", 10)))
     except (TypeError, ValueError) as exc:
         raise ValueError("emitRange must be an integer between 5 and 20.") from exc
     if not (5 <= emit_range <= 20):

@@ -25,7 +25,7 @@
 - `emitSound`: optional continuously-looping spatial sound emitted from the item on the grid; global item field and not user-editable in V1.
 - `capabilities`, `useSound`, and `emitSound` are derived from global item-type definitions at runtime (not stored per-instance in persisted state).
 - `useCooldownMs`: global per item type (`radio_station=1000`, `dice=1000`, `wheel=4000`, `clock=1000`, `widget=1000`, `piano=1000`), not per-instance editable.
-- `emitRange`: global spatial range default per item type (`radio_station=20`, `dice=15`, `wheel=15`, `clock=10`, `widget=15`, `piano=15`).
+- `emitRange`: global spatial range default per item type (`radio_station=10`, `dice=15`, `wheel=15`, `clock=10`, `widget=15`, `piano=15`).
   - `radio_station` can override this per instance via `params.emitRange` (`5..20`).
 - `directional`: global directional attenuation flag per item type (`radio_station=true`, others `false`); `widget` can override per instance via `params.directional`.
 
@@ -66,7 +66,7 @@
   "mediaEffect": "off",
   "mediaEffectValue": 50,
   "facing": 0,
-  "emitRange": 20
+  "emitRange": 10
 }
 ```
 
@@ -79,7 +79,7 @@
 - `mediaEffectValue`: number, range `0-100`, precision `0.1`.
 - `facing`: number, range `0-360`, step `1` (used when `directional=true`).
 - UI visibility: `facing` is shown only when `directional=true` (`visibleWhen` metadata).
-- `emitRange`: integer, range `5-20`, default `20`.
+- `emitRange`: integer, range `5-20`, default `10`.
 
 ### `dice`
 
