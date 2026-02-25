@@ -100,6 +100,8 @@ type Dom = {
   registerPasswordConfirm: HTMLInputElement;
   registerEmail: HTMLInputElement;
   authPolicyHintRegister: HTMLParagraphElement;
+  authSessionView: HTMLElement;
+  authSessionText: HTMLParagraphElement;
   showRegisterButton: HTMLButtonElement;
   showLoginButton: HTMLButtonElement;
   updatesSection: HTMLElement;
@@ -133,6 +135,8 @@ const dom: Dom = {
   registerPasswordConfirm: requiredById('registerPasswordConfirm'),
   registerEmail: requiredById('registerEmail'),
   authPolicyHintRegister: requiredById('authPolicyHintRegister'),
+  authSessionView: requiredById('authSessionView'),
+  authSessionText: requiredById('authSessionText'),
   showRegisterButton: requiredById('showRegisterButton'),
   showLoginButton: requiredById('showLoginButton'),
   updatesSection: requiredById('updatesSection'),
@@ -587,10 +591,20 @@ function updateConnectAvailability(): void {
     dom.connectButton.disabled = true;
     dom.loginView.classList.add('hidden');
     dom.registerView.classList.add('hidden');
+    dom.authSessionView.classList.add('hidden');
     return;
   }
-  dom.loginView.classList.toggle('hidden', authMode !== 'login');
-  dom.registerView.classList.toggle('hidden', authMode !== 'register');
+  if (hasSessionToken) {
+    const label = sanitizeAuthUsername(authUsername) || 'current account';
+    dom.authSessionText.textContent = `Logged in as ${label}.`;
+    dom.loginView.classList.add('hidden');
+    dom.registerView.classList.add('hidden');
+    dom.authSessionView.classList.remove('hidden');
+  } else {
+    dom.loginView.classList.toggle('hidden', authMode !== 'login');
+    dom.registerView.classList.toggle('hidden', authMode !== 'register');
+    dom.authSessionView.classList.add('hidden');
+  }
   const usernameMin = authPolicy?.usernameMinLength ?? 1;
   const passwordMin = authPolicy?.passwordMinLength ?? 1;
   const hasLoginCredentials =
@@ -1115,8 +1129,9 @@ function formatCoordinate(value: number): string {
 /** Persists current local player coordinates for reconnect/refresh restore. */
 function persistPlayerPosition(): void {
   try {
+    const positionKey = getPlayerPositionStorageKey();
     localStorage.setItem(
-      'spatialChatPosition',
+      positionKey,
       JSON.stringify({ x: state.player.x, y: state.player.y }),
     );
   } catch {
@@ -1126,7 +1141,7 @@ function persistPlayerPosition(): void {
 
 /** Loads previously persisted local player coordinates, when available and valid. */
 function getPersistedPlayerPosition(): { x: number; y: number } | null {
-  const raw = localStorage.getItem('spatialChatPosition');
+  const raw = localStorage.getItem(getPlayerPositionStorageKey());
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
@@ -1136,6 +1151,12 @@ function getPersistedPlayerPosition(): { x: number; y: number } | null {
   } catch {
     return null;
   }
+}
+
+/** Resolves local storage key for per-account saved player position. */
+function getPlayerPositionStorageKey(): string {
+  const usernameKey = sanitizeAuthUsername(authUsername);
+  return usernameKey ? `spatialChatPosition:${usernameKey}` : 'spatialChatPosition';
 }
 
 /** Picks one random footstep sample URL. */
