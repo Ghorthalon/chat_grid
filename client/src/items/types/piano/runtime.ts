@@ -1,11 +1,12 @@
 import {
   DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT,
-  PIANO_INSTRUMENT_OPTIONS,
   PianoSynth,
+  isPianoInstrumentId,
   type PianoInstrumentId,
 } from '../../../audio/pianoSynth';
 import { type IncomingMessage, type OutgoingMessage } from '../../../network/protocol';
 import { type GameMode, type WorldItem } from '../../../state/gameState';
+import { getItemPropertyOptionValues } from '../../itemRegistry';
 
 const PIANO_WHITE_KEY_MIDI_BY_CODE: Record<string, number> = {
   KeyA: 60,
@@ -321,8 +322,9 @@ export class PianoController {
     if (code.startsWith('Digit')) {
       const digit = Number(code.slice(5));
       const instrumentIndex = digit === 0 ? 9 : digit - 1;
-      if (Number.isInteger(instrumentIndex) && instrumentIndex >= 0 && instrumentIndex < PIANO_INSTRUMENT_OPTIONS.length) {
-        const instrument = PIANO_INSTRUMENT_OPTIONS[instrumentIndex];
+      const shortcutInstruments = this.getShortcutInstruments();
+      if (Number.isInteger(instrumentIndex) && instrumentIndex >= 0 && instrumentIndex < shortcutInstruments.length) {
+        const instrument = shortcutInstruments[instrumentIndex];
         if (instrument) {
           const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
           const voiceMode = this.defaultsVoiceModeForInstrument(instrument);
@@ -646,16 +648,22 @@ export class PianoController {
 
   private normalizePianoInstrument(value: unknown): PianoInstrumentId {
     const raw = String(value ?? 'piano').trim().toLowerCase();
-    if (raw === 'electric_piano') return 'electric_piano';
-    if (raw === 'guitar') return 'guitar';
-    if (raw === 'organ') return 'organ';
-    if (raw === 'bass') return 'bass';
-    if (raw === 'violin') return 'violin';
-    if (raw === 'synth_lead') return 'synth_lead';
-    if (raw === 'brass') return 'brass';
-    if (raw === 'nintendo') return 'nintendo';
-    if (raw === 'drum_kit') return 'drum_kit';
+    if (isPianoInstrumentId(raw)) return raw;
     return 'piano';
+  }
+
+  private getShortcutInstruments(): PianoInstrumentId[] {
+    const options = getItemPropertyOptionValues('piano', 'instrument') ?? [];
+    const normalized: PianoInstrumentId[] = [];
+    const seen = new Set<string>();
+    for (const option of options) {
+      const raw = option.trim().toLowerCase();
+      if (!isPianoInstrumentId(raw) || seen.has(raw)) continue;
+      seen.add(raw);
+      normalized.push(raw);
+      if (normalized.length >= 10) break;
+    }
+    return normalized;
   }
 
   private getPianoMidiForCode(code: string): number | null {

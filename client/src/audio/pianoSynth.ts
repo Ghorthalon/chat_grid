@@ -15,6 +15,22 @@ export const PIANO_INSTRUMENT_OPTIONS = [
 
 export type PianoInstrumentId = (typeof PIANO_INSTRUMENT_OPTIONS)[number];
 
+/** Returns whether a runtime string is one of the supported piano instrument ids. */
+export function isPianoInstrumentId(value: string): value is PianoInstrumentId {
+  return (
+    value === 'piano' ||
+    value === 'electric_piano' ||
+    value === 'guitar' ||
+    value === 'organ' ||
+    value === 'bass' ||
+    value === 'violin' ||
+    value === 'synth_lead' ||
+    value === 'brass' ||
+    value === 'nintendo' ||
+    value === 'drum_kit'
+  );
+}
+
 type VoiceRuntime = {
   gain: GainNode;
   panner: StereoPannerNode | null;
