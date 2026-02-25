@@ -16,3 +16,6 @@ client/dist/
 .DS_Store
 *.log
 *.bak
+
+# Local planning scratch
+plans/
