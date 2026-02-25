@@ -103,7 +103,6 @@ type Dom = {
   authSessionView: HTMLElement;
   authSessionText: HTMLParagraphElement;
   showRegisterButton: HTMLButtonElement;
-  showLoginButton: HTMLButtonElement;
   updatesSection: HTMLElement;
   updatesToggle: HTMLButtonElement;
   updatesPanel: HTMLDivElement;
@@ -138,7 +137,6 @@ const dom: Dom = {
   authSessionView: requiredById('authSessionView'),
   authSessionText: requiredById('authSessionText'),
   showRegisterButton: requiredById('showRegisterButton'),
-  showLoginButton: requiredById('showLoginButton'),
   updatesSection: requiredById('updatesSection'),
   updatesToggle: requiredById('updatesToggle'),
   updatesPanel: requiredById('updatesPanel'),
@@ -598,13 +596,12 @@ function updateConnectAvailability(): void {
     const label = sanitizeAuthUsername(authUsername) || 'current account';
     dom.authSessionText.textContent = `Logged in as ${label}.`;
     dom.showRegisterButton.classList.add('hidden');
-    dom.showLoginButton.classList.add('hidden');
     dom.loginView.classList.add('hidden');
     dom.registerView.classList.add('hidden');
     dom.authSessionView.classList.remove('hidden');
   } else {
     dom.showRegisterButton.classList.remove('hidden');
-    dom.showLoginButton.classList.remove('hidden');
+    dom.showRegisterButton.textContent = authMode === 'login' ? 'Register' : 'Login';
     dom.loginView.classList.toggle('hidden', authMode !== 'login');
     dom.registerView.classList.toggle('hidden', authMode !== 'register');
     dom.authSessionView.classList.add('hidden');
@@ -2634,12 +2631,13 @@ function setupUiHandlers(): void {
     setOutputDevice: (id) => peerManager.setOutputDevice(id),
   });
   dom.showRegisterButton.addEventListener('click', () => {
-    setAuthMode('register');
-    dom.registerUsername.focus();
-  });
-  dom.showLoginButton.addEventListener('click', () => {
-    setAuthMode('login');
-    dom.authUsername.focus();
+    if (authMode === 'login') {
+      setAuthMode('register');
+      dom.registerUsername.focus();
+    } else {
+      setAuthMode('login');
+      dom.authUsername.focus();
+    }
   });
   dom.logoutButton.addEventListener('click', () => {
     logOutAccount();
