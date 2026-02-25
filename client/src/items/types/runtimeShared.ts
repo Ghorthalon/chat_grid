@@ -32,5 +32,6 @@ export type ItemBehavior = {
   handleModeInput?: (mode: GameMode, code: string) => boolean;
   handleModeKeyUp?: (mode: GameMode, code: string) => boolean;
   onRemotePianoNote?: (message: Extract<IncomingMessage, { type: 'item_piano_note' }>) => void;
+  onPianoStatus?: (message: Extract<IncomingMessage, { type: 'item_piano_status' }>) => void;
   onStopAllRemoteNotesForSender?: (senderId: string) => void;
 };

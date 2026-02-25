@@ -83,6 +83,13 @@ export class ItemBehaviorRegistry {
     }
   }
 
+  /** Routes incoming item-piano-status packets to behavior modules that track piano runtime state. */
+  onPianoStatus(message: Extract<IncomingMessage, { type: 'item_piano_status' }>): void {
+    for (const behavior of this.behaviors) {
+      behavior.onPianoStatus?.(message);
+    }
+  }
+
   /** Stops all remote notes for one sender across behavior modules that own remote note runtimes. */
   stopAllRemoteNotesForSender(senderId: string): void {
     for (const behavior of this.behaviors) {

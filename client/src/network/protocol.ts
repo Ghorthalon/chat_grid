@@ -180,6 +180,21 @@ export const itemPianoNoteSchema = z.object({
   emitRange: z.number().int().min(1),
 });
 
+export const itemPianoStatusSchema = z.object({
+  type: z.literal('item_piano_status'),
+  itemId: z.string(),
+  event: z.enum([
+    'use_mode_entered',
+    'record_started',
+    'record_paused',
+    'record_resumed',
+    'record_stopped',
+    'playback_started',
+    'playback_stopped',
+  ]),
+  recordingState: z.enum(['idle', 'recording', 'paused', 'playback']).optional(),
+});
+
 export const incomingMessageSchema = z.discriminatedUnion('type', [
   welcomeMessageSchema,
   signalMessageSchema,
@@ -194,6 +209,7 @@ export const incomingMessageSchema = z.discriminatedUnion('type', [
   itemActionResultSchema,
   itemUseSoundSchema,
   itemPianoNoteSchema,
+  itemPianoStatusSchema,
 ]);
 
 export type IncomingMessage = z.infer<typeof incomingMessageSchema>;

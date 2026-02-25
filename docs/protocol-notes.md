@@ -31,11 +31,14 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `item_action_result`: action success/failure and user-facing message.
 - `item_use_sound`: spatial one-shot sound on successful item use (if `useSound` configured).
 - `item_piano_note`: broadcast piano note on/off with resolved instrument/envelope/spatial params.
+- `item_piano_status`: structured piano mode/record/playback state events for client runtime control.
 
 ## Item Packet Behavior
 
 - `item_upsert` is full-state replacement for one item, not partial patch.
 - `item_action_result` messages are intended for direct screen-reader/user status feedback.
+- Piano runtime control no longer depends on parsing `item_action_result.message` text.
+- `item_piano_status` carries machine-readable piano events (`use_mode_entered`, record/playback transitions).
 - `item_use_sound` contains absolute item world coordinates (`x`, `y`) and sound path.
 - `item_piano_note` contains:
   - `itemId`, `senderId`, `keyId`, `midi`, `on`

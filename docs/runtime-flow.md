@@ -46,6 +46,7 @@ Core incoming message effects:
 - `item_action_result`: success/error status for actions.
 - `item_use_sound`: play one-shot spatial sample (world layer gated).
 - `item_piano_note`: start/stop synthesized piano notes from remote users (item layer gated).
+- `item_piano_status`: structured piano mode/record/playback transitions (client runtime state).
 - `pong`:
   - positive `clientSentAt`: user ping response (`P` command)
   - negative `clientSentAt`: internal heartbeat response

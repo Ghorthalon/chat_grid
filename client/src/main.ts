@@ -1379,6 +1379,7 @@ const onAppMessage = createOnMessageHandler({
   },
   handleItemActionResultStatus: (message) => itemBehaviorRegistry.onActionResultStatus(message),
   handleRemotePianoNote: (message) => itemBehaviorRegistry.onRemotePianoNote(message),
+  handlePianoStatus: (message) => itemBehaviorRegistry.onPianoStatus(message),
   stopAllRemoteNotesForSender: (senderId) => itemBehaviorRegistry.stopAllRemoteNotesForSender(senderId),
   TELEPORT_SOUND_URL,
   TELEPORT_START_SOUND_URL,

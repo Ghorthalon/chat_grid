@@ -591,6 +591,8 @@ async def test_piano_recording_toggle_and_save(monkeypatch: pytest.MonkeyPatch) 
         client,
         json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "toggle_record"}),
     )
+    assert send_payloads[-2].type == "item_piano_status"
+    assert send_payloads[-2].event == "record_started"
     assert send_payloads[-1].ok is True
     assert item.id in server.piano_recording_state_by_item
 
@@ -606,16 +608,20 @@ async def test_piano_recording_toggle_and_save(monkeypatch: pytest.MonkeyPatch) 
         client,
         json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "toggle_record"}),
     )
+    assert send_payloads[-2].type == "item_piano_status"
+    assert send_payloads[-2].event == "record_paused"
     assert send_payloads[-1].ok is True
-    assert send_payloads[-1].message == "pause"
+    assert send_payloads[-1].message == "Recording paused."
     assert item.id in server.piano_recording_state_by_item
 
     await server._handle_message(
         client,
         json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "stop_record"}),
     )
+    assert send_payloads[-2].type == "item_piano_status"
+    assert send_payloads[-2].event == "record_stopped"
     assert send_payloads[-1].ok is True
-    assert send_payloads[-1].message == "stop"
+    assert send_payloads[-1].message == "Recording stopped."
     assert item.id not in server.piano_recording_state_by_item
     song_id = item.params.get("songId")
     assert isinstance(song_id, str)
@@ -665,6 +671,8 @@ async def test_piano_playback_starts_task(monkeypatch: pytest.MonkeyPatch) -> No
         client,
         json.dumps({"type": "item_piano_recording", "itemId": item.id, "action": "playback"}),
     )
+    assert send_payloads[-2].type == "item_piano_status"
+    assert send_payloads[-2].event == "playback_started"
     assert send_payloads[-1].ok is True
     task = server.piano_playback_tasks_by_item.get(item.id)
     assert task is not None

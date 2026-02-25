@@ -49,6 +49,7 @@ type MessageHandlerDeps = {
   playRemoteSpatialStepOrTeleport: (url: string, peerX: number, peerY: number) => void;
   handleItemActionResultStatus: (message: Extract<IncomingMessage, { type: 'item_action_result' }>) => boolean;
   handleRemotePianoNote: (message: Extract<IncomingMessage, { type: 'item_piano_note' }>) => void;
+  handlePianoStatus: (message: Extract<IncomingMessage, { type: 'item_piano_status' }>) => void;
   stopAllRemoteNotesForSender: (senderId: string) => void;
   TELEPORT_SOUND_URL: string;
   TELEPORT_START_SOUND_URL: string;
@@ -270,6 +271,11 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
       case 'item_piano_note': {
         if (!deps.getAudioLayers().item) break;
         deps.handleRemotePianoNote(message);
+        break;
+      }
+
+      case 'item_piano_status': {
+        deps.handlePianoStatus(message);
         break;
       }
     }

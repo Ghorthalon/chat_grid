@@ -247,3 +247,18 @@ class ItemPianoNoteBroadcastPacket(BasePacket):
     x: int
     y: int
     emitRange: int
+
+
+class ItemPianoStatusPacket(BasePacket):
+    type: Literal["item_piano_status"]
+    itemId: str
+    event: Literal[
+        "use_mode_entered",
+        "record_started",
+        "record_paused",
+        "record_resumed",
+        "record_stopped",
+        "playback_started",
+        "playback_stopped",
+    ]
+    recordingState: Literal["idle", "recording", "paused", "playback"] | None = None

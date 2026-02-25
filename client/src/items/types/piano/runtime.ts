@@ -4,7 +4,7 @@ import {
   isPianoInstrumentId,
   type PianoInstrumentId,
 } from '../../../audio/pianoSynth';
-import { type IncomingMessage, type OutgoingMessage } from '../../../network/protocol';
+import { type OutgoingMessage } from '../../../network/protocol';
 import { type GameMode, type WorldItem } from '../../../state/gameState';
 import { getItemPropertyOptionValues } from '../../itemRegistry';
 
@@ -494,25 +494,36 @@ export class PianoController {
     }
   }
 
-  /** Applies recording-state transitions from successful piano use result messages. */
-  onUseResultMessage(message: IncomingMessage): void {
-    if (
-      message.type !== 'item_action_result' ||
-      !message.ok ||
-      message.action !== 'use' ||
-      typeof message.itemId !== 'string' ||
-      !this.activePianoItemId ||
-      message.itemId !== this.activePianoItemId
-    ) {
+  /** Applies server-reported piano mode/recording/playback state transitions. */
+  onPianoStatus(message: {
+    itemId: string;
+    event:
+      | 'use_mode_entered'
+      | 'record_started'
+      | 'record_paused'
+      | 'record_resumed'
+      | 'record_stopped'
+      | 'playback_started'
+      | 'playback_stopped';
+    recordingState?: 'idle' | 'recording' | 'paused' | 'playback';
+  }): void {
+    if (message.event === 'use_mode_entered') {
+      void this.startUseMode(message.itemId);
       return;
     }
-    if (message.message === 'record' || message.message === 'resume') {
-      this.activePianoRecordingState = 'recording';
-    } else if (message.message === 'pause') {
-      this.activePianoRecordingState = 'paused';
-    } else if (message.message === 'stop') {
-      this.activePianoRecordingState = 'idle';
+    if (!this.activePianoItemId || message.itemId !== this.activePianoItemId) {
+      return;
     }
+    const state = message.recordingState;
+    if (state === 'recording') {
+      this.activePianoRecordingState = 'recording';
+      return;
+    }
+    if (state === 'paused') {
+      this.activePianoRecordingState = 'paused';
+      return;
+    }
+    this.activePianoRecordingState = 'idle';
   }
 
   /** Exits piano mode if the active piano item disappears from local world state. */

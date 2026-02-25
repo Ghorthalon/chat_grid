@@ -11,17 +11,6 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
     openHelpViewer: deps.openHelpViewer,
   });
 
-  const statusMessages = new Set([
-    'record',
-    'pause',
-    'resume',
-    'play',
-    'stop',
-    'No recording saved on this piano.',
-    'Stop recording before playback.',
-    'This piano is already recording.',
-  ]);
-
   return {
     onInit: async () => {
       await controller.loadHelpFromUrl(deps.withBase('piano.json'));
@@ -30,25 +19,10 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
     onCleanup: () => {
       controller.cleanup();
     },
-    onUseResultMessage: (message) => {
-      controller.onUseResultMessage(message);
-      if (
-        message.type === 'item_action_result' &&
-        message.ok &&
-        message.action === 'use' &&
-        typeof message.itemId === 'string' &&
-        typeof message.message === 'string' &&
-        message.message.toLowerCase().includes('begin playing')
-      ) {
-        const item = deps.state.items.get(message.itemId);
-        if (item?.type === 'piano') {
-          void controller.startUseMode(item.id);
-        }
-      }
-    },
     onActionResultStatus: (message) => {
-      if (message.action !== 'use') return false;
-      if (!statusMessages.has(message.message)) return false;
+      if (message.action !== 'use' || typeof message.itemId !== 'string') return false;
+      const item = deps.state.items.get(message.itemId);
+      if (item?.type !== 'piano') return false;
       deps.updateStatus(message.message);
       if (message.ok) {
         deps.audio.sfxUiBlip();
@@ -56,6 +30,9 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
         deps.audio.sfxUiCancel();
       }
       return true;
+    },
+    onPianoStatus: (message) => {
+      controller.onPianoStatus(message);
     },
     onPropertyPreviewChange: (item, key, value) => {
       controller.onPreviewPropertyChange(item, key, value);
