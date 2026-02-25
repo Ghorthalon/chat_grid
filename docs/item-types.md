@@ -38,6 +38,7 @@ This is behavior-focused documentation for item types and their defaults.
 
 ### Use
 - `use` toggles `enabled` on/off and broadcasts chat status.
+- `secondary use` reports now-playing metadata (`Playing <song> from <station>`), or `<title> is off` when disabled.
 
 ### Validation
 - `mediaChannel`: `stereo | mono | left | right`

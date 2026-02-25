@@ -8,5 +8,10 @@ from . import actions, definition, validator
 ITEM_TYPE_PLUGIN = {
     "type": "radio_station",
     "order": 40,
-    "module": build_item_module(definition, validate_update=validator.validate_update, use_item=actions.use_item),
+    "module": build_item_module(
+        definition,
+        validate_update=validator.validate_update,
+        use_item=actions.use_item,
+        secondary_use_item=actions.secondary_use_item,
+    ),
 }

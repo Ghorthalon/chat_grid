@@ -256,10 +256,10 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
           break;
         }
         if (message.ok) {
-          if (message.action === 'use') {
+          if (message.action === 'use' || message.action === 'secondary_use') {
             deps.pushChatMessage(message.message);
             const item = message.itemId ? deps.getItemById(message.itemId) : null;
-            if (!item?.useSound && item && item.type !== 'piano') {
+            if (message.action === 'use' && !item?.useSound && item && item.type !== 'piano') {
               deps.playLocateToneAt(item.x, item.y);
             }
           } else if (message.action !== 'update') {

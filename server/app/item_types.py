@@ -25,3 +25,4 @@ class ItemTypeHandler:
 
     validate_update: Callable[[WorldItem, dict], dict]
     use: Callable[[WorldItem, str, Callable[[dict], str]], ItemUseResult]
+    secondary_use: Callable[[WorldItem, str, Callable[[dict], str]], ItemUseResult] | None = None

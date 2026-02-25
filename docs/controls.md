@@ -28,6 +28,7 @@ This document is the authoritative keymap for the client.
 - `D`: Pick up/drop item
 - `Shift+D`: Delete item
 - `Enter`: Use item
+- `Shift+Enter`: Secondary item action
 
 ### Audio
 - `P`: Ping server

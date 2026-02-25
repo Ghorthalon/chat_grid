@@ -21,7 +21,7 @@ export type WorldItem = {
   carrierId?: string | null;
 };
 
-export type SelectionContext = 'pickup' | 'drop' | 'delete' | 'edit' | 'use' | 'inspect' | null;
+export type SelectionContext = 'pickup' | 'drop' | 'delete' | 'edit' | 'use' | 'secondaryUse' | 'inspect' | null;
 
 export type GameMode =
   | 'normal'

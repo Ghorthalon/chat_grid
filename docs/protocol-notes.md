@@ -20,6 +20,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `chat_message`: player chat.
 - `ping`: latency measurement.
 - `item_add`, `item_pickup`, `item_drop`, `item_delete`, `item_use`, `item_update`: item actions.
+- `item_secondary_use`: trigger type-specific secondary action when implemented.
 - `item_piano_note`: realtime piano note on/off for active piano use mode.
 - `item_piano_recording`: piano record/playback control (`toggle_record`, `playback`, `stop_playback`).
 

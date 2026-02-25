@@ -1021,6 +1021,11 @@ function useItem(item: WorldItem): void {
   signaling.send({ type: 'item_use', itemId: item.id });
 }
 
+/** Sends an item secondary-use request for the selected item. */
+function secondaryUseItem(item: WorldItem): void {
+  signaling.send({ type: 'item_secondary_use', itemId: item.id });
+}
+
 /** Opens option-list selection mode for list-based item properties. */
 function openItemPropertyOptionSelect(item: WorldItem, key: string): void {
   const options = getItemPropertyOptionValues(item.type, key);
@@ -1825,6 +1830,26 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       beginItemSelection('use', usable);
       return;
     }
+    case 'secondaryUseItem': {
+      const carried = getCarriedItem();
+      if (carried) {
+        secondaryUseItem(carried);
+        return;
+      }
+      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
+      const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
+      if (usable.length === 0) {
+        updateStatus('No usable items here.');
+        audio.sfxUiCancel();
+        return;
+      }
+      if (usable.length === 1) {
+        secondaryUseItem(usable[0]);
+        return;
+      }
+      beginItemSelection('secondaryUse', usable);
+      return;
+    }
     case 'speakUsers': {
       const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((p) => p.nickname)];
       const label = allUsers.length === 1 ? 'user' : 'users';
@@ -2381,6 +2406,10 @@ function handleSelectItemModeInput(code: string, key: string): void {
     }
     if (context === 'use') {
       useItem(selected);
+      return;
+    }
+    if (context === 'secondaryUse') {
+      secondaryUseItem(selected);
       return;
     }
     if (context === 'inspect') {

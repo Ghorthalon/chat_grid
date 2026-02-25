@@ -103,6 +103,69 @@ async def test_radio_metadata_refresh_skips_when_no_listener_in_range(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_item_secondary_use_radio_reports_now_playing(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None, grid_size=41)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=5)
+    server.clients[ws] = client
+
+    radio = server.item_service.default_item(client, "radio_station")
+    radio.x = 5
+    radio.y = 5
+    radio.params["enabled"] = True
+    radio.params["stationName"] = "Station X"
+    radio.params["nowPlaying"] = "Song Y"
+    server.item_service.add_item(radio)
+
+    send_payloads: list[object] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        return None
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+
+    await server._handle_message(client, json.dumps({"type": "item_secondary_use", "itemId": radio.id}))
+
+    results = [packet for packet in send_payloads if getattr(packet, "type", "") == "item_action_result"]
+    assert results
+    assert results[-1].ok is True
+    assert results[-1].action == "secondary_use"
+    assert "Playing Song Y from Station X." in results[-1].message
+
+
+@pytest.mark.asyncio
+async def test_item_secondary_use_missing_handler_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None, grid_size=41)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=5)
+    server.clients[ws] = client
+
+    dice = server.item_service.default_item(client, "dice")
+    dice.x = 5
+    dice.y = 5
+    server.item_service.add_item(dice)
+
+    send_payloads: list[object] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+
+    await server._handle_message(client, json.dumps({"type": "item_secondary_use", "itemId": dice.id}))
+
+    results = [packet for packet in send_payloads if getattr(packet, "type", "") == "item_action_result"]
+    assert results
+    assert results[-1].ok is False
+    assert results[-1].action == "secondary_use"
+    assert "No secondary action" in results[-1].message
+
+
+@pytest.mark.asyncio
 async def test_auth_login_uses_hash_offload(monkeypatch: pytest.MonkeyPatch) -> None:
     server = SignalingServer("127.0.0.1", 8765, None, None)
     username = f"alpha_{uuid.uuid4().hex[:8]}"

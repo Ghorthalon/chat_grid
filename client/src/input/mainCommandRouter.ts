@@ -19,6 +19,7 @@ export type MainModeCommand =
   | 'openMicGainEdit'
   | 'calibrateMicrophone'
   | 'useItem'
+  | 'secondaryUseItem'
   | 'speakUsers'
   | 'addItem'
   | 'locateOrListItems'
@@ -51,7 +52,7 @@ export function resolveMainModeCommand(code: string, shiftKey: boolean): MainMod
   if (code === 'NumpadSubtract') return 'masterVolumeDown';
   if (code === 'KeyC') return shiftKey ? null : 'speakCoordinates';
   if (code === 'KeyV') return shiftKey ? 'calibrateMicrophone' : 'openMicGainEdit';
-  if (code === 'Enter') return 'useItem';
+  if (code === 'Enter') return shiftKey ? 'secondaryUseItem' : 'useItem';
   if (code === 'KeyU') return shiftKey ? null : 'speakUsers';
   if (code === 'KeyA') return shiftKey ? null : 'addItem';
   if (code === 'KeyI') return 'locateOrListItems';

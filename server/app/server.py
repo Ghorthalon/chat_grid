@@ -68,6 +68,7 @@ from .models import (
     ItemPianoStatusPacket,
     ItemPickupPacket,
     ItemRemovePacket,
+    ItemSecondaryUsePacket,
     ItemUpdatePacket,
     ItemUpsertPacket,
     ItemUsePacket,
@@ -876,7 +877,7 @@ class SignalingServer:
         self,
         client: ClientConnection,
         ok: bool,
-        action: Literal["add", "pickup", "drop", "delete", "use", "update"],
+        action: Literal["add", "pickup", "drop", "delete", "use", "secondary_use", "update"],
         message: str,
         item_id: str | None = None,
     ) -> None:
@@ -1669,6 +1670,49 @@ class SignalingServer:
                         others_message=use_result.delayed_others_message,
                     )
                 )
+            return
+
+        if isinstance(packet, ItemSecondaryUsePacket):
+            item = self.items.get(packet.itemId)
+            if not item:
+                await self._send_item_result(client, False, "secondary_use", "Item not found.")
+                return
+            if item.carrierId not in (None, client.id):
+                await self._send_item_result(client, False, "secondary_use", "Item is not available.", item.id)
+                return
+            if item.carrierId is None and (item.x != client.x or item.y != client.y):
+                await self._send_item_result(client, False, "secondary_use", "Item is not on your square.", item.id)
+                return
+            handler = get_item_type_handler(item.type)
+            if handler.secondary_use is None:
+                await self._send_item_result(
+                    client,
+                    False,
+                    "secondary_use",
+                    f"No secondary action for {item.title}.",
+                    item.id,
+                )
+                return
+            try:
+                secondary_result = handler.secondary_use(item, client.nickname, self._format_clock_display_time)
+            except ValueError as exc:
+                await self._send_item_result(client, False, "secondary_use", str(exc), item.id)
+                return
+            if secondary_result.updated_params is not None:
+                try:
+                    item.params = handler.validate_update(item, {**item.params, **secondary_result.updated_params})
+                except ValueError as exc:
+                    await self._send_item_result(client, False, "secondary_use", str(exc), item.id)
+                    return
+                item.updatedAt = self.item_service.now_ms()
+                item.version += 1
+                self._request_state_save()
+                await self._broadcast_item(item)
+            await self._broadcast(
+                BroadcastChatMessagePacket(type="chat_message", message=secondary_result.others_message, system=True),
+                exclude=client.websocket,
+            )
+            await self._send_item_result(client, True, "secondary_use", secondary_result.self_message, item.id)
             return
 
         if isinstance(packet, ItemPianoNotePacket):

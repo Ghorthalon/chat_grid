@@ -28,6 +28,7 @@ class ItemModule(Protocol):
     PROPERTY_METADATA: dict[str, dict[str, object]]
     validate_update: Callable[[WorldItem, dict], dict]
     use_item: Callable[[WorldItem, str, Callable[[dict], str]], ItemUseResult]
+    secondary_use_item: Callable[[WorldItem, str, Callable[[dict], str]], ItemUseResult] | None
 
 
 @dataclass(frozen=True)
