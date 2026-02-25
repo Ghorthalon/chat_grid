@@ -104,3 +104,32 @@ async def test_item_add_rejects_unknown_type(monkeypatch: pytest.MonkeyPatch) ->
     assert send_payloads
     assert send_payloads[-1].ok is False
     assert "unknown item type" in send_payloads[-1].message.lower()
+
+
+@pytest.mark.asyncio
+async def test_update_position_enforces_cumulative_budget_per_tick(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None, grid_size=41, movement_tick_ms=100, movement_max_steps_per_tick=2)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester", x=5, y=5)
+    server.clients[ws] = client
+
+    fixed_now = 10_000
+    monkeypatch.setattr(server.item_service, "now_ms", lambda: fixed_now)
+
+    broadcast_payloads: list[object] = []
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+
+    # First 1-step move in this tick: allowed.
+    await server._handle_message(client, json.dumps({"type": "update_position", "x": 6, "y": 5}))
+    # Second 1-step move in the same tick: allowed (budget now exhausted at 2).
+    await server._handle_message(client, json.dumps({"type": "update_position", "x": 7, "y": 5}))
+    # Third 1-step move in the same tick: must be rejected.
+    await server._handle_message(client, json.dumps({"type": "update_position", "x": 8, "y": 5}))
+
+    assert client.x == 7
+    assert client.y == 5
+    assert len(broadcast_payloads) == 2

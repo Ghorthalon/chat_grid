@@ -576,12 +576,23 @@ class SignalingServer:
 
         return 0 <= x < self.grid_size and 0 <= y < self.grid_size
 
-    def _max_allowed_position_delta(self, client: ClientConnection, now_ms: int) -> int:
-        """Compute max allowed movement delta using server-authoritative rate policy."""
+    def _movement_window_index(self, now_ms: int) -> int:
+        """Return current movement rate-limit window index for a server timestamp."""
 
-        elapsed_ms = max(0, now_ms - max(0, client.last_position_update_ms))
-        windows = max(1, elapsed_ms // self.movement_tick_ms)
-        return max(1, windows * self.movement_max_steps_per_tick)
+        return max(0, now_ms // self.movement_tick_ms)
+
+    def _consume_movement_budget(self, client: ClientConnection, now_ms: int, requested_delta: int) -> bool:
+        """Consume per-window movement budget; return whether the move is allowed."""
+
+        window_index = self._movement_window_index(now_ms)
+        if client.movement_window_index != window_index:
+            client.movement_window_index = window_index
+            client.movement_window_steps_used = 0
+        remaining = max(0, self.movement_max_steps_per_tick - client.movement_window_steps_used)
+        if requested_delta > remaining:
+            return False
+        client.movement_window_steps_used += requested_delta
+        return True
 
     @staticmethod
     def _normalize_clock_timezone(value: object) -> str:
@@ -699,7 +710,10 @@ class SignalingServer:
         client = ClientConnection(websocket=websocket, id=str(uuid.uuid4()))
         client.x = random.randrange(self.grid_size)
         client.y = random.randrange(self.grid_size)
-        client.last_position_update_ms = self.item_service.now_ms()
+        now_ms = self.item_service.now_ms()
+        client.last_position_update_ms = now_ms
+        client.movement_window_index = self._movement_window_index(now_ms)
+        client.movement_window_steps_used = 0
         self.clients[websocket] = client
         LOGGER.info("client connected id=%s total=%d", client.id, len(self.clients))
 
@@ -827,17 +841,18 @@ class SignalingServer:
                 return
             now_ms = self.item_service.now_ms()
             requested_delta = max(abs(packet.x - client.x), abs(packet.y - client.y))
-            max_delta = self._max_allowed_position_delta(client, now_ms)
-            if requested_delta > max_delta:
+            if not self._consume_movement_budget(client, now_ms, requested_delta):
+                remaining = max(0, self.movement_max_steps_per_tick - client.movement_window_steps_used)
                 PACKET_LOGGER.warning(
-                    "position rate limit ignored id=%s from=%d,%d to=%d,%d requested_delta=%d max_delta=%d",
+                    "position rate limit ignored id=%s from=%d,%d to=%d,%d requested_delta=%d remaining_budget=%d window=%d",
                     client.id,
                     client.x,
                     client.y,
                     packet.x,
                     packet.y,
                     requested_delta,
-                    max_delta,
+                    remaining,
+                    client.movement_window_index,
                 )
                 return
             client.x = packet.x
