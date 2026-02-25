@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import base64
 import hashlib
 import hmac
-import os
 from pathlib import Path
 import re
 import secrets
@@ -14,31 +12,23 @@ import sqlite3
 import threading
 import time
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+
 
 SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000
-SALT_BYTES = 16
-PBKDF2_ITERATIONS = 310_000
-PBKDF2_DKLEN = 32
+ARGON2_TIME_COST = 3
+ARGON2_MEMORY_COST = 65536
+ARGON2_PARALLELISM = 1
+ARGON2_HASH_LEN = 32
+ARGON2_SALT_LEN = 16
 USERNAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
 
-def _build_dummy_password_hash() -> str:
-    """Build one deterministic PBKDF2 hash used to equalize login miss timing."""
+def _build_dummy_password_hash(password_hasher: PasswordHasher) -> str:
+    """Build one deterministic Argon2id hash used to equalize login miss timing."""
 
-    salt = b"chgrid_dummy_salt"
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        b"chgrid_dummy_password",
-        salt,
-        PBKDF2_ITERATIONS,
-        dklen=PBKDF2_DKLEN,
-    )
-    salt_b64 = base64.b64encode(salt).decode("ascii")
-    digest_b64 = base64.b64encode(digest).decode("ascii")
-    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt_b64}${digest_b64}"
-
-
-DUMMY_PASSWORD_HASH = _build_dummy_password_hash()
+    return password_hasher.hash("chgrid_dummy_password")
 
 
 @dataclass(frozen=True)
@@ -95,6 +85,14 @@ class AuthService:
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn_lock = threading.RLock()
+        self._password_hasher = PasswordHasher(
+            time_cost=ARGON2_TIME_COST,
+            memory_cost=ARGON2_MEMORY_COST,
+            parallelism=ARGON2_PARALLELISM,
+            hash_len=ARGON2_HASH_LEN,
+            salt_len=ARGON2_SALT_LEN,
+        )
+        self._dummy_password_hash = _build_dummy_password_hash(self._password_hasher)
         self._ensure_schema()
 
     def close(self) -> None:
@@ -201,12 +199,17 @@ class AuthService:
             )
             if user_row is None:
                 # Keep response timing aligned with existing-user password checks.
-                self._verify_password(password, DUMMY_PASSWORD_HASH)
+                self._verify_password(password, self._dummy_password_hash)
                 raise AuthError("Invalid username or password.")
             if user_row["status"] != "active":
                 raise AuthError("Account is disabled.")
             if not self._verify_password(password, user_row["password_hash"]):
                 raise AuthError("Invalid username or password.")
+            if self._password_hasher.check_needs_rehash(user_row["password_hash"]):
+                self._db_execute(
+                    "UPDATE users SET password_hash = ?, updated_at_ms = ? WHERE id = ?",
+                    (self._hash_password(password), self.now_ms(), user_row["id"]),
+                )
             user = self._row_to_user(user_row)
             if not user.last_nickname:
                 self.set_last_nickname(user.id, user.username)
@@ -530,45 +533,18 @@ class AuthService:
                 f"Password must be between {self.password_min_length} and {self.password_max_length} characters."
             )
 
-    @staticmethod
-    def _hash_password(password: str) -> str:
-        """Hash a password with PBKDF2-HMAC-SHA256 and random salt."""
+    def _hash_password(self, password: str) -> str:
+        """Hash a password using Argon2id."""
 
-        salt = os.urandom(SALT_BYTES)
-        digest = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt,
-            PBKDF2_ITERATIONS,
-            dklen=PBKDF2_DKLEN,
-        )
-        salt_b64 = base64.b64encode(salt).decode("ascii")
-        digest_b64 = base64.b64encode(digest).decode("ascii")
-        return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt_b64}${digest_b64}"
+        return self._password_hasher.hash(password)
 
-    @staticmethod
-    def _verify_password(password: str, stored: str) -> bool:
-        """Verify plaintext password against stored PBKDF2 hash."""
+    def _verify_password(self, password: str, stored: str) -> bool:
+        """Verify plaintext password against stored Argon2id hash."""
 
         try:
-            algo, iterations_raw, salt_b64, digest_b64 = stored.split("$", 3)
-        except ValueError:
+            return bool(self._password_hasher.verify(stored, password))
+        except (VerifyMismatchError, InvalidHashError, VerificationError):
             return False
-        if algo != "pbkdf2_sha256":
-            return False
-        try:
-            salt = base64.b64decode(salt_b64.encode("ascii"))
-            expected = base64.b64decode(digest_b64.encode("ascii"))
-            computed = hashlib.pbkdf2_hmac(
-                "sha256",
-                password.encode("utf-8"),
-                salt,
-                int(iterations_raw),
-                dklen=len(expected),
-            )
-        except (ValueError, TypeError):
-            return False
-        return hmac.compare_digest(computed, expected)
 
     def _hash_token(self, token: str) -> str:
         """Hash a session token with server secret before persistence."""
