@@ -136,7 +136,7 @@ export class ItemEmitRuntime {
       const emitSound = String(item.params.emitSound ?? item.emitSound ?? '').trim();
       const enabled = item.params.enabled !== false;
       const soundUrl = enabled ? this.resolveSoundUrl(emitSound) : '';
-      if (!soundUrl || item.carrierId || !this.shouldKeepRuntime(item, listeners, this.outputs.has(item.id))) {
+      if (!soundUrl || !this.shouldKeepRuntime(item, listeners, this.outputs.has(item.id))) {
         this.cleanup(item.id);
         continue;
       }
@@ -196,7 +196,7 @@ export class ItemEmitRuntime {
 
     for (const [itemId, output] of this.outputs.entries()) {
       const item = items.get(itemId);
-      if (!item || item.carrierId) {
+      if (!item) {
         output.gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
         continue;
       }
