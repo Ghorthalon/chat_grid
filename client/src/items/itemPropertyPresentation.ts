@@ -57,6 +57,7 @@ export function createItemPropertyPresentation(deps: PresentationDeps): {
     }
     if (key === 'timeZone') return String(item.params.timeZone ?? getDefaultClockTimeZone());
     if (key === 'use24Hour') return item.params.use24Hour === true ? 'on' : 'off';
+    if (key === 'topOfHourAnnounce') return item.params.topOfHourAnnounce === true ? 'on' : 'off';
     if (key === 'mediaChannel') return normalizeRadioChannel(item.params.mediaChannel);
     if (key === 'mediaEffect') return normalizeRadioEffect(item.params.mediaEffect);
     if (key === 'mediaEffectValue') return String(normalizeRadioEffectValue(item.params.mediaEffectValue));
