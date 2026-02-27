@@ -1,6 +1,12 @@
 {
   "sections": [
     {
+      "date": "February 27, 2026",
+      "items": [
+        "Clock item type now is an actual talking clock with optional alarm and top of hour announcement."
+      ]
+    },
+    {
       "date": "February 24, 2026",
       "items": [
         "Added secondary actions with Shift+Enter. Currently, it works on the radio for now playing.",
