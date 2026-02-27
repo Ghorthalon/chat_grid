@@ -64,7 +64,6 @@ import { type AudioLayerState } from './types/audio';
 import { setupUiHandlers as setupDomUiHandlers } from './ui/domBindings';
 import { PeerManager } from './webrtc/peerManager';
 
-const DEFAULT_DISPLAY_TIME_ZONE = 'America/Detroit';
 const NICKNAME_MAX_LENGTH = 32;
 const MIC_CALIBRATION_DURATION_MS = 5000;
 const MIC_CALIBRATION_SAMPLE_INTERVAL_MS = 50;
@@ -84,7 +83,6 @@ const AUTH_POLICY_STORAGE_KEY = 'chgridAuthPolicy';
 declare global {
   interface Window {
     CHGRID_WEB_VERSION?: string;
-    CHGRID_TIME_ZONE?: string;
   }
 }
 
@@ -201,7 +199,6 @@ function buildHelpLines(help: HelpData): string[] {
 }
 
 const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
-const DISPLAY_TIME_ZONE = resolveDisplayTimeZone();
 dom.appVersion.textContent = APP_VERSION
   ? `Another AI experiment with Jage. Version ${APP_VERSION}`
   : 'Another AI experiment with Jage. Version unknown';
@@ -349,44 +346,7 @@ function requiredById<T extends HTMLElement>(id: string): T {
   return found as T;
 }
 
-/** Returns the configured display timezone when valid, otherwise the default fallback. */
-function resolveDisplayTimeZone(): string {
-  const configured = String(window.CHGRID_TIME_ZONE ?? '').trim();
-  if (configured) {
-    try {
-      new Intl.DateTimeFormat('en-US', { timeZone: configured }).format(new Date());
-      return configured;
-    } catch {
-      // Fall back when configured timezone is invalid.
-    }
-  }
-  return DEFAULT_DISPLAY_TIME_ZONE;
-}
-
-/** Formats epoch milliseconds as `YYYY-MM-DD HH:mm` in the configured display timezone. */
-function formatTimestampMs(value: unknown): string {
-  const raw = Number(value);
-  if (!Number.isFinite(raw)) {
-    return String(value ?? '');
-  }
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) {
-    return String(value ?? '');
-  }
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: DISPLAY_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(date);
-  const pick = (type: Intl.DateTimeFormatPartTypes): string => parts.find((part) => part.type === type)?.value ?? '00';
-  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}`;
-}
-
-const itemPropertyPresentation = createItemPropertyPresentation({ formatTimestampMs });
+const itemPropertyPresentation = createItemPropertyPresentation();
 const getItemPropertyValue = itemPropertyPresentation.getItemPropertyValue;
 const isItemPropertyEditable = itemPropertyPresentation.isItemPropertyEditable;
 const describeItemPropertyHelp = itemPropertyPresentation.describeItemPropertyHelp;
