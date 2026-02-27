@@ -222,6 +222,7 @@ export const itemClockAnnounceSchema = z.object({
   sounds: z.array(z.string()),
   x: z.number().int(),
   y: z.number().int(),
+  range: z.number().int().positive().optional(),
 });
 
 export const itemPianoNoteSchema = z.object({

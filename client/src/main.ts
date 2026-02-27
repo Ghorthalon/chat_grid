@@ -1660,8 +1660,8 @@ const onAppMessage = createOnMessageHandler({
   playIncomingItemUseSound: (url, x, y, range) => {
     void audio.playSpatialSample(url, { x, y }, { x: state.player.x, y: state.player.y }, 1, range ?? HEARING_RADIUS);
   },
-  playClockAnnouncement: (sounds, x, y) => {
-    void clockAnnouncer.playSequence(sounds.map(resolveIncomingSoundUrl), x, y);
+  playClockAnnouncement: (sounds, x, y, range) => {
+    void clockAnnouncer.playSequence(sounds.map(resolveIncomingSoundUrl), x, y, range);
   },
   handleAuthRequired,
   handleAuthResult,

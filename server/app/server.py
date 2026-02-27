@@ -495,6 +495,7 @@ class SignalingServer:
         """Broadcast one server-authoritative clock speech sequence from item position."""
 
         sound_x, sound_y = self._get_item_sound_source_position(item)
+        sound_range = self._get_item_emit_range(item)
         sounds = self._build_clock_announcement_sounds(item.params, top_of_hour=top_of_hour)
         if not sounds:
             return
@@ -505,6 +506,7 @@ class SignalingServer:
                 sounds=sounds,
                 x=sound_x,
                 y=sound_y,
+                range=sound_range,
             )
         )
 

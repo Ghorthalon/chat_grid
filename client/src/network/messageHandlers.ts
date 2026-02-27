@@ -69,7 +69,7 @@ type MessageHandlerDeps = {
   playLocateToneAt: (x: number, y: number) => void;
   resolveIncomingSoundUrl: (url: string) => string;
   playIncomingItemUseSound: (url: string, x: number, y: number, range?: number) => void;
-  playClockAnnouncement: (sounds: string[], x: number, y: number) => void;
+  playClockAnnouncement: (sounds: string[], x: number, y: number, range?: number) => void;
   handleAuthRequired: (message: Extract<IncomingMessage, { type: 'auth_required' }>) => void;
   handleAuthResult: (message: Extract<IncomingMessage, { type: 'auth_result' }>) => Promise<void>;
   isPeerNegotiationReady: () => boolean;
@@ -310,7 +310,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
 
       case 'item_clock_announce': {
         if (!deps.getAudioLayers().world) break;
-        deps.playClockAnnouncement(message.sounds, message.x, message.y);
+        deps.playClockAnnouncement(message.sounds, message.x, message.y, message.range);
         break;
       }
 

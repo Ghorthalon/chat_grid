@@ -301,6 +301,7 @@ class ItemClockAnnouncePacket(BasePacket):
     sounds: list[str]
     x: int
     y: int
+    range: int | None = None
 
 
 class ItemPianoNoteBroadcastPacket(BasePacket):

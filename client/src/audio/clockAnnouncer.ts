@@ -13,14 +13,14 @@ export class ClockAnnouncer {
     private readonly getListenerPosition: ListenerPositionGetter,
   ) {}
 
-  async playSequence(sounds: string[], sourceX: number, sourceY: number): Promise<void> {
+  async playSequence(sounds: string[], sourceX: number, sourceY: number, range?: number): Promise<void> {
     if (sounds.length === 0) return;
     const token = ++this.playToken;
+    const effectiveRange = Number.isFinite(range) && (range as number) > 0 ? (range as number) : undefined;
     for (const sound of sounds) {
       if (token !== this.playToken) return;
       const listener = this.getListenerPosition();
-      await this.audio.playSpatialSampleAndWait(sound, { x: sourceX, y: sourceY }, listener, 1);
+      await this.audio.playSpatialSampleAndWait(sound, { x: sourceX, y: sourceY }, listener, 1, effectiveRange);
     }
   }
 }
-
