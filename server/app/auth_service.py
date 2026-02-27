@@ -44,6 +44,7 @@ PERMISSIONS: tuple[str, ...] = (
     "user.change_role",
     "role.manage",
     "server.manage_settings",
+    "server.allow_reboot",
 )
 
 PERMISSION_DESCRIPTIONS: dict[str, str] = {
@@ -63,6 +64,7 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     "user.change_role": "Allow assigning user roles.",
     "role.manage": "Allow creating, editing, and deleting roles.",
     "server.manage_settings": "Allow changing server settings.",
+    "server.allow_reboot": "Allow scheduling a server reboot from chat command.",
 }
 
 DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {

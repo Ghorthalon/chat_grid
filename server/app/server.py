@@ -14,6 +14,7 @@ import logging
 import os
 import random
 import re
+import signal
 import ssl
 import time
 import uuid
@@ -185,6 +186,7 @@ class SignalingServer:
         self._clock_top_of_hour_markers: dict[str, str] = {}
         self._clock_alarm_markers: dict[str, str] = {}
         self._started_at_monotonic = time.monotonic()
+        self._pending_reboot_task: asyncio.Task[None] | None = None
 
     @staticmethod
     def _resolve_server_version() -> str:
@@ -1218,6 +1220,11 @@ class SignalingServer:
             ):
                 await asyncio.Future()
         finally:
+            if self._pending_reboot_task is not None:
+                self._pending_reboot_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._pending_reboot_task
+                self._pending_reboot_task = None
             if self._clock_announce_task is not None:
                 self._clock_announce_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -1598,6 +1605,24 @@ class SignalingServer:
         elapsed_seconds = int(max(0.0, time.monotonic() - self._started_at_monotonic))
         return self._format_duration(elapsed_seconds)
 
+    async def _run_delayed_reboot(self, requested_by: str, message: str) -> None:
+        """Wait for reboot delay, then terminate process for supervisor restart."""
+
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            return
+        LOGGER.warning("server reboot requested by=%s message=%s", requested_by, message)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def _schedule_reboot(self, requested_by: str, message: str) -> bool:
+        """Schedule one delayed reboot; return False when one is already pending."""
+
+        if self._pending_reboot_task is not None and not self._pending_reboot_task.done():
+            return False
+        self._pending_reboot_task = asyncio.create_task(self._run_delayed_reboot(requested_by, message))
+        return True
+
     async def _handle_chat_command(self, client: ClientConnection, message: str) -> bool:
         """Handle slash commands in chat input; return True when handled."""
 
@@ -1636,6 +1661,49 @@ class SignalingServer:
                     message=f"Server uptime: {self._format_uptime()}",
                     system=True,
                 ),
+            )
+            return True
+        if command == "version":
+            await self._send(
+                client.websocket,
+                BroadcastChatMessagePacket(
+                    type="chat_message",
+                    message=f"Server version: {self.server_version}",
+                    system=True,
+                ),
+            )
+            return True
+        if command == "reboot":
+            if not self._client_has_permission(client, "server.allow_reboot"):
+                await self._send(
+                    client.websocket,
+                    BroadcastChatMessagePacket(
+                        type="chat_message",
+                        message="Not authorized to reboot server.",
+                        system=True,
+                    ),
+                )
+                return True
+            reboot_message = remainder if separator else ""
+            if not self._schedule_reboot(client.username or client.nickname, reboot_message):
+                await self._send(
+                    client.websocket,
+                    BroadcastChatMessagePacket(
+                        type="chat_message",
+                        message="Server reboot already scheduled.",
+                        system=True,
+                    ),
+                )
+                return True
+            announcement = "Server rebooting in 5 seconds."
+            if reboot_message:
+                announcement = f"{announcement} {reboot_message}"
+            await self._broadcast(
+                BroadcastChatMessagePacket(
+                    type="chat_message",
+                    message=announcement,
+                    system=True,
+                )
             )
             return True
         await self._send(

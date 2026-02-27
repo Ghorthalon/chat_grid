@@ -19,6 +19,8 @@ This document is the authoritative keymap for the client.
 - In chat, commands are supported when `/` is the first character:
   - `/me <action>`: Send action text without `name:`
   - `/up`: Show server uptime (self only)
+  - `/version`: Show server version (self only)
+  - `/reboot [message]`: Schedule reboot in 5 seconds (admin permission: `server.allow_reboot`)
 - `Shift+Z`: Admin menu (when role permissions allow)
 - `,` / `.`: Previous/next message
 - `<` / `>`: First/last message

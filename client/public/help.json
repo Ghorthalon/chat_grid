@@ -42,7 +42,7 @@
         },
         {
           "keys": "Slash commands",
-          "description": "In chat, use /me <action> for action text or /up for server uptime"
+          "description": "In chat, use /me <action>, /up for uptime, /version for server version, and /reboot [message] if allowed"
         },
         {
           "keys": "Comma / Period",
