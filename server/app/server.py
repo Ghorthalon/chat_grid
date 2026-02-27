@@ -1753,6 +1753,15 @@ class SignalingServer:
             item.updatedByName = actor_name
             await self._broadcast_item(item)
             self._request_state_save()
+            item_text = f"{item.title} ({self._item_type_label(item)})"
+            await self._broadcast(
+                BroadcastChatMessagePacket(
+                    type="chat_message",
+                    message=f"{client.nickname} picked up {item_text}.",
+                    system=True,
+                ),
+                exclude=client.websocket,
+            )
             await self._send_item_result(client, True, "pickup", f"Picked up {item.title}.", item.id)
             return
 
@@ -1776,6 +1785,15 @@ class SignalingServer:
             item.updatedByName = actor_name
             await self._broadcast_item(item)
             self._request_state_save()
+            item_text = f"{item.title} ({self._item_type_label(item)})"
+            await self._broadcast(
+                BroadcastChatMessagePacket(
+                    type="chat_message",
+                    message=f"{client.nickname} dropped {item_text} at {item.x}, {item.y}.",
+                    system=True,
+                ),
+                exclude=client.websocket,
+            )
             await self._send_item_result(client, True, "drop", f"Dropped {item.title}.", item.id)
             return
 
