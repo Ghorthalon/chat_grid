@@ -68,7 +68,7 @@ type MessageHandlerDeps = {
   shouldAnnounceItemPropertyEcho: () => boolean;
   playLocateToneAt: (x: number, y: number) => void;
   resolveIncomingSoundUrl: (url: string) => string;
-  playIncomingItemUseSound: (url: string, x: number, y: number) => void;
+  playIncomingItemUseSound: (url: string, x: number, y: number, range?: number) => void;
   playClockAnnouncement: (sounds: string[], x: number, y: number) => void;
   handleAuthRequired: (message: Extract<IncomingMessage, { type: 'auth_required' }>) => void;
   handleAuthResult: (message: Extract<IncomingMessage, { type: 'auth_result' }>) => Promise<void>;
@@ -297,7 +297,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         const soundUrl = deps.resolveIncomingSoundUrl(message.sound);
         if (!soundUrl) break;
         if (deps.getAudioLayers().world) {
-          deps.playIncomingItemUseSound(soundUrl, message.x, message.y);
+          deps.playIncomingItemUseSound(soundUrl, message.x, message.y, message.range);
         }
         break;
       }

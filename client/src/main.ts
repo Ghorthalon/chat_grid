@@ -1657,8 +1657,8 @@ const onAppMessage = createOnMessageHandler({
   shouldAnnounceItemPropertyEcho: () => Date.now() >= suppressItemPropertyEchoUntilMs,
   playLocateToneAt: (x, y) => audio.sfxLocate({ x: x - state.player.x, y: y - state.player.y }),
   resolveIncomingSoundUrl,
-  playIncomingItemUseSound: (url, x, y) => {
-    void audio.playSpatialSample(url, { x, y }, { x: state.player.x, y: state.player.y }, 1);
+  playIncomingItemUseSound: (url, x, y, range) => {
+    void audio.playSpatialSample(url, { x, y }, { x: state.player.x, y: state.player.y }, 1, range ?? HEARING_RADIUS);
   },
   playClockAnnouncement: (sounds, x, y) => {
     void clockAnnouncer.playSequence(sounds.map(resolveIncomingSoundUrl), x, y);

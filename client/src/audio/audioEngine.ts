@@ -35,6 +35,7 @@ const ONE_SHOT_ATTACK_SECONDS = 0.02;
 type ActiveSpatialSampleRuntime = {
   sourceX: number;
   sourceY: number;
+  range: number;
   baseGain: number;
   gainNode: GainNode;
   pannerNode: StereoPannerNode | null;
@@ -361,6 +362,7 @@ export class AudioEngine {
     sourcePosition: { x: number; y: number },
     playerPosition: { x: number; y: number },
     gain = 1,
+    range = HEARING_RADIUS,
   ): Promise<void> {
     await this.ensureContext();
     const { audioCtx, sfxGainNode } = this;
@@ -383,6 +385,7 @@ export class AudioEngine {
       const runtime: ActiveSpatialSampleRuntime = {
         sourceX: sourcePosition.x,
         sourceY: sourcePosition.y,
+        range: Math.max(1, range),
         baseGain: gain,
         gainNode,
         pannerNode,
@@ -412,6 +415,7 @@ export class AudioEngine {
     sourcePosition: { x: number; y: number },
     playerPosition: { x: number; y: number },
     gain = 1,
+    range = HEARING_RADIUS,
   ): Promise<void> {
     await this.ensureContext();
     const { audioCtx, sfxGainNode } = this;
@@ -434,6 +438,7 @@ export class AudioEngine {
       const runtime: ActiveSpatialSampleRuntime = {
         sourceX: sourcePosition.x,
         sourceY: sourcePosition.y,
+        range: Math.max(1, range),
         baseGain: gain,
         gainNode,
         pannerNode,
@@ -619,7 +624,7 @@ export class AudioEngine {
     const mix = resolveSpatialMix({
       dx: sample.sourceX - playerPosition.x,
       dy: sample.sourceY - playerPosition.y,
-      range: HEARING_RADIUS,
+      range: sample.range,
       baseGain: sample.baseGain,
     });
     const gainValue = mix?.gain ?? 0;

@@ -213,6 +213,7 @@ export const itemUseSoundSchema = z.object({
   sound: z.string(),
   x: z.number().int(),
   y: z.number().int(),
+  range: z.number().int().positive().optional(),
 });
 
 export const itemClockAnnounceSchema = z.object({

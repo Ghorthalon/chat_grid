@@ -292,6 +292,7 @@ class ItemUseSoundPacket(BasePacket):
     sound: str
     x: int
     y: int
+    range: int | None = None
 
 
 class ItemClockAnnouncePacket(BasePacket):

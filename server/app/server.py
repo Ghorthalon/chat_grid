@@ -1770,6 +1770,7 @@ class SignalingServer:
             use_sound = self._resolve_item_use_sound(item)
             if use_sound:
                 sound_x, sound_y = self._get_item_sound_source_position(item)
+                sound_range = self._get_item_emit_range(item)
                 await self._broadcast(
                     ItemUseSoundPacket(
                         type="item_use_sound",
@@ -1777,6 +1778,7 @@ class SignalingServer:
                         sound=use_sound,
                         x=sound_x,
                         y=sound_y,
+                        range=sound_range,
                     )
                 )
             if item.type == "clock":
