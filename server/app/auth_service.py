@@ -46,6 +46,25 @@ PERMISSIONS: tuple[str, ...] = (
     "server.manage_settings",
 )
 
+PERMISSION_DESCRIPTIONS: dict[str, str] = {
+    "item.create": "Allow creating new items.",
+    "item.edit.own": "Allow editing items created by this user.",
+    "item.edit.any": "Allow editing any item.",
+    "item.delete.own": "Allow deleting items created by this user.",
+    "item.delete.any": "Allow deleting any item.",
+    "item.use": "Allow using item primary and secondary actions.",
+    "item.pickup_drop.own": "Allow picking up and dropping items created by this user.",
+    "item.pickup_drop.any": "Allow picking up and dropping any item.",
+    "chat.send": "Allow sending chat messages.",
+    "voice.send": "Allow transmitting microphone audio.",
+    "profile.update_nickname": "Allow changing nickname.",
+    "account.delete.any": "Allow deleting other user accounts.",
+    "user.ban_unban": "Allow banning and unbanning users.",
+    "user.change_role": "Allow assigning user roles.",
+    "role.manage": "Allow creating, editing, and deleting roles.",
+    "server.manage_settings": "Allow changing server settings.",
+}
+
 DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
     "admin": set(PERMISSIONS),
     "editor": {
@@ -184,6 +203,11 @@ class AuthService:
         """Return canonical sorted permission key list."""
 
         return list(PERMISSIONS)
+
+    def list_all_permission_descriptions(self) -> dict[str, str]:
+        """Return canonical permission tooltip text keyed by permission id."""
+
+        return {key: PERMISSION_DESCRIPTIONS.get(key, key) for key in PERMISSIONS}
 
     def get_user_permissions(self, user_id: str) -> set[str]:
         """Return current permission set for one user id."""
@@ -829,7 +853,7 @@ class AuthService:
 
         now_ms = self.now_ms()
         for key in PERMISSIONS:
-            description = f"Permission: {key}"
+            description = PERMISSION_DESCRIPTIONS.get(key, key)
             self._db_execute(
                 "INSERT OR IGNORE INTO permissions (key, description) VALUES (?, ?)",
                 (key, description),

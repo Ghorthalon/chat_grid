@@ -289,6 +289,7 @@ export const adminRolesListSchema = z.object({
   type: z.literal('admin_roles_list'),
   roles: z.array(adminRoleSummarySchema),
   permissionKeys: z.array(z.string()),
+  permissionTooltips: z.record(z.string(), z.string()).optional(),
 });
 
 export const adminUsersListSchema = z.object({

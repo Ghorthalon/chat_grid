@@ -206,6 +206,11 @@ type AdminUserSummary = {
   status: 'active' | 'disabled';
 };
 
+type AdminPendingUserMutation =
+  | { action: 'set_role'; username: string; role: string }
+  | { action: 'ban'; username: string }
+  | { action: 'unban'; username: string };
+
 /** Builds linearized help-view lines from sectioned help content. */
 function buildHelpLines(help: HelpData): string[] {
   const lines: string[] = [];
@@ -303,6 +308,7 @@ let adminMenuIndex = 0;
 let adminRoles: AdminRoleSummary[] = [];
 let adminRoleIndex = 0;
 let adminPermissionKeys: string[] = [];
+let adminPermissionTooltips: Record<string, string> = {};
 let adminRolePermissionIndex = 0;
 let adminRoleDeleteReplacementIndex = 0;
 let adminUsers: AdminUserSummary[] = [];
@@ -310,7 +316,7 @@ let adminUserIndex = 0;
 let adminPendingUserAction: 'set_role' | 'ban' | 'unban' | null = null;
 let adminSelectedRoleName = '';
 let adminSelectedUsername = '';
-let adminPendingRoleChange: { username: string; role: string } | null = null;
+let adminPendingUserMutation: AdminPendingUserMutation | null = null;
 let activeTeleport:
   | {
       startX: number;
@@ -1584,6 +1590,7 @@ function getAvailableAdminActions(): AdminMenuAction[] {
 function handleAdminRolesList(message: Extract<IncomingMessage, { type: 'admin_roles_list' }>): void {
   adminRoles = [...message.roles].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   adminPermissionKeys = [...message.permissionKeys].sort((a, b) => a.localeCompare(b));
+  adminPermissionTooltips = { ...(message.permissionTooltips ?? {}) };
   if (adminPendingUserAction === 'set_role' && adminSelectedUsername) {
     state.mode = 'adminUserRoleSelect';
     adminRoleIndex = 0;
@@ -1633,33 +1640,44 @@ function handleAdminActionResult(message: Extract<IncomingMessage, { type: 'admi
   if (message.action === 'role_update_permissions') {
     return;
   }
-  if (message.action === 'user_set_role') {
-    if (message.ok && adminPendingRoleChange) {
-      for (const user of adminUsers) {
-        if (user.username === adminPendingRoleChange.username) {
-          user.role = adminPendingRoleChange.role;
-        }
-      }
-      if (state.mode === 'adminUserList' && adminUsers.length > 0) {
-        adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
-        const selected = adminUsers[adminUserIndex];
-        updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
-      }
-      adminPendingRoleChange = null;
-      audio.sfxUiConfirm();
-      return;
-    }
-    adminPendingRoleChange = null;
-    updateStatus(message.message);
+  updateStatus(message.message);
+  if (!message.ok) {
+    adminPendingUserMutation = null;
     audio.sfxUiCancel();
     return;
   }
-  updateStatus(message.message);
-  if (message.ok) {
-    audio.sfxUiConfirm();
-  } else {
-    audio.sfxUiCancel();
+
+  if (adminPendingUserMutation) {
+    if (adminPendingUserMutation.action === 'set_role') {
+      const target = adminUsers.find((entry) => entry.username === adminPendingUserMutation.username);
+      if (target) {
+        target.role = adminPendingUserMutation.role;
+      }
+    } else if (adminPendingUserMutation.action === 'ban') {
+      adminUsers = adminUsers.filter((entry) => entry.username !== adminPendingUserMutation.username);
+      if (state.mode === 'adminUserList' && adminPendingUserAction === 'ban') {
+        if (adminUsers.length > 0) {
+          adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
+        } else {
+          state.mode = 'adminMenu';
+          adminPendingUserAction = null;
+        }
+      }
+    } else if (adminPendingUserMutation.action === 'unban') {
+      adminUsers = adminUsers.filter((entry) => entry.username !== adminPendingUserMutation.username);
+      if (state.mode === 'adminUserList' && adminPendingUserAction === 'unban') {
+        if (adminUsers.length > 0) {
+          adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
+        } else {
+          state.mode = 'adminMenu';
+          adminPendingUserAction = null;
+        }
+      }
+    }
+    adminPendingUserMutation = null;
   }
+
+  audio.sfxUiConfirm();
 }
 
 /** Builds dependencies shared by connect/disconnect flow helpers. */
@@ -2741,7 +2759,7 @@ function handleAdminRolePermissionListModeInput(code: string, key: string): void
   }
   const entries = [...adminPermissionKeys, '__delete_role__'];
   const control = handleListControlKey(code, key, entries, adminRolePermissionIndex, (entry) =>
-    entry === '__delete_role__' ? `Delete role ${role.name}` : `${entry} ${role.permissions.includes(entry) ? 'on' : 'off'}`,
+    entry === '__delete_role__' ? `Delete role ${role.name}` : `${entry}: ${role.permissions.includes(entry) ? 'on' : 'off'}`,
   );
   if (control.type === 'move') {
     adminRolePermissionIndex = control.index;
@@ -2749,7 +2767,17 @@ function handleAdminRolePermissionListModeInput(code: string, key: string): void
     if (value === '__delete_role__') {
       updateStatus(`Delete role ${role.name}.`);
     } else {
-      updateStatus(`${value} ${role.permissions.includes(value) ? 'on' : 'off'}`);
+      updateStatus(`${value}: ${role.permissions.includes(value) ? 'on' : 'off'}`);
+    }
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'Space') {
+    const value = entries[adminRolePermissionIndex];
+    if (value === '__delete_role__') {
+      updateStatus('Delete the current role and reassign affected users.');
+    } else {
+      updateStatus(adminPermissionTooltips[value] || 'No tooltip available.');
     }
     audio.sfxUiBlip();
     return;
@@ -2782,7 +2810,7 @@ function handleAdminRolePermissionListModeInput(code: string, key: string): void
     }
     role.permissions = [...nextPermissions].sort((a, b) => a.localeCompare(b));
     signaling.send({ type: 'admin_role_update_permissions', role: role.name, permissions: role.permissions });
-    updateStatus(`${value} ${role.permissions.includes(value) ? 'on' : 'off'}`);
+    updateStatus(`${value}: ${role.permissions.includes(value) ? 'on' : 'off'}`);
     audio.sfxUiBlip();
     return;
   }
@@ -2803,7 +2831,7 @@ function handleAdminRoleDeleteReplacementModeInput(code: string, key: string): v
   const control = handleListControlKey(code, key, candidates, adminRoleDeleteReplacementIndex, (entry) => entry.name);
   if (control.type === 'move') {
     adminRoleDeleteReplacementIndex = control.index;
-    updateStatus(`Replacement role: ${candidates[adminRoleDeleteReplacementIndex].name}.`);
+    updateStatus(candidates[adminRoleDeleteReplacementIndex].name);
     audio.sfxUiBlip();
     return;
   }
@@ -2850,29 +2878,13 @@ function handleAdminUserListModeInput(code: string, key: string): void {
       return;
     }
     if (adminPendingUserAction === 'ban') {
-      adminUsers.splice(adminUserIndex, 1);
-      if (adminUsers.length > 0) {
-        adminUserIndex = Math.min(adminUserIndex, adminUsers.length - 1);
-        const next = adminUsers[adminUserIndex];
-        updateStatus(`${next.username}, ${next.role}, ${next.status}.`);
-      } else {
-        state.mode = 'adminMenu';
-        updateStatus('No users to ban.');
-      }
+      adminPendingUserMutation = { action: 'ban', username: selected.username };
       signaling.send({ type: 'admin_user_ban', username: selected.username });
       adminPendingUserAction = 'ban';
       return;
     }
     if (adminPendingUserAction === 'unban') {
-      adminUsers.splice(adminUserIndex, 1);
-      if (adminUsers.length > 0) {
-        adminUserIndex = Math.min(adminUserIndex, adminUsers.length - 1);
-        const next = adminUsers[adminUserIndex];
-        updateStatus(`${next.username}, ${next.role}, ${next.status}.`);
-      } else {
-        state.mode = 'adminMenu';
-        updateStatus('No users to unban.');
-      }
+      adminPendingUserMutation = { action: 'unban', username: selected.username };
       signaling.send({ type: 'admin_user_unban', username: selected.username });
       adminPendingUserAction = 'unban';
       return;
@@ -2903,7 +2915,7 @@ function handleAdminUserRoleSelectModeInput(code: string, key: string): void {
   }
   if (control.type === 'select') {
     const selectedRole = adminRoles[adminRoleIndex];
-    adminPendingRoleChange = { username: adminSelectedUsername, role: selectedRole.name };
+    adminPendingUserMutation = { action: 'set_role', username: adminSelectedUsername, role: selectedRole.name };
     signaling.send({ type: 'admin_user_set_role', username: adminSelectedUsername, role: selectedRole.name });
     state.mode = 'adminUserList';
     adminPendingUserAction = 'set_role';

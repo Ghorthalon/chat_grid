@@ -1607,6 +1607,7 @@ class SignalingServer:
                     type="admin_roles_list",
                     roles=roles,
                     permissionKeys=self.auth_service.list_all_permissions(),
+                    permissionTooltips=self.auth_service.list_all_permission_descriptions(),
                 ),
             )
             return True

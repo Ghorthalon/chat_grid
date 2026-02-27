@@ -416,6 +416,7 @@ class AdminRolesListResultPacket(BasePacket):
     type: Literal["admin_roles_list"]
     roles: list[AdminRoleSummary]
     permissionKeys: list[str]
+    permissionTooltips: dict[str, str] | None = None
 
 
 class AdminUserSummary(BaseModel):
