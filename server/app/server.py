@@ -184,6 +184,7 @@ class SignalingServer:
         self._clock_announce_task: asyncio.Task[None] | None = None
         self._clock_top_of_hour_markers: dict[str, str] = {}
         self._clock_alarm_markers: dict[str, str] = {}
+        self._started_at_monotonic = time.monotonic()
 
     @staticmethod
     def _resolve_server_version() -> str:
@@ -1572,6 +1573,81 @@ class SignalingServer:
             AdminActionResultPacket(type="admin_action_result", ok=ok, action=action, message=message),
         )
 
+    @staticmethod
+    def _format_duration(total_seconds: int) -> str:
+        """Format a duration value as compact human-readable text."""
+
+        seconds = max(0, int(total_seconds))
+        days, remainder = divmod(seconds, 24 * 60 * 60)
+        hours, remainder = divmod(remainder, 60 * 60)
+        minutes, secs = divmod(remainder, 60)
+        parts: list[str] = []
+        if days:
+            parts.append(f"{days}d")
+        if hours:
+            parts.append(f"{hours}h")
+        if minutes:
+            parts.append(f"{minutes}m")
+        if secs or not parts:
+            parts.append(f"{secs}s")
+        return " ".join(parts)
+
+    def _format_uptime(self) -> str:
+        """Return current server uptime text."""
+
+        elapsed_seconds = int(max(0.0, time.monotonic() - self._started_at_monotonic))
+        return self._format_duration(elapsed_seconds)
+
+    async def _handle_chat_command(self, client: ClientConnection, message: str) -> bool:
+        """Handle slash commands in chat input; return True when handled."""
+
+        if not message.startswith("/"):
+            return False
+        command_line = message[1:]
+        command_token, separator, remainder = command_line.partition(" ")
+        command = command_token.casefold()
+        if command == "me":
+            if not separator or remainder == "":
+                await self._send(
+                    client.websocket,
+                    BroadcastChatMessagePacket(
+                        type="chat_message",
+                        message="Usage: /me <action>",
+                        system=True,
+                    ),
+                )
+                return True
+            await self._broadcast(
+                BroadcastChatMessagePacket(
+                    type="chat_message",
+                    message=f"{client.nickname} {remainder}",
+                    senderId=client.id,
+                    senderNickname=client.nickname,
+                    system=False,
+                    action=True,
+                )
+            )
+            return True
+        if command == "up":
+            await self._send(
+                client.websocket,
+                BroadcastChatMessagePacket(
+                    type="chat_message",
+                    message=f"Server uptime: {self._format_uptime()}",
+                    system=True,
+                ),
+            )
+            return True
+        await self._send(
+            client.websocket,
+            BroadcastChatMessagePacket(
+                type="chat_message",
+                message=f"Unknown command: /{command_token}",
+                system=True,
+            ),
+        )
+        return True
+
     async def _handle_admin_packet(self, client: ClientConnection, packet: ClientPacket) -> bool:
         """Handle role/user administration packets with permission checks."""
 
@@ -2022,6 +2098,8 @@ class SignalingServer:
                         system=True,
                     ),
                 )
+                return
+            if await self._handle_chat_command(client, packet.message):
                 return
             await self._broadcast(
                 BroadcastChatMessagePacket(

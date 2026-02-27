@@ -16,6 +16,9 @@ This document is the authoritative keymap for the client.
 - `U`: Speak connected users
 - `N`: Edit nickname
 - `/`: Start chat
+- In chat, commands are supported when `/` is the first character:
+  - `/me <action>`: Send action text without `name:`
+  - `/up`: Show server uptime (self only)
 - `Shift+Z`: Admin menu (when role permissions allow)
 - `,` / `.`: Previous/next message
 - `<` / `>`: First/last message

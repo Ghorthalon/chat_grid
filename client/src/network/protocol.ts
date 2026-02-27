@@ -185,6 +185,7 @@ export const chatMessageSchema = z.object({
   senderId: z.string().optional(),
   senderNickname: z.string().optional(),
   system: z.boolean().optional(),
+  action: z.boolean().optional(),
 });
 
 export const pongSchema = z.object({

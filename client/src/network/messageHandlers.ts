@@ -54,6 +54,7 @@ type MessageHandlerDeps = {
   getAudioLayers: () => { world: boolean; item: boolean };
   pushChatMessage: (message: string) => void;
   classifySystemMessageSound: (message: string) => 'logon' | 'logout' | 'notify' | null;
+  ACTION_SOUND_URL: string;
   SYSTEM_SOUND_URLS: { logon: string; logout: string; notify: string };
   playSample: (url: string, gain?: number) => void;
   updateStatus: (message: string) => void;
@@ -225,7 +226,10 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
       }
 
       case 'chat_message': {
-        if (message.system) {
+        if (message.action) {
+          deps.pushChatMessage(message.message);
+          deps.playSample(deps.ACTION_SOUND_URL, 1);
+        } else if (message.system) {
           deps.pushChatMessage(message.message);
           const sound = deps.classifySystemMessageSound(message.message);
           if (sound) {

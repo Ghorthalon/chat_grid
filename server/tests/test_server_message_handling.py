@@ -413,3 +413,87 @@ async def test_update_position_rate_reject_sends_self_correction(monkeypatch: py
     assert correction.id == "u1"
     assert correction.x == 5
     assert correction.y == 5
+
+
+@pytest.mark.asyncio
+async def test_chat_me_command_broadcasts_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="Tester")
+    server.clients[ws] = client
+
+    broadcast_payloads: list[object] = []
+    send_payloads: list[object] = []
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server, "_send", fake_send)
+
+    await server._handle_message(client, json.dumps({"type": "chat_message", "message": "/Me waves hello"}))
+
+    assert send_payloads == []
+    assert len(broadcast_payloads) == 1
+    packet = broadcast_payloads[0]
+    assert getattr(packet, "type", "") == "chat_message"
+    assert packet.action is True
+    assert packet.system is False
+    assert packet.message == "Tester waves hello"
+
+
+@pytest.mark.asyncio
+async def test_chat_up_command_sends_sender_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="Tester")
+    server.clients[ws] = client
+
+    broadcast_payloads: list[object] = []
+    send_payloads: list[object] = []
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_format_uptime", lambda: "1h 2m 3s")
+
+    await server._handle_message(client, json.dumps({"type": "chat_message", "message": "/UP"}))
+
+    assert broadcast_payloads == []
+    assert len(send_payloads) == 1
+    packet = send_payloads[0]
+    assert getattr(packet, "type", "") == "chat_message"
+    assert packet.system is True
+    assert packet.message == "Server uptime: 1h 2m 3s"
+
+
+@pytest.mark.asyncio
+async def test_chat_command_requires_leading_slash(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="Tester")
+    server.clients[ws] = client
+
+    broadcast_payloads: list[object] = []
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+
+    await server._handle_message(client, json.dumps({"type": "chat_message", "message": " /up"}))
+
+    assert len(broadcast_payloads) == 1
+    packet = broadcast_payloads[0]
+    assert getattr(packet, "type", "") == "chat_message"
+    assert packet.system is False
+    assert packet.action is False
+    assert packet.message == " /up"

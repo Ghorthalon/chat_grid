@@ -280,6 +280,7 @@ class BroadcastChatMessagePacket(BasePacket):
     senderId: str | None = None
     senderNickname: str | None = None
     system: bool = False
+    action: bool = False
 
 
 class PongPacket(BasePacket):

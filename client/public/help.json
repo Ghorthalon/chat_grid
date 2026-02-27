@@ -41,6 +41,10 @@
           "description": "Start chat"
         },
         {
+          "keys": "Slash commands",
+          "description": "In chat, use /me <action> for action text or /up for server uptime"
+        },
+        {
           "keys": "Comma / Period",
           "description": "Previous/next message"
         },
