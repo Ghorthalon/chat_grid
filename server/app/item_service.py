@@ -39,14 +39,18 @@ class ItemService:
 
         item_def = get_item_definition(item_type)
         now = self.now_ms()
+        actor_id = client.user_id or client.id
+        actor_name = client.username or client.nickname or actor_id
         return WorldItem(
             id=str(uuid.uuid4()),
             type=item_type,
             title=item_def.default_title,
             x=client.x,
             y=client.y,
-            createdBy=client.username or client.nickname or client.id,
-            updatedBy=client.username or client.nickname or client.id,
+            createdBy=actor_id,
+            createdByName=actor_name,
+            updatedBy=actor_id,
+            updatedByName=actor_name,
             createdAt=now,
             updatedAt=now,
             version=1,
@@ -92,6 +96,7 @@ class ItemService:
                 item.y = client.y
                 item.updatedAt = self.now_ms()
                 item.updatedBy = "system"
+                item.updatedByName = "system"
                 changed.append(item)
         return changed
 
@@ -117,7 +122,9 @@ class ItemService:
                     x=persisted.x,
                     y=persisted.y,
                     createdBy=persisted.createdBy,
+                    createdByName=persisted.createdByName or persisted.createdBy,
                     updatedBy=persisted.updatedBy or persisted.createdBy,
+                    updatedByName=persisted.updatedByName or persisted.updatedBy or persisted.createdBy,
                     createdAt=persisted.createdAt,
                     updatedAt=persisted.updatedAt,
                     version=persisted.version,
@@ -171,7 +178,9 @@ class ItemService:
                     x=item.x,
                     y=item.y,
                     createdBy=item.createdBy,
+                    createdByName=item.createdByName,
                     updatedBy=item.updatedBy,
+                    updatedByName=item.updatedByName,
                     createdAt=item.createdAt,
                     updatedAt=item.updatedAt,
                     version=item.version,

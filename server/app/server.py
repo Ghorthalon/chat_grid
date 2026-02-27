@@ -380,14 +380,18 @@ class SignalingServer:
     def _build_item_display_values(self, item: WorldItem) -> dict[str, str]:
         """Build server-authoritative item property display values for readonly/system fields."""
 
+        carrier_label = "none"
+        if item.carrierId:
+            carrier = self._get_client_by_id(item.carrierId)
+            carrier_label = carrier.nickname if carrier is not None else item.carrierId
         return {
             "type": item.type,
             "x": str(item.x),
             "y": str(item.y),
-            "carrierId": item.carrierId or "none",
+            "carrierId": carrier_label,
             "version": str(item.version),
-            "createdBy": item.createdBy,
-            "updatedBy": item.updatedBy,
+            "createdBy": item.createdByName or item.createdBy,
+            "updatedBy": item.updatedByName or item.updatedBy,
             "createdAt": self._format_display_timestamp_ms(item.createdAt),
             "updatedAt": self._format_display_timestamp_ms(item.updatedAt),
             "capabilities": ", ".join(item.capabilities) if item.capabilities else "none",
@@ -401,10 +405,12 @@ class SignalingServer:
         return item.model_copy(update={"display": self._build_item_display_values(item)})
 
     @staticmethod
-    def _item_updated_by_actor(client: ClientConnection) -> str:
-        """Resolve display name stored in `updatedBy` for client-initiated item mutations."""
+    def _item_updated_actor(client: ClientConnection) -> tuple[str, str]:
+        """Resolve `(actor_id, actor_name)` used in item update tracking fields."""
 
-        return client.username or client.nickname or client.id
+        actor_id = client.user_id or client.id
+        actor_name = client.username or client.nickname or actor_id
+        return actor_id, actor_name
 
     def _get_item_emit_range(self, item: WorldItem) -> int:
         """Return effective emit range for one item with sane bounds."""
@@ -482,6 +488,7 @@ class SignalingServer:
             item.params["nowPlaying"] = now_playing
             item.updatedAt = self.item_service.now_ms()
             item.updatedBy = "system"
+            item.updatedByName = "system"
             item.version += 1
             self._request_state_save()
             await self._broadcast_item(item)
@@ -822,7 +829,8 @@ class SignalingServer:
         item.params.pop("recording", None)
         item.params.pop("recordingLengthMs", None)
         item.updatedAt = self.item_service.now_ms()
-        item.updatedBy = owner.username if owner and owner.username else "system"
+        item.updatedBy = owner.user_id if owner and owner.user_id else "system"
+        item.updatedByName = owner.username if owner and owner.username else "system"
         item.version += 1
         self._request_state_save()
         await self._broadcast_item(item)
@@ -1520,10 +1528,12 @@ class SignalingServer:
             )
             carried = self.item_service.find_carried_item(client.id)
             if carried:
+                actor_id, actor_name = self._item_updated_actor(client)
                 carried.x = client.x
                 carried.y = client.y
                 carried.updatedAt = self.item_service.now_ms()
-                carried.updatedBy = self._item_updated_by_actor(client)
+                carried.updatedBy = actor_id
+                carried.updatedByName = actor_name
                 await self._broadcast_item(carried)
             return
 
@@ -1556,10 +1566,12 @@ class SignalingServer:
             )
             carried = self.item_service.find_carried_item(client.id)
             if carried:
+                actor_id, actor_name = self._item_updated_actor(client)
                 carried.x = client.x
                 carried.y = client.y
                 carried.updatedAt = self.item_service.now_ms()
-                carried.updatedBy = self._item_updated_by_actor(client)
+                carried.updatedBy = actor_id
+                carried.updatedByName = actor_name
                 await self._broadcast_item(carried)
             await self._broadcast(
                 BroadcastTeleportCompletePacket(
@@ -1736,7 +1748,9 @@ class SignalingServer:
             item.x = client.x
             item.y = client.y
             item.updatedAt = self.item_service.now_ms()
-            item.updatedBy = self._item_updated_by_actor(client)
+            actor_id, actor_name = self._item_updated_actor(client)
+            item.updatedBy = actor_id
+            item.updatedByName = actor_name
             await self._broadcast_item(item)
             self._request_state_save()
             await self._send_item_result(client, True, "pickup", f"Picked up {item.title}.", item.id)
@@ -1757,7 +1771,9 @@ class SignalingServer:
             item.x = packet.x
             item.y = packet.y
             item.updatedAt = self.item_service.now_ms()
-            item.updatedBy = self._item_updated_by_actor(client)
+            actor_id, actor_name = self._item_updated_actor(client)
+            item.updatedBy = actor_id
+            item.updatedByName = actor_name
             await self._broadcast_item(item)
             self._request_state_save()
             await self._send_item_result(client, True, "drop", f"Dropped {item.title}.", item.id)
@@ -1837,7 +1853,9 @@ class SignalingServer:
                     await self._send_item_result(client, False, "use", str(exc), item.id)
                     return
                 item.updatedAt = now_ms
-                item.updatedBy = self._item_updated_by_actor(client)
+                actor_id, actor_name = self._item_updated_actor(client)
+                item.updatedBy = actor_id
+                item.updatedByName = actor_name
                 self._request_state_save()
                 await self._broadcast_item(item)
 
@@ -1914,7 +1932,9 @@ class SignalingServer:
                     await self._send_item_result(client, False, "secondary_use", str(exc), item.id)
                     return
                 item.updatedAt = self.item_service.now_ms()
-                item.updatedBy = self._item_updated_by_actor(client)
+                actor_id, actor_name = self._item_updated_actor(client)
+                item.updatedBy = actor_id
+                item.updatedByName = actor_name
                 item.version += 1
                 self._request_state_save()
                 await self._broadcast_item(item)
@@ -2089,7 +2109,9 @@ class SignalingServer:
                     return
                 item.params = next_params
             item.updatedAt = self.item_service.now_ms()
-            item.updatedBy = self._item_updated_by_actor(client)
+            actor_id, actor_name = self._item_updated_actor(client)
+            item.updatedBy = actor_id
+            item.updatedByName = actor_name
             item.version += 1
             await self._broadcast_item(item)
             self._request_state_save()
