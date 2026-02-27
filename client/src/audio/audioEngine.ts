@@ -643,7 +643,7 @@ export class AudioEngine {
       pannerNode: sample.pannerNode,
       mix,
       outputMode: this.outputMode,
-      transition: 'linear',
+      transition: 'target',
     });
   }
 
