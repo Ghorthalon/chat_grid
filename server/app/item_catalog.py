@@ -80,6 +80,15 @@ ITEM_TYPE_TOOLTIPS: dict[ItemType, str] = {
 }
 
 GLOBAL_ITEM_PROPERTY_METADATA: dict[str, dict[str, object]] = {
+    "type": {"valueType": "text", "tooltip": "Item type id for this object.", "label": "Type"},
+    "x": {"valueType": "number", "tooltip": "Item X coordinate on the grid.", "label": "X"},
+    "y": {"valueType": "number", "tooltip": "Item Y coordinate on the grid.", "label": "Y"},
+    "carrierId": {"valueType": "text", "tooltip": "User id currently carrying this item, or none.", "label": "Carrier"},
+    "version": {"valueType": "number", "tooltip": "Server-side item version incremented on each update.", "label": "Version"},
+    "createdBy": {"valueType": "text", "tooltip": "Username that originally created this item.", "label": "Created by"},
+    "createdAt": {"valueType": "text", "tooltip": "Creation timestamp for this item.", "label": "Created at"},
+    "updatedAt": {"valueType": "text", "tooltip": "Last update timestamp for this item.", "label": "Updated at"},
+    "capabilities": {"valueType": "text", "tooltip": "Supported actions for this item type.", "label": "Capabilities"},
     "useSound": {
         "valueType": "sound",
         "tooltip": "One-shot sound played when this item is used successfully.",

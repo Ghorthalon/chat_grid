@@ -19,7 +19,7 @@ def test_ui_definitions_are_complete_for_all_item_types() -> None:
     assert len(item_types) == len(item_type_order)
     assert [entry.get("type") for entry in item_types] == item_type_order
 
-    required_global_keys = {
+    required_global_property_keys = {
         "useSound",
         "emitSound",
         "useCooldownMs",
@@ -27,6 +27,17 @@ def test_ui_definitions_are_complete_for_all_item_types() -> None:
         "directional",
         "emitSoundSpeed",
         "emitSoundTempo",
+    }
+    required_system_metadata_keys = {
+        "type",
+        "x",
+        "y",
+        "carrierId",
+        "version",
+        "createdBy",
+        "createdAt",
+        "updatedAt",
+        "capabilities",
     }
 
     for entry in item_types:
@@ -43,7 +54,8 @@ def test_ui_definitions_are_complete_for_all_item_types() -> None:
         global_properties = entry["globalProperties"]
 
         assert capabilities
-        assert required_global_keys.issubset(set(global_properties.keys()))
+        assert required_global_property_keys.issubset(set(global_properties.keys()))
+        assert required_system_metadata_keys.issubset(set(property_metadata.keys()))
         for property_key in editable_properties:
             if property_key == "title":
                 continue
