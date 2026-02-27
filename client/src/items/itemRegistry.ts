@@ -184,6 +184,7 @@ export function getInspectItemPropertyKeys(item: WorldItem): string[] {
     'carrierId',
     'version',
     'createdBy',
+    'updatedBy',
     'createdAt',
     'updatedAt',
     'capabilities',

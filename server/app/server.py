@@ -387,6 +387,7 @@ class SignalingServer:
             "carrierId": item.carrierId or "none",
             "version": str(item.version),
             "createdBy": item.createdBy,
+            "updatedBy": item.updatedBy,
             "createdAt": self._format_display_timestamp_ms(item.createdAt),
             "updatedAt": self._format_display_timestamp_ms(item.updatedAt),
             "capabilities": ", ".join(item.capabilities) if item.capabilities else "none",
@@ -398,6 +399,12 @@ class SignalingServer:
         """Return one outbound item snapshot enriched with server-owned display values."""
 
         return item.model_copy(update={"display": self._build_item_display_values(item)})
+
+    @staticmethod
+    def _item_updated_by_actor(client: ClientConnection) -> str:
+        """Resolve display name stored in `updatedBy` for client-initiated item mutations."""
+
+        return client.username or client.nickname or client.id
 
     def _get_item_emit_range(self, item: WorldItem) -> int:
         """Return effective emit range for one item with sane bounds."""
@@ -474,6 +481,7 @@ class SignalingServer:
             item.params["stationName"] = station_name
             item.params["nowPlaying"] = now_playing
             item.updatedAt = self.item_service.now_ms()
+            item.updatedBy = "system"
             item.version += 1
             self._request_state_save()
             await self._broadcast_item(item)
@@ -808,15 +816,16 @@ class SignalingServer:
             "events": compact_events,
         }
         self.item_service.save_piano_songs()
+        owner_id = str(session.get("ownerClientId", ""))
+        owner = self._get_client_by_id(owner_id) if owner_id else None
         item.params["songId"] = song_id
         item.params.pop("recording", None)
         item.params.pop("recordingLengthMs", None)
         item.updatedAt = self.item_service.now_ms()
+        item.updatedBy = owner.username if owner and owner.username else "system"
         item.version += 1
         self._request_state_save()
         await self._broadcast_item(item)
-        owner_id = str(session.get("ownerClientId", ""))
-        owner = self._get_client_by_id(owner_id) if owner_id else None
         if owner and notify_owner:
             await self._send_piano_status(
                 owner,
@@ -1514,6 +1523,7 @@ class SignalingServer:
                 carried.x = client.x
                 carried.y = client.y
                 carried.updatedAt = self.item_service.now_ms()
+                carried.updatedBy = self._item_updated_by_actor(client)
                 await self._broadcast_item(carried)
             return
 
@@ -1549,6 +1559,7 @@ class SignalingServer:
                 carried.x = client.x
                 carried.y = client.y
                 carried.updatedAt = self.item_service.now_ms()
+                carried.updatedBy = self._item_updated_by_actor(client)
                 await self._broadcast_item(carried)
             await self._broadcast(
                 BroadcastTeleportCompletePacket(
@@ -1725,6 +1736,7 @@ class SignalingServer:
             item.x = client.x
             item.y = client.y
             item.updatedAt = self.item_service.now_ms()
+            item.updatedBy = self._item_updated_by_actor(client)
             await self._broadcast_item(item)
             self._request_state_save()
             await self._send_item_result(client, True, "pickup", f"Picked up {item.title}.", item.id)
@@ -1745,6 +1757,7 @@ class SignalingServer:
             item.x = packet.x
             item.y = packet.y
             item.updatedAt = self.item_service.now_ms()
+            item.updatedBy = self._item_updated_by_actor(client)
             await self._broadcast_item(item)
             self._request_state_save()
             await self._send_item_result(client, True, "drop", f"Dropped {item.title}.", item.id)
@@ -1824,6 +1837,7 @@ class SignalingServer:
                     await self._send_item_result(client, False, "use", str(exc), item.id)
                     return
                 item.updatedAt = now_ms
+                item.updatedBy = self._item_updated_by_actor(client)
                 self._request_state_save()
                 await self._broadcast_item(item)
 
@@ -1900,6 +1914,7 @@ class SignalingServer:
                     await self._send_item_result(client, False, "secondary_use", str(exc), item.id)
                     return
                 item.updatedAt = self.item_service.now_ms()
+                item.updatedBy = self._item_updated_by_actor(client)
                 item.version += 1
                 self._request_state_save()
                 await self._broadcast_item(item)
@@ -2074,6 +2089,7 @@ class SignalingServer:
                     return
                 item.params = next_params
             item.updatedAt = self.item_service.now_ms()
+            item.updatedBy = self._item_updated_by_actor(client)
             item.version += 1
             await self._broadcast_item(item)
             self._request_state_save()

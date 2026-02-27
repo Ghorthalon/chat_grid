@@ -13,6 +13,7 @@ This is behavior-focused documentation for item types and their defaults.
   - `emitRange` (spatial range in squares)
   - `directional` (directional attenuation enabled)
 - Instance fields are persisted in `server/runtime/items.json`.
+- Read-only inspect fields include `createdBy` and `updatedBy` for ownership/change tracking.
 
 ## `radio_station`
 

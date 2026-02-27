@@ -35,6 +35,7 @@ def test_ui_definitions_are_complete_for_all_item_types() -> None:
         "carrierId",
         "version",
         "createdBy",
+        "updatedBy",
         "createdAt",
         "updatedAt",
         "capabilities",

@@ -7,6 +7,7 @@ export const itemSchema = z.object({
   x: z.number().int(),
   y: z.number().int(),
   createdBy: z.string(),
+  updatedBy: z.string(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
   version: z.number().int(),

@@ -11,6 +11,7 @@ export type WorldItem = {
   x: number;
   y: number;
   createdBy: string;
+  updatedBy: string;
   createdAt: number;
   updatedAt: number;
   version: number;

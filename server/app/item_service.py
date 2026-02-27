@@ -46,6 +46,7 @@ class ItemService:
             x=client.x,
             y=client.y,
             createdBy=client.username or client.nickname or client.id,
+            updatedBy=client.username or client.nickname or client.id,
             createdAt=now,
             updatedAt=now,
             version=1,
@@ -90,6 +91,7 @@ class ItemService:
                 item.x = client.x
                 item.y = client.y
                 item.updatedAt = self.now_ms()
+                item.updatedBy = "system"
                 changed.append(item)
         return changed
 
@@ -115,6 +117,7 @@ class ItemService:
                     x=persisted.x,
                     y=persisted.y,
                     createdBy=persisted.createdBy,
+                    updatedBy=persisted.updatedBy or persisted.createdBy,
                     createdAt=persisted.createdAt,
                     updatedAt=persisted.updatedAt,
                     version=persisted.version,
@@ -168,6 +171,7 @@ class ItemService:
                     x=item.x,
                     y=item.y,
                     createdBy=item.createdBy,
+                    updatedBy=item.updatedBy,
                     createdAt=item.createdAt,
                     updatedAt=item.updatedAt,
                     version=item.version,

@@ -10,6 +10,7 @@
   "x": 0,
   "y": 0,
   "createdBy": "user-id",
+  "updatedBy": "user-id",
   "createdAt": 1735689600000,
   "updatedAt": 1735689600000,
   "version": 1,
@@ -24,6 +25,7 @@
 - `useSound`: optional client-played one-shot sound when item `use` succeeds; global item field and not user-editable in V1.
 - `emitSound`: optional continuously-looping spatial sound emitted from the item on the grid; global item field and not user-editable in V1.
 - `capabilities`, `useSound`, and `emitSound` are derived from global item-type definitions at runtime (not stored per-instance in persisted state).
+- `updatedBy` tracks the user account that last changed item state.
 - `useCooldownMs`: global per item type (`radio_station=1000`, `dice=1000`, `wheel=4000`, `clock=1000`, `widget=1000`, `piano=1000`), not per-instance editable.
 - `emitRange`: global spatial range default per item type (`radio_station=10`, `dice=15`, `wheel=15`, `clock=10`, `widget=15`, `piano=15`).
   - `radio_station` can override this per instance via `params.emitRange` (`5..20`).
@@ -39,6 +41,7 @@
   "x": 0,
   "y": 0,
   "createdBy": "user-id",
+  "updatedBy": "user-id",
   "createdAt": 1735689600000,
   "updatedAt": 1735689600000,
   "version": 1,

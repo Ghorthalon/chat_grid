@@ -243,6 +243,7 @@ class WorldItem(BaseModel):
     x: int
     y: int
     createdBy: str
+    updatedBy: str
     createdAt: int
     updatedAt: int
     version: int
@@ -262,6 +263,7 @@ class PersistedWorldItem(BaseModel):
     x: int
     y: int
     createdBy: str
+    updatedBy: str | None = None
     createdAt: int
     updatedAt: int
     version: int
