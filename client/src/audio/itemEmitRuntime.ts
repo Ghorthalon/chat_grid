@@ -229,13 +229,14 @@ export class ItemEmitRuntime {
         const effectiveRate = resumeState.playbackRate > 0 ? resumeState.playbackRate : 1;
         const durationSeconds = resumeState.durationSeconds;
         if (durationSeconds && durationSeconds > 0) {
-          const cycleSeconds = durationSeconds + Math.max(0, resumeState.loopDelaySeconds);
-          const progressed = (resumeState.currentTimeSeconds + elapsedSeconds * effectiveRate) % cycleSeconds;
-          if (progressed < durationSeconds) {
-            const targetTime = Math.min(Math.max(0, progressed), Math.max(0, durationSeconds - 0.01));
+          const loopDelaySeconds = Math.max(0, resumeState.loopDelaySeconds);
+          const playWallSeconds = durationSeconds / effectiveRate;
+          const cycleWallSeconds = playWallSeconds + loopDelaySeconds;
+          const seekAndPlayNow = (targetTimeSeconds: number) => {
+            const clampedTarget = Math.min(Math.max(0, targetTimeSeconds), Math.max(0, durationSeconds - 0.01));
             const applySeek = () => {
               try {
-                element.currentTime = targetTime;
+                element.currentTime = clampedTarget;
               } catch {
                 // Ignore seek failures before metadata is fully available.
               }
@@ -243,9 +244,57 @@ export class ItemEmitRuntime {
             applySeek();
             element.addEventListener('loadedmetadata', applySeek, { once: true });
             this.nextEmitStartAtMs.delete(item.id);
+          };
+          const scheduleAfterSeconds = (seconds: number) => {
+            this.nextEmitStartAtMs.set(item.id, nowMs + Math.max(0, seconds) * 1000);
+          };
+          const scheduledStartMs = this.nextEmitStartAtMs.get(item.id);
+          if (scheduledStartMs !== undefined) {
+            if (nowMs < scheduledStartMs) {
+              // Still in delay window tracked while runtime was out of range.
+            } else if (cycleWallSeconds > 0) {
+              const sinceStartSeconds = Math.max(0, (nowMs - scheduledStartMs) / 1000);
+              const inCycleSeconds = sinceStartSeconds % cycleWallSeconds;
+              if (inCycleSeconds < playWallSeconds) {
+                seekAndPlayNow(inCycleSeconds * effectiveRate);
+              } else {
+                scheduleAfterSeconds(cycleWallSeconds - inCycleSeconds);
+              }
+            } else {
+              seekAndPlayNow(0);
+            }
+          } else if (resumeState.wasPlaying) {
+            const playRemainingWallSeconds = Math.max(0, (durationSeconds - Math.max(0, resumeState.currentTimeSeconds)) / effectiveRate);
+            if (elapsedSeconds < playRemainingWallSeconds) {
+              seekAndPlayNow(Math.max(0, resumeState.currentTimeSeconds) + elapsedSeconds * effectiveRate);
+            } else {
+              const afterTrackSeconds = elapsedSeconds - playRemainingWallSeconds;
+              if (cycleWallSeconds > 0) {
+                const inCycleSeconds = afterTrackSeconds % cycleWallSeconds;
+                if (inCycleSeconds < loopDelaySeconds) {
+                  scheduleAfterSeconds(loopDelaySeconds - inCycleSeconds);
+                } else {
+                  seekAndPlayNow((inCycleSeconds - loopDelaySeconds) * effectiveRate);
+                }
+              } else {
+                seekAndPlayNow(0);
+              }
+            }
           } else {
-            const delayRemainingSeconds = cycleSeconds - progressed;
-            this.nextEmitStartAtMs.set(item.id, nowMs + delayRemainingSeconds * 1000);
+            // Saved while paused/ended with no known schedule: treat as delay-first state.
+            if (elapsedSeconds < loopDelaySeconds) {
+              scheduleAfterSeconds(loopDelaySeconds - elapsedSeconds);
+            } else if (cycleWallSeconds > 0) {
+              const afterDelaySeconds = elapsedSeconds - loopDelaySeconds;
+              const inCycleSeconds = afterDelaySeconds % cycleWallSeconds;
+              if (inCycleSeconds < playWallSeconds) {
+                seekAndPlayNow(inCycleSeconds * effectiveRate);
+              } else {
+                scheduleAfterSeconds(cycleWallSeconds - inCycleSeconds);
+              }
+            } else {
+              seekAndPlayNow(0);
+            }
           }
         }
       }
