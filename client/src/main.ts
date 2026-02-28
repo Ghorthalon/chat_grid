@@ -2368,13 +2368,15 @@ function handleHelpViewModeInput(code: string): void {
 function handleChatModeInput(code: string, key: string, ctrlKey: boolean): void {
   const editAction = getEditSessionAction(code);
   if (editAction === 'submit') {
-    const message = state.nicknameInput.trim();
-    if (message.length > 0) {
-      signaling.send({ type: 'chat_message', message });
+    const rawMessage = state.nicknameInput;
+    if (rawMessage.trim().length > 0) {
+      signaling.send({ type: 'chat_message', message: rawMessage });
       state.mode = 'normal';
       state.nicknameInput = '';
       state.cursorPos = 0;
-      audio.sfxUiConfirm();
+      if (!/^\/me(?:\s|$)/i.test(rawMessage)) {
+        audio.sfxUiConfirm();
+      }
     } else {
       state.mode = 'normal';
       audio.sfxUiCancel();

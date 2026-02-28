@@ -586,7 +586,7 @@ async def test_chat_reboot_schedules_and_broadcasts_message(monkeypatch: pytest.
 
 
 @pytest.mark.asyncio
-async def test_chat_reboot_already_in_progress_broadcasts_notice(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_chat_reboot_already_in_progress_sends_sender_only_notice(monkeypatch: pytest.MonkeyPatch) -> None:
     server = SignalingServer("127.0.0.1", 8765, None, None)
     ws = _fake_ws()
     client = ClientConnection(
@@ -615,9 +615,9 @@ async def test_chat_reboot_already_in_progress_broadcasts_notice(monkeypatch: py
 
     await server._handle_message(client, json.dumps({"type": "chat_message", "message": "/reboot maintenance"}))
 
-    assert send_payloads == []
-    assert len(broadcast_payloads) == 1
-    packet = broadcast_payloads[0]
+    assert broadcast_payloads == []
+    assert len(send_payloads) == 1
+    packet = send_payloads[0]
     assert getattr(packet, "type", "") == "chat_message"
     assert packet.system is True
     assert packet.message == "Server reboot already in progress."
