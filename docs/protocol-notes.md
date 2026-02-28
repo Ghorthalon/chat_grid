@@ -87,6 +87,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
   - `policy` (`usernameMinLength`, `usernameMaxLength`, `passwordMinLength`, `passwordMaxLength`)
 - `auth_required.authPolicy`: server auth limits advertised before login/register submit.
 - `auth_result.authPolicy`: server auth limits echoed on auth success/failure responses.
+- `auth_result.sessionToken` is used by the client to call server HTTP endpoint `GET /auth/session/set` (`Authorization: Bearer <sessionToken>`, `X-Chgrid-Auth-Client: 1`) so the server can issue `Set-Cookie: chgrid_session_token=...; HttpOnly`.
 - `welcome.worldConfig.gridSize`: server-authoritative grid size used by clients for bounds/drawing.
 - `welcome.worldConfig.movementTickMs`: server movement-rate window used for client movement pacing.
 - `welcome.worldConfig.movementMaxStepsPerTick`: max allowed grid steps per movement window.
@@ -111,6 +112,10 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - Server is authoritative for all action validation and normalization.
 - Server is authoritative for movement acceptance (bounds + rate/delta checks).
 - Server persists account state (last nickname + last position) and restores spawn from that state on auth login/resume.
+- Server also supports websocket handshake cookie resume:
+  - reads `chgrid_session_token` from websocket `Cookie` header
+  - attempts resume before sending `auth_required`
+  - exposes `GET /auth/session/clear` to expire the `HttpOnly` cookie (`X-Chgrid-Auth-Client: 1` required)
 - Server applies auth hardening before accepting login/register/resume:
   - login/register PBKDF2 work runs off the event loop in bounded worker concurrency
   - repeated auth failures are rate-limited by IP and IP+identity windows

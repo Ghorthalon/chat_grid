@@ -238,6 +238,9 @@ const SYSTEM_SOUND_URLS = {
   logout: withBase('sounds/logout.ogg'),
   notify: withBase('sounds/notify.ogg'),
 } as const;
+const AUTH_SESSION_COOKIE_SET_URL = withBase('auth/session/set');
+const AUTH_SESSION_COOKIE_CLEAR_URL = withBase('auth/session/clear');
+const AUTH_SESSION_COOKIE_CLIENT_HEADER = 'X-Chgrid-Auth-Client';
 const ACTION_SOUND_URL = withBase('sounds/action.ogg');
 const FOOTSTEP_SOUND_URLS = Array.from({ length: 11 }, (_, index) => withBase(`sounds/step-${index + 1}.ogg`));
 const FOOTSTEP_GAIN = 0.7;
@@ -259,7 +262,6 @@ let lastAnnouncementText = '';
 let lastAnnouncementAt = 0;
 let outputMode = settings.loadOutputMode();
 let authMode: 'login' | 'register' = 'login';
-let authSessionToken = settings.loadAuthSessionToken();
 let authUsername = settings.loadAuthUsername();
 let authPolicy: AuthPolicy | null = null;
 let authRole = 'user';
@@ -623,8 +625,7 @@ function applyVoiceSendPermission(): void {
 
 /** Enables/disables the connect button based on state and nickname validity. */
 function updateConnectAvailability(): void {
-  const hasSessionToken = authSessionToken.trim().length > 0;
-  const showLogout = state.running || hasSessionToken;
+  const showLogout = state.running;
   dom.logoutButton.classList.toggle('hidden', !showLogout);
   dom.logoutButton.disabled = !showLogout;
   if (state.running) {
@@ -635,22 +636,12 @@ function updateConnectAvailability(): void {
     dom.authSessionView.classList.add('hidden');
     return;
   }
-  if (hasSessionToken) {
-    const label = sanitizeAuthUsername(authUsername) || 'current account';
-    dom.authSessionText.textContent = `Logged in as ${label}.`;
-    dom.showRegisterButton.classList.add('hidden');
-    dom.authModeSeparator.classList.add('hidden');
-    dom.loginView.classList.add('hidden');
-    dom.registerView.classList.add('hidden');
-    dom.authSessionView.classList.remove('hidden');
-  } else {
-    dom.showRegisterButton.classList.remove('hidden');
-    dom.authModeSeparator.classList.remove('hidden');
-    dom.showRegisterButton.textContent = authMode === 'login' ? 'Register' : 'Login';
-    dom.loginView.classList.toggle('hidden', authMode !== 'login');
-    dom.registerView.classList.toggle('hidden', authMode !== 'register');
-    dom.authSessionView.classList.add('hidden');
-  }
+  dom.showRegisterButton.classList.remove('hidden');
+  dom.authModeSeparator.classList.remove('hidden');
+  dom.showRegisterButton.textContent = authMode === 'login' ? 'Register' : 'Login';
+  dom.loginView.classList.toggle('hidden', authMode !== 'login');
+  dom.registerView.classList.toggle('hidden', authMode !== 'register');
+  dom.authSessionView.classList.add('hidden');
   const usernameMin = authPolicy?.usernameMinLength ?? 1;
   const passwordMin = authPolicy?.passwordMinLength ?? 1;
   const hasLoginCredentials =
@@ -659,8 +650,9 @@ function updateConnectAvailability(): void {
     sanitizeAuthUsername(dom.registerUsername.value).length >= usernameMin &&
     dom.registerPassword.value.trim().length >= passwordMin &&
     dom.registerPassword.value === dom.registerPasswordConfirm.value;
-  const authReady = hasSessionToken || (authMode === 'login' ? hasLoginCredentials : hasRegisterCredentials);
-  dom.connectButton.textContent = hasSessionToken ? 'Connect' : authMode === 'login' ? 'Log In & Connect' : 'Register & Connect';
+  const authReady = authMode === 'login' ? true : hasRegisterCredentials;
+  dom.connectButton.textContent =
+    authMode === 'register' ? 'Register & Connect' : hasLoginCredentials ? 'Log In & Connect' : 'Connect';
   dom.connectButton.disabled = mediaSession.isConnecting() || !authReady;
 }
 
@@ -1466,12 +1458,8 @@ function setAuthMode(mode: 'login' | 'register'): void {
   updateConnectAvailability();
 }
 
-/** Builds outbound auth packet from local token or active auth form. */
+/** Builds outbound auth packet from active login/register form fields. */
 function buildAuthRequestPacket(): OutgoingMessage | null {
-  const token = authSessionToken.trim();
-  if (token) {
-    return { type: 'auth_resume', sessionToken: token };
-  }
   if (authMode === 'register') {
     const username = sanitizeAuthUsername(dom.registerUsername.value);
     const password = dom.registerPassword.value;
@@ -1489,10 +1477,10 @@ function buildAuthRequestPacket(): OutgoingMessage | null {
 function sendAuthRequest(): void {
   const packet = buildAuthRequestPacket();
   if (!packet) {
-    setConnectionStatus('Enter username and password.');
+    pendingAuthRequest = false;
+    setConnectionStatus('Attempting saved session...');
     mediaSession.setConnecting(false);
     updateConnectAvailability();
-    signaling.disconnect();
     return;
   }
   pendingAuthRequest = true;
@@ -1502,11 +1490,24 @@ function sendAuthRequest(): void {
 
 /** Handles server auth-required prompts prior to world welcome. */
 function handleAuthRequired(message: Extract<IncomingMessage, { type: 'auth_required' }>): void {
+  const hadPendingRequest = pendingAuthRequest;
+  pendingAuthRequest = false;
   applyAuthPolicy(message.authPolicy);
   applyAuthPermissions('user', []);
   applyServerAdminMenuActions([]);
   setConnectionStatus('Authentication required.');
   updateStatus(message.message);
+  if (!hadPendingRequest) {
+    const packet = buildAuthRequestPacket();
+    if (packet) {
+      pendingAuthRequest = true;
+      setConnectionStatus('Authenticating...');
+      signaling.send(packet);
+      return;
+    }
+    mediaSession.setConnecting(false);
+    updateConnectAvailability();
+  }
 }
 
 /** Applies auth result state and terminates failed auth attempts quickly. */
@@ -1518,8 +1519,7 @@ async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_
     dom.registerPassword.value = '';
     dom.registerPasswordConfirm.value = '';
     if (message.message.toLowerCase().includes('session')) {
-      authSessionToken = '';
-      settings.saveAuthSessionToken('');
+      void clearHttpOnlySessionCookie();
     }
     applyAuthPermissions('user', []);
     applyServerAdminMenuActions([]);
@@ -1531,8 +1531,7 @@ async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_
   }
 
   if (message.sessionToken) {
-    authSessionToken = message.sessionToken;
-    settings.saveAuthSessionToken(message.sessionToken);
+    void persistHttpOnlySessionCookie(message.sessionToken);
   }
   if (message.username) {
     authUsername = message.username;
@@ -1556,9 +1555,8 @@ async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_
 
 /** Clears stored auth session and returns UI to login mode. */
 function logOutAccount(): void {
-  authSessionToken = '';
   authUsername = '';
-  settings.saveAuthSessionToken('');
+  void clearHttpOnlySessionCookie();
   settings.saveAuthUsername('');
   applyAuthPermissions('user', []);
   applyServerAdminMenuActions([]);
@@ -1569,6 +1567,41 @@ function logOutAccount(): void {
   setAuthMode('login');
   updateStatus('Logged out.');
   updateConnectAvailability();
+}
+
+/** Persists active auth session in a server-managed HttpOnly cookie. */
+async function persistHttpOnlySessionCookie(sessionToken: string): Promise<void> {
+  const token = sessionToken.trim();
+  if (!token) return;
+  try {
+    await fetch(AUTH_SESSION_COOKIE_SET_URL, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        [AUTH_SESSION_COOKIE_CLIENT_HEADER]: '1',
+      },
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.warn('Unable to persist auth cookie.', error);
+  }
+}
+
+/** Clears server-managed HttpOnly auth session cookie. */
+async function clearHttpOnlySessionCookie(): Promise<void> {
+  try {
+    await fetch(AUTH_SESSION_COOKIE_CLEAR_URL, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        [AUTH_SESSION_COOKIE_CLIENT_HEADER]: '1',
+      },
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.warn('Unable to clear auth cookie.', error);
+  }
 }
 
 /** Handles server-pushed role/permission refresh events for the current session. */

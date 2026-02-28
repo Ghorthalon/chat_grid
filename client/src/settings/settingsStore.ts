@@ -13,8 +13,6 @@ const PEER_LISTEN_GAINS_STORAGE_KEY = 'chatGridPeerListenGains';
 const NICKNAME_STORAGE_KEY = 'spatialChatNickname';
 const AUTH_USERNAME_STORAGE_KEY = 'chatGridAuthUsername';
 const LEGACY_AUTH_SESSION_TOKEN_STORAGE_KEY = 'chatGridAuthSessionToken';
-const AUTH_SESSION_COOKIE_NAME = 'chgrid_session_token';
-const AUTH_SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60;
 
 type DevicePreference = {
   id: string;
@@ -30,33 +28,6 @@ type AudioDevicePreferences = {
  * Wraps localStorage reads/writes for client user settings.
  */
 export class SettingsStore {
-  private readCookie(name: string): string {
-    const cookie = document.cookie || '';
-    const parts = cookie.split(';');
-    for (const part of parts) {
-      const [rawKey, ...rest] = part.trim().split('=');
-      if (rawKey !== name) continue;
-      const rawValue = rest.join('=');
-      try {
-        return decodeURIComponent(rawValue);
-      } catch {
-        return rawValue;
-      }
-    }
-    return '';
-  }
-
-  private writeCookie(name: string, value: string, maxAgeSeconds: number): void {
-    const encoded = encodeURIComponent(value);
-    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `${name}=${encoded}; Path=/; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}; SameSite=Lax${secure}`;
-  }
-
-  private clearCookie(name: string): void {
-    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  }
-
   loadEffectLevels(): Partial<Record<'reverb' | 'echo' | 'flanger' | 'high_pass' | 'low_pass' | 'off', number>> | null {
     const raw = localStorage.getItem(EFFECT_LEVELS_STORAGE_KEY);
     if (!raw) return null;
@@ -145,18 +116,14 @@ export class SettingsStore {
   }
 
   loadAuthSessionToken(): string {
-    // Session token is persisted in cookie storage (not localStorage).
+    // Session token now lives in an HttpOnly cookie managed by the server.
     localStorage.removeItem(LEGACY_AUTH_SESSION_TOKEN_STORAGE_KEY);
-    return this.readCookie(AUTH_SESSION_COOKIE_NAME);
+    return '';
   }
 
   saveAuthSessionToken(token: string): void {
+    void token;
     localStorage.removeItem(LEGACY_AUTH_SESSION_TOKEN_STORAGE_KEY);
-    if (token) {
-      this.writeCookie(AUTH_SESSION_COOKIE_NAME, token, AUTH_SESSION_MAX_AGE_SECONDS);
-      return;
-    }
-    this.clearCookie(AUTH_SESSION_COOKIE_NAME);
   }
 
   loadAuthUsername(): string {

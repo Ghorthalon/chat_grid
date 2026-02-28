@@ -3,15 +3,17 @@
 ## Connect Flow
 
 1. User clicks connect.
-2. Client validates auth form/session token and sets up local media.
+2. Client validates auth form and sets up local media.
 3. Client connects signaling websocket.
-4. Server sends `auth_required`.
+4. Server attempts cookie-based session resume from websocket handshake cookie (`chgrid_session_token`).
+5. If resume does not authenticate, server sends `auth_required`.
    - includes `authPolicy` limits for username/password.
-5. Client sends `auth_login`, `auth_register`, or `auth_resume`.
-6. Server sends `auth_result`.
+6. Client sends `auth_login` or `auth_register` (or explicit `auth_resume` if provided by caller).
+7. Server sends `auth_result`.
    - includes role + permissions for authenticated session.
-7. Server sends `welcome` with users/items snapshot.
-8. Client:
+8. Client persists authenticated session into a server-managed `HttpOnly` cookie via `GET /auth/session/set` (`Authorization: Bearer <sessionToken>`, `X-Chgrid-Auth-Client: 1`), and clears it via `GET /auth/session/clear` (`X-Chgrid-Auth-Client: 1`) on logout/session errors.
+9. Server sends `welcome` with users/items snapshot.
+10. Client:
    - applies `welcome.worldConfig.gridSize` for authoritative grid bounds/rendering
    - applies `welcome.worldConfig.movementTickMs` as movement pacing guidance
    - applies `welcome.worldConfig.movementMaxStepsPerTick` for movement-rate parity

@@ -26,6 +26,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError, TypeAdapter
 from websockets.asyncio.server import ServerConnection, serve
+from websockets.datastructures import Headers
+from websockets.http11 import Request as HttpRequest, Response as HttpResponse
 
 from .auth_service import AuthError, AuthService
 from .client import ClientConnection
@@ -118,6 +120,11 @@ AUTH_FAILURE_JITTER_MAX_MS = 0.08
 RADIO_METADATA_POLL_INTERVAL_S = 10.0
 RADIO_METADATA_TIMEOUT_S = 6.0
 CLOCK_ANNOUNCE_POLL_INTERVAL_S = 1.0
+AUTH_SESSION_COOKIE_NAME = "chgrid_session_token"
+AUTH_SESSION_COOKIE_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
+AUTH_SESSION_COOKIE_SET_PATH = "/auth/session/set"
+AUTH_SESSION_COOKIE_CLEAR_PATH = "/auth/session/clear"
+AUTH_SESSION_COOKIE_CLIENT_HEADER = "X-Chgrid-Auth-Client"
 ADMIN_MENU_ACTION_DEFINITIONS: tuple[dict[str, str], ...] = (
     {"id": "manage_roles", "label": "Role management", "permission": "role.manage"},
     {"id": "change_user_role", "label": "Change user role", "permission": "user.change_role"},
@@ -245,6 +252,84 @@ class SignalingServer:
             "passwordMinLength": self.auth_service.password_min_length,
             "passwordMaxLength": self.auth_service.password_max_length,
         }
+
+    def _session_cookie_secure(self, request: HttpRequest | None = None) -> bool:
+        """Return True when session cookies should be marked Secure."""
+
+        if self._ssl_context is not None:
+            return True
+        if request is None:
+            return False
+        forwarded = str(request.headers.get("X-Forwarded-Proto", "")).split(",", 1)[0].strip().lower()
+        return forwarded == "https"
+
+    def _session_cookie_header(self, token: str, *, request: HttpRequest | None = None) -> str:
+        """Build Set-Cookie header value for a valid session token."""
+
+        secure = "; Secure" if self._session_cookie_secure(request) else ""
+        return (
+            f"{AUTH_SESSION_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; "
+            f"Max-Age={AUTH_SESSION_COOKIE_MAX_AGE_SECONDS}{secure}"
+        )
+
+    def _clear_session_cookie_header(self, *, request: HttpRequest | None = None) -> str:
+        """Build Set-Cookie header value that expires the session cookie."""
+
+        secure = "; Secure" if self._session_cookie_secure(request) else ""
+        return f"{AUTH_SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure}"
+
+    @staticmethod
+    def _cookie_value(cookie_header: str, name: str) -> str:
+        """Extract one cookie value by name from a Cookie header."""
+
+        for segment in cookie_header.split(";"):
+            key, separator, raw_value = segment.strip().partition("=")
+            if separator and key == name:
+                return raw_value.strip()
+        return ""
+
+    async def _process_http_request(self, _connection: ServerConnection, request: HttpRequest) -> HttpResponse | None:
+        """Handle lightweight same-origin auth cookie set/clear HTTP endpoints."""
+
+        path = request.path.split("?", 1)[0]
+        if path not in {AUTH_SESSION_COOKIE_SET_PATH, AUTH_SESSION_COOKIE_CLEAR_PATH}:
+            return None
+
+        headers = Headers()
+        headers["Content-Type"] = "text/plain; charset=utf-8"
+        headers["Cache-Control"] = "no-store"
+        client_header = str(request.headers.get(AUTH_SESSION_COOKIE_CLIENT_HEADER, "")).strip()
+        if client_header != "1":
+            return HttpResponse(400, "Bad Request", headers, b"missing client header")
+
+        if path == AUTH_SESSION_COOKIE_CLEAR_PATH:
+            headers["Set-Cookie"] = self._clear_session_cookie_header(request=request)
+            return HttpResponse(200, "OK", headers, b"cleared")
+
+        authorization = str(request.headers.get("Authorization", "")).strip()
+        if not authorization.lower().startswith("bearer "):
+            return HttpResponse(400, "Bad Request", headers, b"missing bearer token")
+        token = authorization[7:].strip()
+        if not token:
+            return HttpResponse(400, "Bad Request", headers, b"missing bearer token")
+        try:
+            session = self.auth_service.resume(token)
+        except AuthError:
+            return HttpResponse(401, "Unauthorized", headers, b"invalid session")
+        headers["Set-Cookie"] = self._session_cookie_header(session.token, request=request)
+        return HttpResponse(200, "OK", headers, b"ok")
+
+    def _session_token_from_websocket_cookie(self, websocket: ServerConnection) -> str:
+        """Read session token from websocket handshake Cookie header."""
+
+        request = getattr(websocket, "request", None)
+        headers = getattr(request, "headers", None)
+        if headers is None:
+            return ""
+        cookie_header = str(headers.get("Cookie", "")).strip()
+        if not cookie_header:
+            return ""
+        return self._cookie_value(cookie_header, AUTH_SESSION_COOKIE_NAME)
 
     def _build_admin_menu_actions_for_client(self, client: ClientConnection | None) -> list[dict[str, str]]:
         """Build server-authored admin menu actions allowed for one client."""
@@ -1217,6 +1302,7 @@ class SignalingServer:
                 self.port,
                 ssl=self._ssl_context,
                 max_size=self.max_message_size,
+                process_request=self._process_http_request,
             ):
                 await asyncio.Future()
         finally:
@@ -1245,14 +1331,21 @@ class SignalingServer:
         LOGGER.info("websocket opened id=%s", client.id)
 
         try:
-            await self._send(
-                websocket,
-                AuthRequiredPacket(
-                    type="auth_required",
-                    message="Authentication required.",
-                    authPolicy=self._auth_policy(),
-                ),
-            )
+            cookie_token = self._session_token_from_websocket_cookie(websocket)
+            if cookie_token:
+                await self._handle_auth_packet(
+                    client,
+                    AuthResumePacket(type="auth_resume", sessionToken=cookie_token),
+                )
+            if not client.authenticated:
+                await self._send(
+                    websocket,
+                    AuthRequiredPacket(
+                        type="auth_required",
+                        message="Authentication required.",
+                        authPolicy=self._auth_policy(),
+                    ),
+                )
             async for raw_message in websocket:
                 await self._handle_message(client, raw_message)
         except Exception:
