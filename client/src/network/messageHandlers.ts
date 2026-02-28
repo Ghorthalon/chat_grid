@@ -231,6 +231,11 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
           deps.playSample(deps.ACTION_SOUND_URL, 1);
         } else if (message.system) {
           deps.pushChatMessage(message.message);
+          const normalized = message.message.trim().toLowerCase();
+          if (normalized === 'server reboot already in progress.') {
+            deps.audioUiBlip();
+            break;
+          }
           const sound = deps.classifySystemMessageSound(message.message);
           if (sound) {
             deps.playSample(deps.SYSTEM_SOUND_URLS[sound], 1);

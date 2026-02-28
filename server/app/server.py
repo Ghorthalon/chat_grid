@@ -1686,11 +1686,10 @@ class SignalingServer:
                 return True
             reboot_message = remainder if separator else ""
             if not self._schedule_reboot(client.username or client.nickname, reboot_message):
-                await self._send(
-                    client.websocket,
+                await self._broadcast(
                     BroadcastChatMessagePacket(
                         type="chat_message",
-                        message="Server reboot already scheduled.",
+                        message="Server reboot already in progress.",
                         system=True,
                     ),
                 )

@@ -583,3 +583,41 @@ async def test_chat_reboot_schedules_and_broadcasts_message(monkeypatch: pytest.
     assert getattr(packet, "type", "") == "chat_message"
     assert packet.system is True
     assert packet.message == "Server rebooting in 5 seconds. maintenance"
+
+
+@pytest.mark.asyncio
+async def test_chat_reboot_already_in_progress_broadcasts_notice(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(
+        websocket=ws,
+        id="u1",
+        nickname="Tester",
+        authenticated=True,
+        user_id="1",
+        username="tester",
+        permissions={"chat.send", "server.allow_reboot"},
+    )
+    server.clients[ws] = client
+
+    broadcast_payloads: list[object] = []
+    send_payloads: list[object] = []
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_schedule_reboot", lambda _requested_by, _message: False)
+
+    await server._handle_message(client, json.dumps({"type": "chat_message", "message": "/reboot maintenance"}))
+
+    assert send_payloads == []
+    assert len(broadcast_payloads) == 1
+    packet = broadcast_payloads[0]
+    assert getattr(packet, "type", "") == "chat_message"
+    assert packet.system is True
+    assert packet.message == "Server reboot already in progress."
