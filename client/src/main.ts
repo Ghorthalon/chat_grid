@@ -1551,7 +1551,6 @@ async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_
   dom.authPassword.value = '';
   dom.registerPassword.value = '';
   dom.registerPasswordConfirm.value = '';
-  void audio.playSample(SYSTEM_SOUND_URLS.logon, 1);
   setConnectionStatus('Authenticated. Joining world...');
 }
 
@@ -1871,6 +1870,7 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
   }
   let restartAnnouncement: string | null = null;
   let connectedAnnouncement: string | null = null;
+  let playSelfLoginSound = false;
   if (message.type === 'welcome') {
     applyAuthPolicy(message.auth?.policy);
     applyAuthPermissions(message.auth?.role, message.auth?.permissions);
@@ -1883,6 +1883,7 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
     connectedAnnouncement = reconnectInFlight
       ? `Reconnected to server. Version ${incomingVersion}.`
       : `Connected to server. Version ${incomingVersion}.`;
+    playSelfLoginSound = !reconnectInFlight;
     if (
       !reloadScheduledForVersionMismatch &&
       APP_VERSION &&
@@ -1905,7 +1906,10 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
   }
   await onAppMessage(message);
   if (message.type === 'welcome') {
-    void setupMediaAfterAuth();
+    await setupMediaAfterAuth();
+    if (playSelfLoginSound) {
+      void audio.playSample(SYSTEM_SOUND_URLS.logon, 1);
+    }
   }
   itemBehaviorRegistry.onUseResultMessage(message);
   itemBehaviorRegistry.onWorldUpdate();
