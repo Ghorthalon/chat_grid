@@ -56,6 +56,14 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
         raise ValueError("emitSoundTempo must be between 0 and 100.")
     next_params["emitSoundTempo"] = round(emit_tempo, 1)
 
+    try:
+        emit_loop_delay = float(next_params.get("emitLoopDelay", item.params.get("emitLoopDelay", 0)))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("emitLoopDelay must be a number between 0 and 300.") from exc
+    if not (0 <= emit_loop_delay <= 300):
+        raise ValueError("emitLoopDelay must be between 0 and 300.")
+    next_params["emitLoopDelay"] = round(emit_loop_delay, 1)
+
     emit_effect = str(next_params.get("emitEffect", item.params.get("emitEffect", "off"))).strip().lower()
     if emit_effect not in EFFECT_OPTIONS:
         raise ValueError("emitEffect must be one of reverb, echo, flanger, high_pass, low_pass, off.")

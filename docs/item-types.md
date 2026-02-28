@@ -141,6 +141,7 @@ This is behavior-focused documentation for item types and their defaults.
   - `emitVolume=100`
   - `emitSoundSpeed=50`
   - `emitSoundTempo=50`
+  - `emitLoopDelay=0`
   - `emitEffect="off"`
   - `emitEffectValue=50`
   - `useSound=""`
@@ -165,6 +166,7 @@ This is behavior-focused documentation for item types and their defaults.
 - `emitVolume`: integer `0..100`
 - `emitSoundSpeed`: integer `0..100` (`0=0.5x`, `50=1.0x`, `100=2.0x`) for speed/pitch
 - `emitSoundTempo`: integer `0..100` (`0=0.5x`, `50=1.0x`, `100=2.0x`) for tempo
+- `emitLoopDelay`: number `0..300` with `0.1` step/precision; delay in seconds between each emitted loop playback
 - `emitEffect`: `reverb | echo | flanger | high_pass | low_pass | off`
 - `emitEffectValue`: number `0..100` with `0.1` precision
 - `useSound`: empty, filename (assumed under `sounds/`), or full URL

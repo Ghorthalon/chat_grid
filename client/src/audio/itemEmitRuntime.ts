@@ -9,11 +9,13 @@ import { volumePercentToGain } from './volume';
 type EmitOutput = {
   soundUrl: string;
   element: HTMLAudioElement;
+  onEnded: () => void;
   source: MediaElementAudioSourceNode;
   effectInput: GainNode;
   effectRuntime: EffectRuntime | null;
   effect: EffectId;
   effectValue: number;
+  loopDelaySeconds: number;
   gain: GainNode;
   panner: StereoPannerNode | null;
 };
@@ -63,6 +65,14 @@ function resolveEmitRates(item: WorldItem): { playbackRate: number; preservePitc
   return { playbackRate, preservePitch };
 }
 
+/** Resolves the optional emit loop delay in seconds from item params. */
+function resolveEmitLoopDelaySeconds(item: WorldItem): number {
+  const globals = getItemTypeGlobalProperties(item.type);
+  const delaySeconds = Number(item.params.emitLoopDelay ?? globals.emitLoopDelay ?? 0);
+  const clamped = Number.isFinite(delaySeconds) ? Math.max(0, Math.min(300, delaySeconds)) : 0;
+  return Math.round(clamped * 10) / 10;
+}
+
 export class ItemEmitRuntime {
   private readonly outputs = new Map<string, EmitOutput>();
   private readonly pendingEmitStarts = new Set<string>();
@@ -81,6 +91,7 @@ export class ItemEmitRuntime {
     const output = this.outputs.get(itemId);
     if (!output) return;
     output.element.pause();
+    output.element.removeEventListener('ended', output.onEnded);
     output.element.src = '';
     output.source.disconnect();
     output.effectInput.disconnect();
@@ -154,7 +165,7 @@ export class ItemEmitRuntime {
         continue;
       }
       const element = new Audio(soundUrl);
-      element.loop = true;
+      element.loop = false;
       element.preload = 'none';
       element.crossOrigin = 'anonymous';
       const source = audioCtx.createMediaElementSource(element);
@@ -169,6 +180,12 @@ export class ItemEmitRuntime {
       const initialRates = resolveEmitRates(item);
       setElementPreservesPitch(element, initialRates.preservePitch);
       element.playbackRate = initialRates.playbackRate;
+      const loopDelaySeconds = resolveEmitLoopDelaySeconds(item);
+      const onEnded = () => {
+        const delaySeconds = this.outputs.get(item.id)?.loopDelaySeconds ?? 0;
+        this.nextEmitStartAtMs.set(item.id, Date.now() + delaySeconds * 1000);
+      };
+      element.addEventListener('ended', onEnded);
       const destination = this.audio.getOutputDestinationNode() ?? audioCtx.destination;
       if (this.audio.supportsStereoPanner()) {
         panner = audioCtx.createStereoPanner();
@@ -176,7 +193,19 @@ export class ItemEmitRuntime {
       } else {
         gain.connect(destination);
       }
-      this.outputs.set(item.id, { soundUrl, element, source, effectInput, effectRuntime, effect, effectValue, gain, panner });
+      this.outputs.set(item.id, {
+        soundUrl,
+        element,
+        onEnded,
+        source,
+        effectInput,
+        effectRuntime,
+        effect,
+        effectValue,
+        loopDelaySeconds,
+        gain,
+        panner,
+      });
       this.tryStartEmitPlayback(item.id, element);
     }
 
@@ -208,6 +237,10 @@ export class ItemEmitRuntime {
         output.effectValue = effectValue;
       }
       const nextRates = resolveEmitRates(item);
+      output.loopDelaySeconds = resolveEmitLoopDelaySeconds(item);
+      if (output.element.paused && output.element.ended) {
+        this.nextEmitStartAtMs.set(itemId, Date.now() + output.loopDelaySeconds * 1000);
+      }
       setElementPreservesPitch(output.element, nextRates.preservePitch);
       const nextPlaybackRate = nextRates.playbackRate;
       if (Math.abs(output.element.playbackRate - nextPlaybackRate) > 0.001) {
