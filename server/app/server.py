@@ -125,6 +125,8 @@ AUTH_SESSION_COOKIE_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
 AUTH_SESSION_COOKIE_SET_PATH = "/auth/session/set"
 AUTH_SESSION_COOKIE_CLEAR_PATH = "/auth/session/clear"
 AUTH_SESSION_COOKIE_CLIENT_HEADER = "X-Chgrid-Auth-Client"
+AUTH_LOGIN_FAILURE_MESSAGE = "We couldn't log you in. Check your details and try again."
+AUTH_RESUME_FAILURE_MESSAGE = "We couldn't restore your session. Please log in again."
 ADMIN_MENU_ACTION_DEFINITIONS: tuple[dict[str, str], ...] = (
     {"id": "manage_roles", "label": "Role management", "permission": "role.manage"},
     {"id": "change_user_role", "label": "Change user role", "permission": "user.change_role"},
@@ -1540,6 +1542,11 @@ class SignalingServer:
             if isinstance(packet, (AuthLoginPacket, AuthRegisterPacket, AuthResumePacket)):
                 self._record_auth_failure(client, packet)
                 await self._sleep_auth_failure_jitter()
+            response_message = str(exc)
+            if isinstance(packet, AuthLoginPacket):
+                response_message = AUTH_LOGIN_FAILURE_MESSAGE
+            elif isinstance(packet, AuthResumePacket):
+                response_message = AUTH_RESUME_FAILURE_MESSAGE
             LOGGER.warning(
                 "auth failure id=%s ip=%s packet=%s reason=%s",
                 client.id,
@@ -1552,7 +1559,7 @@ class SignalingServer:
                 AuthResultPacket(
                     type="auth_result",
                     ok=False,
-                    message=str(exc),
+                    message=response_message,
                     authPolicy=self._auth_policy(),
                 ),
             )
