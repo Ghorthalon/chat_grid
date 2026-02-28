@@ -330,8 +330,8 @@ class AuthService:
 
         normalized_role = self._normalize_role_name(role_name)
         normalized_replacement = self._normalize_role_name(replacement_role_name)
-        if normalized_role == "admin":
-            raise AuthError("Admin role cannot be deleted.")
+        if normalized_role in {"admin", "user"}:
+            raise AuthError("Admin and user roles cannot be deleted.")
         if normalized_role == normalized_replacement:
             raise AuthError("Replacement role must differ from deleted role.")
 

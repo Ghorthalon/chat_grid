@@ -67,3 +67,14 @@ def test_login_missing_user_runs_dummy_verify(monkeypatch: pytest.MonkeyPatch, t
         assert calls[0][0] == "password99"
     finally:
         service.close()
+
+
+def test_delete_role_rejects_admin_and_user(tmp_path: Path) -> None:
+    service = make_auth_service(tmp_path)
+    try:
+        with pytest.raises(AuthError):
+            service.delete_role("admin", "editor")
+        with pytest.raises(AuthError):
+            service.delete_role("user", "editor")
+    finally:
+        service.close()

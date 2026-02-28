@@ -238,7 +238,7 @@ const SYSTEM_SOUND_URLS = {
   logout: withBase('sounds/logout.ogg'),
   notify: withBase('sounds/notify.ogg'),
 } as const;
-const ACTION_SOUND_URL = SYSTEM_SOUND_URLS.notify;
+const ACTION_SOUND_URL = withBase('sounds/action.ogg');
 const FOOTSTEP_SOUND_URLS = Array.from({ length: 11 }, (_, index) => withBase(`sounds/step-${index + 1}.ogg`));
 const FOOTSTEP_GAIN = 0.7;
 const TELEPORT_START_SOUND_URL = withBase('sounds/teleport_start.ogg');
@@ -2803,8 +2803,8 @@ function handleAdminRolePermissionListModeInput(code: string, key: string): void
   if (control.type === 'select') {
     const value = entries[adminRolePermissionIndex];
     if (value === '__delete_role__') {
-      if (role.name === 'admin') {
-        updateStatus('Admin role cannot be deleted.');
+      if (role.name === 'admin' || role.name === 'user') {
+        updateStatus('Admin and user roles cannot be deleted.');
         audio.sfxUiCancel();
         return;
       }
