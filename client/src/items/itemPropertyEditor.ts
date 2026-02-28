@@ -353,6 +353,16 @@ export function createItemPropertyEditor(deps: EditorDeps): {
       return;
     }
 
+    if (code === 'PageUp' || code === 'PageDown') {
+      const length = deps.state.itemPropertyOptionValues.length;
+      const delta = code === 'PageUp' ? -10 : 10;
+      const nextIndex = (deps.state.itemPropertyOptionIndex + delta + length * 1000) % length;
+      deps.state.itemPropertyOptionIndex = nextIndex;
+      deps.updateStatus(deps.state.itemPropertyOptionValues[nextIndex]);
+      deps.sfxUiBlip();
+      return;
+    }
+
     const control = handleListControlKey(
       code,
       key,

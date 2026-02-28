@@ -311,6 +311,13 @@ export class ItemEmitRuntime {
         // Ignore stale media reload failures.
       }
     }
+    if (element.ended || (Number.isFinite(element.duration) && element.duration > 0 && element.currentTime >= element.duration - 0.01)) {
+      try {
+        element.currentTime = 0;
+      } catch {
+        // Ignore reset failures for streams/seeking-restricted media.
+      }
+    }
     void element
       .play()
       .then(() => {
