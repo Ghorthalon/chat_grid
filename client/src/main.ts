@@ -625,7 +625,8 @@ function applyVoiceSendPermission(): void {
 
 /** Enables/disables the connect button based on state and nickname validity. */
 function updateConnectAvailability(): void {
-  const showLogout = state.running;
+  const hasSavedSessionHint = sanitizeAuthUsername(authUsername).length > 0;
+  const showLogout = state.running || hasSavedSessionHint;
   dom.logoutButton.classList.toggle('hidden', !showLogout);
   dom.logoutButton.disabled = !showLogout;
   if (state.running) {
@@ -636,12 +637,21 @@ function updateConnectAvailability(): void {
     dom.authSessionView.classList.add('hidden');
     return;
   }
-  dom.showRegisterButton.classList.remove('hidden');
-  dom.authModeSeparator.classList.remove('hidden');
-  dom.showRegisterButton.textContent = authMode === 'login' ? 'Register' : 'Login';
-  dom.loginView.classList.toggle('hidden', authMode !== 'login');
-  dom.registerView.classList.toggle('hidden', authMode !== 'register');
-  dom.authSessionView.classList.add('hidden');
+  if (hasSavedSessionHint) {
+    dom.authSessionText.textContent = `Logged in as ${sanitizeAuthUsername(authUsername)}.`;
+    dom.showRegisterButton.classList.add('hidden');
+    dom.authModeSeparator.classList.add('hidden');
+    dom.loginView.classList.add('hidden');
+    dom.registerView.classList.add('hidden');
+    dom.authSessionView.classList.remove('hidden');
+  } else {
+    dom.showRegisterButton.classList.remove('hidden');
+    dom.authModeSeparator.classList.remove('hidden');
+    dom.showRegisterButton.textContent = authMode === 'login' ? 'Register' : 'Login';
+    dom.loginView.classList.toggle('hidden', authMode !== 'login');
+    dom.registerView.classList.toggle('hidden', authMode !== 'register');
+    dom.authSessionView.classList.add('hidden');
+  }
   const usernameMin = authPolicy?.usernameMinLength ?? 1;
   const passwordMin = authPolicy?.passwordMinLength ?? 1;
   const hasLoginCredentials =
@@ -651,8 +661,13 @@ function updateConnectAvailability(): void {
     dom.registerPassword.value.trim().length >= passwordMin &&
     dom.registerPassword.value === dom.registerPasswordConfirm.value;
   const authReady = authMode === 'login' ? true : hasRegisterCredentials;
-  dom.connectButton.textContent =
-    authMode === 'register' ? 'Register & Connect' : hasLoginCredentials ? 'Log In & Connect' : 'Connect';
+  dom.connectButton.textContent = hasSavedSessionHint
+    ? 'Connect'
+    : authMode === 'register'
+      ? 'Register & Connect'
+      : hasLoginCredentials
+        ? 'Log In & Connect'
+        : 'Connect';
   dom.connectButton.disabled = mediaSession.isConnecting() || !authReady;
 }
 
