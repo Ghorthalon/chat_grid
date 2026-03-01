@@ -86,7 +86,7 @@ class AdminRoleDeletePacket(BasePacket):
 
 class AdminUsersListPacket(BasePacket):
     type: Literal["admin_users_list"]
-    action: Literal["set_role", "ban", "unban"] | None = None
+    action: Literal["set_role", "ban", "unban", "delete_account"] | None = None
 
 
 class AdminUserSetRolePacket(BasePacket):
@@ -102,6 +102,11 @@ class AdminUserBanPacket(BasePacket):
 
 class AdminUserUnbanPacket(BasePacket):
     type: Literal["admin_user_unban"]
+    username: str = Field(min_length=1, max_length=128)
+
+
+class AdminUserDeletePacket(BasePacket):
+    type: Literal["admin_user_delete"]
     username: str = Field(min_length=1, max_length=128)
 
 
@@ -187,6 +192,7 @@ ClientPacket = (
     | AdminUserSetRolePacket
     | AdminUserBanPacket
     | AdminUserUnbanPacket
+    | AdminUserDeletePacket
     | PingPacket
     | ItemAddPacket
     | ItemPickupPacket
@@ -449,5 +455,6 @@ class AdminActionResultPacket(BasePacket):
         "user_set_role",
         "user_ban",
         "user_unban",
+        "user_delete",
     ]
     message: str

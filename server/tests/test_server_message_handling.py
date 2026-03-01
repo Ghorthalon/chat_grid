@@ -436,6 +436,78 @@ async def test_item_transfer_rejects_when_not_authorized(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_admin_user_delete_requires_permission(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(
+        websocket=ws,
+        id="u1",
+        nickname="Tester",
+        authenticated=True,
+        user_id="1",
+        username="tester",
+        permissions={"user.ban_unban"},
+    )
+    server.clients[ws] = client
+
+    send_payloads: list[object] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+
+    await server._handle_message(client, json.dumps({"type": "admin_user_delete", "username": "alpha"}))
+
+    assert send_payloads
+    packet = send_payloads[-1]
+    assert getattr(packet, "type", "") == "admin_action_result"
+    assert packet.ok is False
+    assert packet.action == "user_delete"
+    assert "not authorized" in packet.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_user_delete_calls_auth_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = _fake_ws()
+    client = ClientConnection(
+        websocket=ws,
+        id="u1",
+        nickname="Tester",
+        authenticated=True,
+        user_id="1",
+        username="tester",
+        permissions={"account.delete.any"},
+    )
+    server.clients[ws] = client
+
+    send_payloads: list[object] = []
+    calls: list[tuple[str, str | None]] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server.auth_service, "get_user_id_by_username", lambda _username: None)
+
+    def fake_delete_user(username: str, *, actor_user_id: str | None = None) -> str:
+        calls.append((username, actor_user_id))
+        return username
+
+    monkeypatch.setattr(server.auth_service, "delete_user", fake_delete_user)
+
+    await server._handle_message(client, json.dumps({"type": "admin_user_delete", "username": "alpha"}))
+
+    assert calls == [("alpha", "1")]
+    assert send_payloads
+    packet = send_payloads[-1]
+    assert getattr(packet, "type", "") == "admin_action_result"
+    assert packet.ok is True
+    assert packet.action == "user_delete"
+
+
+@pytest.mark.asyncio
 async def test_broadcast_fanout_is_concurrent(monkeypatch: pytest.MonkeyPatch) -> None:
     server = SignalingServer("127.0.0.1", 8765, None, None)
     ws1 = _fake_ws()

@@ -210,7 +210,8 @@ type AdminUserSummary = {
 type AdminPendingUserMutation =
   | { action: 'set_role'; username: string; role: string }
   | { action: 'ban'; username: string }
-  | { action: 'unban'; username: string };
+  | { action: 'unban'; username: string }
+  | { action: 'delete_account'; username: string };
 
 type ItemManagementAction = 'delete' | 'transfer';
 
@@ -332,10 +333,11 @@ let adminRolePermissionIndex = 0;
 let adminRoleDeleteReplacementIndex = 0;
 let adminUsers: AdminUserSummary[] = [];
 let adminUserIndex = 0;
-let adminPendingUserAction: 'set_role' | 'ban' | 'unban' | null = null;
+let adminPendingUserAction: 'set_role' | 'ban' | 'unban' | 'delete_account' | null = null;
 let adminSelectedRoleName = '';
 let adminSelectedUsername = '';
 let adminPendingUserMutation: AdminPendingUserMutation | null = null;
+let adminDeleteConfirmIndex = 0;
 let itemManagementSelectedItemId: string | null = null;
 let itemManagementOptions: ItemManagementOption[] = [];
 let itemManagementOptionIndex = 0;
@@ -1830,6 +1832,16 @@ function handleAdminActionResult(message: Extract<IncomingMessage, { type: 'admi
           adminPendingUserAction = null;
         }
       }
+    } else if (adminPendingUserMutation.action === 'delete_account') {
+      adminUsers = adminUsers.filter((entry) => entry.username !== adminPendingUserMutation.username);
+      if (state.mode === 'adminUserList' && adminPendingUserAction === 'delete_account') {
+        if (adminUsers.length > 0) {
+          adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
+        } else {
+          state.mode = 'adminMenu';
+          adminPendingUserAction = null;
+        }
+      }
     }
     adminPendingUserMutation = null;
   }
@@ -3029,6 +3041,12 @@ function handleAdminMenuModeInput(code: string, key: string): void {
       adminPendingUserAction = 'unban';
       signaling.send({ type: 'admin_users_list', action: 'unban' });
       updateStatus('Loading users...');
+      return;
+    }
+    if (selected.id === 'delete_account') {
+      adminPendingUserAction = 'delete_account';
+      signaling.send({ type: 'admin_users_list', action: 'delete_account' });
+      updateStatus('Loading users...');
     }
     return;
   }
@@ -3217,6 +3235,13 @@ function handleAdminUserListModeInput(code: string, key: string): void {
       adminPendingUserAction = 'unban';
       return;
     }
+    if (adminPendingUserAction === 'delete_account') {
+      adminDeleteConfirmIndex = 0;
+      state.mode = 'adminUserDeleteConfirm';
+      updateStatus(`Delete account ${selected.username}? ${YES_NO_OPTIONS[adminDeleteConfirmIndex].label}.`);
+      audio.sfxUiBlip();
+      return;
+    }
     return;
   }
   if (control.type === 'cancel') {
@@ -3251,6 +3276,48 @@ function handleAdminUserRoleSelectModeInput(code: string, key: string): void {
     state.mode = 'adminUserList';
     updateStatus('Select user.');
     audio.sfxUiCancel();
+  }
+}
+
+/** Handles yes/no confirmation for delete-account admin flow. */
+function handleAdminUserDeleteConfirmModeInput(code: string, key: string): void {
+  if (!adminSelectedUsername || adminPendingUserAction !== 'delete_account') {
+    state.mode = 'adminUserList';
+    return;
+  }
+  const control = handleYesNoMenuInput(code, key, adminDeleteConfirmIndex);
+  if (control.type === 'move') {
+    adminDeleteConfirmIndex = control.index;
+    updateStatus(`Delete account ${adminSelectedUsername}? ${YES_NO_OPTIONS[adminDeleteConfirmIndex].label}.`);
+    audio.sfxUiBlip();
+    return;
+  }
+  if (control.type === 'cancel') {
+    state.mode = 'adminUserList';
+    const selected = adminUsers[adminUserIndex];
+    if (selected) {
+      updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
+    } else {
+      updateStatus('Select user.');
+    }
+    audio.sfxUiCancel();
+    return;
+  }
+  if (control.type === 'select') {
+    const choice = YES_NO_OPTIONS[adminDeleteConfirmIndex];
+    if (choice.id === 'no') {
+      state.mode = 'adminUserList';
+      const selected = adminUsers[adminUserIndex];
+      if (selected) {
+        updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
+      } else {
+        updateStatus('Select user.');
+      }
+      audio.sfxUiCancel();
+      return;
+    }
+    adminPendingUserMutation = { action: 'delete_account', username: adminSelectedUsername };
+    signaling.send({ type: 'admin_user_delete', username: adminSelectedUsername });
   }
 }
 
@@ -3475,6 +3542,7 @@ function setupInputHandlers(): void {
         adminRoleDeleteReplacement: (currentCode, currentKey) => handleAdminRoleDeleteReplacementModeInput(currentCode, currentKey),
         adminUserList: (currentCode, currentKey) => handleAdminUserListModeInput(currentCode, currentKey),
         adminUserRoleSelect: (currentCode, currentKey) => handleAdminUserRoleSelectModeInput(currentCode, currentKey),
+        adminUserDeleteConfirm: (currentCode, currentKey) => handleAdminUserDeleteConfirmModeInput(currentCode, currentKey),
         adminRoleNameEdit: (currentCode, currentKey, currentCtrlKey) =>
           handleAdminRoleNameEditModeInput(currentCode, currentKey, currentCtrlKey),
         itemProperties: (currentCode, currentKey) => itemPropertyEditor.handleItemPropertiesModeInput(currentCode, currentKey),

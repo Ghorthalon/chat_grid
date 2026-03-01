@@ -96,6 +96,7 @@ Applies to effect select, user/item list modes, item selection, item property li
   - change user role
   - ban user
   - unban user
+  - delete account
 - In admin role management:
   - role list includes role user-counts
   - `Enter` on role opens permission toggles

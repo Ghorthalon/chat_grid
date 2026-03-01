@@ -438,6 +438,35 @@ class AuthService:
         self._db_commit()
         return normalized_username
 
+    def delete_user(self, target_username: str, *, actor_user_id: str | None = None) -> str:
+        """Delete one account and related session/state rows."""
+
+        normalized_username = self._normalize_username(target_username)
+        user_row = self._db_fetchone(
+            """
+            SELECT u.id, u.status, r.name AS role_name
+            FROM users u
+            JOIN roles r ON r.id = u.role_id
+            WHERE u.username = ?
+            """,
+            (normalized_username,),
+        )
+        if user_row is None:
+            raise AuthError("User not found.")
+        user_id = int(user_row["id"])
+        current_status = str(user_row["status"])
+        current_role = str(user_row["role_name"])
+        if current_role == "admin" and current_status == "active" and self._active_admin_count() <= 1:
+            raise AuthError("Cannot delete the last active admin.")
+        if actor_user_id is not None and str(user_id) == str(actor_user_id):
+            if current_role == "admin" and current_status == "active" and self._active_admin_count() <= 1:
+                raise AuthError("Cannot delete your own account while you are the last active admin.")
+        self._db_execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        self._db_execute("DELETE FROM user_state WHERE user_id = ?", (user_id,))
+        self._db_execute("DELETE FROM users WHERE id = ?", (user_id,))
+        self._db_commit()
+        return normalized_username
+
     def get_user_by_id(self, user_id: str) -> AuthUser | None:
         """Return one user by id with current role and permissions."""
 

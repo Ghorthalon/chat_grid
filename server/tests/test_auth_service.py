@@ -87,3 +87,15 @@ def test_update_role_permissions_rejects_admin(tmp_path: Path) -> None:
             service.update_role_permissions("admin", ["chat.send"])
     finally:
         service.close()
+
+
+def test_delete_user_removes_account(tmp_path: Path) -> None:
+    service = make_auth_service(tmp_path)
+    try:
+        service.register("alpha", "password99")
+        deleted = service.delete_user("alpha")
+        assert deleted == "alpha"
+        with pytest.raises(AuthError):
+            service.login("alpha", "password99")
+    finally:
+        service.close()

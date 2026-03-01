@@ -315,6 +315,7 @@ export const adminActionResultSchema = z.object({
     'user_set_role',
     'user_ban',
     'user_unban',
+    'user_delete',
   ]),
   message: z.string(),
 });
@@ -355,10 +356,11 @@ export type OutgoingMessage =
   | { type: 'admin_role_create'; name: string }
   | { type: 'admin_role_update_permissions'; role: string; permissions: string[] }
   | { type: 'admin_role_delete'; role: string; replacementRole: string }
-  | { type: 'admin_users_list'; action?: 'set_role' | 'ban' | 'unban' }
+  | { type: 'admin_users_list'; action?: 'set_role' | 'ban' | 'unban' | 'delete_account' }
   | { type: 'admin_user_set_role'; username: string; role: string }
   | { type: 'admin_user_ban'; username: string }
   | { type: 'admin_user_unban'; username: string }
+  | { type: 'admin_user_delete'; username: string }
   | { type: 'signal'; targetId: string; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit }
   | { type: 'update_position'; x: number; y: number }
   | { type: 'teleport_complete'; x: number; y: number }

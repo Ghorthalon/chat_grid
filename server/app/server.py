@@ -63,6 +63,7 @@ from .models import (
     AdminRolesListPacket,
     AdminRolesListResultPacket,
     AdminUserBanPacket,
+    AdminUserDeletePacket,
     AdminUserSetRolePacket,
     AdminUserUnbanPacket,
     AdminUsersListPacket,
@@ -133,6 +134,7 @@ ADMIN_MENU_ACTION_DEFINITIONS: tuple[dict[str, str], ...] = (
     {"id": "change_user_role", "label": "Change user role", "permission": "user.change_role"},
     {"id": "ban_user", "label": "Ban user", "permission": "user.ban_unban"},
     {"id": "unban_user", "label": "Unban user", "permission": "user.ban_unban"},
+    {"id": "delete_account", "label": "Delete account", "permission": "account.delete.any"},
 )
 
 
@@ -1671,6 +1673,7 @@ class SignalingServer:
             "user_set_role",
             "user_ban",
             "user_unban",
+            "user_delete",
         ],
         message: str,
     ) -> None:
@@ -1831,6 +1834,7 @@ class SignalingServer:
                 AdminUserSetRolePacket,
                 AdminUserBanPacket,
                 AdminUserUnbanPacket,
+                AdminUserDeletePacket,
             ),
         ):
             return False
@@ -1861,6 +1865,7 @@ class SignalingServer:
             if not (
                 self._client_has_permission(client, "user.change_role")
                 or self._client_has_permission(client, "user.ban_unban")
+                or self._client_has_permission(client, "account.delete.any")
             ):
                 await deny("user_set_role", "Not authorized.")
                 return True
@@ -2009,6 +2014,34 @@ class SignalingServer:
                 ok=True,
                 action="user_unban",
                 message=f"Unbanned {username}.",
+            )
+            return True
+
+        if isinstance(packet, AdminUserDeletePacket):
+            if not self._client_has_permission(client, "account.delete.any"):
+                await deny("user_delete", "Not authorized.")
+                return True
+            target_id = self.auth_service.get_user_id_by_username(packet.username)
+            try:
+                username = self.auth_service.delete_user(packet.username, actor_user_id=client.user_id)
+            except AuthError as exc:
+                await deny("user_delete", str(exc))
+                return True
+            if target_id:
+                for active in list(self.clients.values()):
+                    if active.user_id != target_id:
+                        continue
+                    await self._send(
+                        active.websocket,
+                        AuthResultPacket(type="auth_result", ok=False, message="Account deleted."),
+                    )
+                    await active.websocket.close()
+            LOGGER.info("user deleted actor=%s target=%s", client.user_id, username)
+            await self._send_admin_action_result(
+                client,
+                ok=True,
+                action="user_delete",
+                message=f"Deleted account {username}.",
             )
             return True
 

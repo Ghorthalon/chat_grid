@@ -18,9 +18,10 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `admin_role_create`: create role.
 - `admin_role_update_permissions`: replace one role permission set.
 - `admin_role_delete`: delete role with replacement role reassignment.
-- `admin_users_list`: request user list for admin actions (`action`: `set_role | ban | unban`).
+- `admin_users_list`: request user list for admin actions (`action`: `set_role | ban | unban | delete_account`).
 - `admin_user_set_role`: set target user role.
 - `admin_user_ban` / `admin_user_unban`: disable/enable user account.
+- `admin_user_delete`: permanently delete target account.
 - `update_position`: client movement intent; server enforces world bounds and movement rate policy.
 - `teleport_complete`: client signals teleport landing; server rebroadcasts spatial landing cue.
 - `update_nickname`: nickname change request (server enforces uniqueness).
@@ -40,6 +41,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `admin_roles_list`: role list response payload.
 - `admin_users_list`: user list response payload.
 - `admin_action_result`: structured result for admin actions.
+  - admin mutations include `user_delete` for account deletion.
 - `welcome`: initial snapshot with users/items plus server UI/world metadata.
 - `signal`: forwarded WebRTC offer/answer/ICE.
 - `update_position`, `update_nickname`, `user_left`: presence updates.

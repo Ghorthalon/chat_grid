@@ -48,6 +48,7 @@ export type GameMode =
   | 'adminRoleDeleteReplacement'
   | 'adminUserList'
   | 'adminUserRoleSelect'
+  | 'adminUserDeleteConfirm'
   | 'adminRoleNameEdit'
   | 'pianoUse';
 
