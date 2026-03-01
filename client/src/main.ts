@@ -2235,8 +2235,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       replaceTextOnNextType = true;
       micGainLoopbackRestoreState = audio.isLoopbackEnabled();
       audio.setLoopbackEnabled(true);
-      updateStatus(`Set microphone gain: ${state.nicknameInput}`);
-      audio.sfxUiBlip();
+      announceMenuEntry('Microphone gain', state.nicknameInput);
       return;
     case 'calibrateMicrophone':
       if (!voiceSendAllowed) {
