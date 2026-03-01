@@ -245,6 +245,14 @@ function buildHelpLines(help: HelpData): string[] {
   return lines;
 }
 
+/** Announces standardized menu entry as `Title. First option.` */
+function announceMenuEntry(title: string, firstOption: string): void {
+  const trimmedTitle = title.trim();
+  const trimmedOption = firstOption.trim();
+  updateStatus(`${trimmedTitle}. ${trimmedOption}.`);
+  audio.sfxUiBlip();
+}
+
 const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
 dom.appVersion.textContent = APP_VERSION
   ? `Another AI experiment with Jage. Version ${APP_VERSION}`
@@ -1089,8 +1097,7 @@ function beginItemManagement(item: WorldItem): void {
   itemManagementOptions = options;
   itemManagementOptionIndex = 0;
   state.mode = 'itemManageOptions';
-  updateStatus('Items.');
-  audio.sfxUiBlip();
+  announceMenuEntry('Items', itemManagementOptions[0].label);
 }
 
 /** Opens standardized yes/no confirmation prompt for a pending item-management action. */
@@ -2202,8 +2209,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       const currentIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === currentEffect.id);
       state.effectSelectIndex = currentIndex >= 0 ? currentIndex : 0;
       state.mode = 'effectSelect';
-      updateStatus(`Select effect: ${EFFECT_SEQUENCE[state.effectSelectIndex].label}`);
-      audio.sfxUiBlip();
+      announceMenuEntry('Effects', EFFECT_SEQUENCE[state.effectSelectIndex].label);
       return;
     }
     case 'effectValueUp':
@@ -2251,8 +2257,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       adminMenuActions.splice(0, adminMenuActions.length, ...actions);
       adminMenuIndex = 0;
       state.mode = 'adminMenu';
-      updateStatus(`Admin: ${adminMenuActions[0].label}.`);
-      audio.sfxUiBlip();
+      announceMenuEntry('Admin', adminMenuActions[0].label);
       return;
     }
     case 'useItem': {
@@ -2667,8 +2672,8 @@ function handleEffectSelectModeInput(code: string, key: string): void {
   }
 
   if (control.type === 'cancel') {
-    state.mode = 'adminMenu';
-    updateStatus('Admin menu.');
+    state.mode = 'normal';
+    updateStatus('Cancelled.');
     audio.sfxUiCancel();
   }
 }
