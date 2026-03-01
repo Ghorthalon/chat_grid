@@ -249,7 +249,9 @@ function buildHelpLines(help: HelpData): string[] {
 function announceMenuEntry(title: string, firstOption: string): void {
   const trimmedTitle = title.trim();
   const trimmedOption = firstOption.trim();
-  updateStatus(`${trimmedTitle}. ${trimmedOption}.`);
+  const titleSuffix = /[.!?]$/.test(trimmedTitle) ? '' : '.';
+  const optionSuffix = /[.!?]$/.test(trimmedOption) ? '' : '.';
+  updateStatus(`${trimmedTitle}${titleSuffix} ${trimmedOption}${optionSuffix}`);
   audio.sfxUiBlip();
 }
 
@@ -1105,8 +1107,7 @@ function openItemManagementConfirm(context: ItemManagementConfirmContext): void 
   itemManagementConfirmContext = context;
   itemManagementConfirmIndex = 0;
   state.mode = 'confirmYesNo';
-  updateStatus(`${context.prompt} ${YES_NO_OPTIONS[itemManagementConfirmIndex].label}.`);
-  audio.sfxUiBlip();
+  announceMenuEntry(context.prompt, YES_NO_OPTIONS[itemManagementConfirmIndex].label);
 }
 
 /** Clears temporary item-management menu state. */
@@ -2316,8 +2317,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
       }
       state.addItemTypeIndex = Math.max(0, Math.min(state.addItemTypeIndex, itemTypeSequence.length - 1));
       state.mode = 'addItem';
-      updateStatus(`Add item: ${itemTypeLabel(itemTypeSequence[state.addItemTypeIndex])}.`);
-      audio.sfxUiBlip();
+      announceMenuEntry('Add item', itemTypeLabel(itemTypeSequence[state.addItemTypeIndex]));
       return;
     }
     case 'locateOrListItems':
@@ -3262,8 +3262,7 @@ function handleAdminUserListModeInput(code: string, key: string): void {
     if (adminPendingUserAction === 'delete_account') {
       adminDeleteConfirmIndex = 0;
       state.mode = 'adminUserDeleteConfirm';
-      updateStatus(`Delete account ${selected.username}? ${YES_NO_OPTIONS[adminDeleteConfirmIndex].label}.`);
-      audio.sfxUiBlip();
+      announceMenuEntry(`Delete account ${selected.username}?`, YES_NO_OPTIONS[adminDeleteConfirmIndex].label);
       return;
     }
     return;
