@@ -1054,8 +1054,7 @@ function beginItemSelection(
   state.selectionContext = context;
   state.selectedItemIds = items.map((item) => item.id);
   state.selectedItemIndex = 0;
-  updateStatus(`Select item: ${itemLabel(items[0])}.`);
-  audio.sfxUiBlip();
+  announceMenuEntry('Select item', itemLabel(items[0]));
 }
 
 /** Returns whether the local user can delete the provided item. */
@@ -1760,8 +1759,7 @@ function handleAdminRolesList(message: Extract<IncomingMessage, { type: 'admin_r
     adminRoleIndex = currentRoleIndex >= 0 ? currentRoleIndex : 0;
     const first = adminRoles[0];
     if (first && adminRoles[adminRoleIndex]) {
-      updateStatus(adminRoles[adminRoleIndex].name);
-      audio.sfxUiBlip();
+      announceMenuEntry('Roles', adminRoles[adminRoleIndex].name);
     } else {
       updateStatus('No roles available.');
       audio.sfxUiCancel();
@@ -1775,11 +1773,11 @@ function handleAdminRolesList(message: Extract<IncomingMessage, { type: 'admin_r
   adminRoleIndex = 0;
   const first = adminRoles[0];
   if (first) {
-    updateStatus(`${first.name}, ${first.userCount}.`);
+    announceMenuEntry('Roles', `${first.name}, ${first.userCount}`);
   } else {
     updateStatus('No roles found.');
+    audio.sfxUiCancel();
   }
-  audio.sfxUiBlip();
 }
 
 /** Handles server user-list response for admin menu flows. */
@@ -1795,8 +1793,7 @@ function handleAdminUsersList(message: Extract<IncomingMessage, { type: 'admin_u
   state.mode = 'adminUserList';
   adminUserIndex = 0;
   const first = adminUsers[0];
-  updateStatus(`${first.username}, ${first.role}, ${first.status}.`);
-  audio.sfxUiBlip();
+  announceMenuEntry('Users', `${first.username}, ${first.role}, ${first.status}`);
 }
 
 /** Handles server transfer-target list response for item-management transfer flow. */
@@ -1813,8 +1810,7 @@ function handleItemTransferTargets(message: Extract<IncomingMessage, { type: 'it
   }
   itemManagementTargetUserIndex = 0;
   state.mode = 'itemManageTransferUser';
-  updateStatus(transferTargetLabel(itemManagementTransferTargets[0]));
-  audio.sfxUiBlip();
+  announceMenuEntry('Users', transferTargetLabel(itemManagementTransferTargets[0]));
 }
 
 /** Handles structured admin action result packets. */
@@ -2346,11 +2342,13 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
         if (first) {
           const itemCount = state.sortedItemIds.length;
           const itemLabelText = itemCount === 1 ? 'item' : 'items';
-          updateStatus(
-            `${itemCount} ${itemLabelText}. ${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+          announceMenuEntry(
+            `${itemCount} ${itemLabelText}`,
+            `${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
           );
+        } else {
+          audio.sfxUiCancel();
         }
-        audio.sfxUiBlip();
         return;
       }
       {
@@ -2463,11 +2461,13 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
           const userCount = state.sortedPeerIds.length;
           const userLabelText = userCount === 1 ? 'user' : 'users';
           const gainPhrase = `volume ${formatSteppedNumber(getPeerListenGainForNickname(first.nickname), MIC_INPUT_GAIN_STEP)}`;
-          updateStatus(
-            `${userCount} ${userLabelText}. ${first.nickname}, ${gainPhrase}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+          announceMenuEntry(
+            `${userCount} ${userLabelText}`,
+            `${first.nickname}, ${gainPhrase}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
           );
+        } else {
+          audio.sfxUiCancel();
         }
-        audio.sfxUiBlip();
         return;
       }
       {
