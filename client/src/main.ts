@@ -1063,11 +1063,11 @@ function canManageTransferItem(item: WorldItem): boolean {
 /** Builds available item-management actions for one selected item. */
 function itemManagementOptionsFor(item: WorldItem): ItemManagementOption[] {
   const options: ItemManagementOption[] = [];
-  if (canManageDeleteItem(item)) {
-    options.push({ action: 'delete', label: 'Delete item' });
-  }
   if (canManageTransferItem(item) && (state.player.id !== null || state.peers.size > 0)) {
     options.push({ action: 'transfer', label: 'Transfer item' });
+  }
+  if (canManageDeleteItem(item)) {
+    options.push({ action: 'delete', label: 'Delete item' });
   }
   return options;
 }
@@ -1089,7 +1089,7 @@ function beginItemManagement(item: WorldItem): void {
   itemManagementOptions = options;
   itemManagementOptionIndex = 0;
   state.mode = 'itemManageOptions';
-  updateStatus(itemManagementOptions[0].label);
+  updateStatus('Items.');
   audio.sfxUiBlip();
 }
 
