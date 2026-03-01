@@ -140,8 +140,7 @@ class ItemDeletePacket(BasePacket):
 class ItemTransferPacket(BasePacket):
     type: Literal["item_transfer"]
     itemId: str
-    targetId: str | None = None
-    targetUserId: str | None = None
+    targetUserId: str
 
 
 class ItemTransferTargetsPacket(BasePacket):

@@ -377,7 +377,10 @@ async def test_item_transfer_updates_item_owner(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(server, "_broadcast_item", fake_broadcast_item)
     monkeypatch.setattr(server, "_broadcast", fake_broadcast)
 
-    await server._handle_message(owner, json.dumps({"type": "item_transfer", "itemId": item.id, "targetId": target.id}))
+    await server._handle_message(
+        owner,
+        json.dumps({"type": "item_transfer", "itemId": item.id, "targetUserId": target.user_id}),
+    )
 
     assert item.createdBy == target.user_id
     assert item.createdByName == target.username
@@ -439,7 +442,10 @@ async def test_item_transfer_allows_self_target_for_transfer_any(monkeypatch: py
     monkeypatch.setattr(server, "_send", fake_send)
     monkeypatch.setattr(server, "_broadcast_item", fake_broadcast_item)
 
-    await server._handle_message(actor, json.dumps({"type": "item_transfer", "itemId": item.id, "targetId": actor.id}))
+    await server._handle_message(
+        actor,
+        json.dumps({"type": "item_transfer", "itemId": item.id, "targetUserId": actor.user_id}),
+    )
 
     assert item.createdBy == actor.user_id
     assert item.createdByName == actor.username
@@ -677,7 +683,10 @@ async def test_item_transfer_rejects_when_not_authorized(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(server, "_send", fake_send)
 
-    await server._handle_message(owner, json.dumps({"type": "item_transfer", "itemId": item.id, "targetId": target.id}))
+    await server._handle_message(
+        owner,
+        json.dumps({"type": "item_transfer", "itemId": item.id, "targetUserId": target.user_id}),
+    )
 
     assert item.createdBy == owner.user_id
     assert send_payloads

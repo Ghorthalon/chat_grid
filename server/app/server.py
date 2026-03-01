@@ -2545,11 +2545,7 @@ class SignalingServer:
             if not can_transfer_any and not can_transfer_own:
                 await self._send_item_result(client, False, "transfer", "Not authorized to transfer this item.", item.id)
                 return
-            target_user_id = str(packet.targetUserId or "").strip()
-            if not target_user_id and packet.targetId:
-                target = self._get_client_by_id(packet.targetId)
-                if target and target.authenticated and target.user_id:
-                    target_user_id = target.user_id
+            target_user_id = str(packet.targetUserId).strip()
             if not target_user_id:
                 await self._send_item_result(client, False, "transfer", "Target user is not available.", item.id)
                 return
