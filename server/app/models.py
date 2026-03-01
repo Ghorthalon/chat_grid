@@ -63,6 +63,10 @@ class AuthLogoutPacket(BasePacket):
     type: Literal["auth_logout"]
 
 
+class WelcomeReadyPacket(BasePacket):
+    type: Literal["welcome_ready"]
+
+
 class AdminRolesListPacket(BasePacket):
     type: Literal["admin_roles_list"]
 
@@ -189,6 +193,7 @@ ClientPacket = (
     | AuthLoginPacket
     | AuthResumePacket
     | AuthLogoutPacket
+    | WelcomeReadyPacket
     | AdminRolesListPacket
     | AdminRoleCreatePacket
     | AdminRoleUpdatePermissionsPacket

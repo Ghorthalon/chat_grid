@@ -27,6 +27,7 @@ class ClientConnection:
     last_position_update_ms: int = 0
     movement_window_index: int = -1
     movement_window_steps_used: int = 0
+    world_ready: bool = False
 
     def summary(self) -> dict[str, str | int]:
         """Return a compact serializable snapshot for logs/diagnostics."""

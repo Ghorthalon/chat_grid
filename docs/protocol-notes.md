@@ -14,6 +14,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `auth_login`: authenticate with username/password.
 - `auth_resume`: resume prior session via stored session token.
 - `auth_logout`: revoke current session and disconnect.
+- `welcome_ready`: client confirms it accepted `welcome` preflight and is ready to join active roster.
 - `admin_roles_list`: request server role list (with user counts + permission sets).
 - `admin_role_create`: create role.
 - `admin_role_update_permissions`: replace one role permission set.
@@ -44,6 +45,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `admin_action_result`: structured result for admin actions.
   - admin mutations include `user_delete` for account deletion.
 - `welcome`: initial snapshot with users/items plus server UI/world metadata.
+  - Server delays roster activation/login broadcast until `welcome_ready` is received.
 - `signal`: forwarded WebRTC offer/answer/ICE.
 - `update_position`, `update_nickname`, `user_left`: presence updates.
 - `teleport_complete`: peer teleport landing event with spatial coordinates.

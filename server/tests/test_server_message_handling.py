@@ -277,6 +277,44 @@ async def test_auth_login_failure_message_is_generic(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
+async def test_auth_login_defers_activation_until_welcome_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    username = f"ready_{uuid.uuid4().hex[:8]}"
+    server.auth_service.register(username, "password99")
+    ws = _fake_ws()
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester")
+
+    send_payloads: list[object] = []
+    broadcast_payloads: list[object] = []
+
+    async def fake_send(websocket: ServerConnection, packet: object) -> None:
+        send_payloads.append(packet)
+
+    async def fake_broadcast(packet: object, exclude: ServerConnection | None = None) -> None:
+        broadcast_payloads.append(packet)
+
+    monkeypatch.setattr(server, "_send", fake_send)
+    monkeypatch.setattr(server, "_broadcast", fake_broadcast)
+
+    await server._handle_message(
+        client,
+        json.dumps({"type": "auth_login", "username": username, "password": "password99"}),
+    )
+
+    assert client.authenticated is True
+    assert client.world_ready is False
+    assert ws not in server.clients
+    assert any(getattr(packet, "type", "") == "welcome" for packet in send_payloads)
+    assert not any("has logged in" in getattr(packet, "message", "") for packet in broadcast_payloads)
+
+    await server._handle_message(client, json.dumps({"type": "welcome_ready"}))
+
+    assert client.world_ready is True
+    assert server.clients.get(ws) is client
+    assert any("has logged in" in getattr(packet, "message", "") for packet in broadcast_payloads)
+
+
+@pytest.mark.asyncio
 async def test_auth_resume_failure_message_is_generic(monkeypatch: pytest.MonkeyPatch) -> None:
     server = SignalingServer("127.0.0.1", 8765, None, None)
     ws = _fake_ws()

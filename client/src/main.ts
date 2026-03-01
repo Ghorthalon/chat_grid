@@ -2091,6 +2091,7 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
   }
   await onAppMessage(message);
   if (message.type === 'welcome') {
+    signaling.send({ type: 'welcome_ready' });
     await setupMediaAfterAuth();
     if (playSelfLoginSound) {
       void audio.playSample(SYSTEM_SOUND_URLS.logon, 1);

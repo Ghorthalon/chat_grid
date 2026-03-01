@@ -102,6 +102,7 @@ from .models import (
     UpdateNicknamePacket,
     UpdatePositionPacket,
     UserLeftPacket,
+    WelcomeReadyPacket,
     WelcomePacket,
     WorldItem,
 )
@@ -1419,11 +1420,9 @@ class SignalingServer:
         )
         await self._send(client.websocket, packet)
 
-    async def _activate_authenticated_client(self, client: ClientConnection) -> None:
-        """Move an authenticated websocket client into the active world roster."""
+    async def _send_authenticated_welcome(self, client: ClientConnection) -> None:
+        """Prepare authenticated client state and send welcome before world activation."""
 
-        if client.websocket in self.clients:
-            return
         saved_x = getattr(client, "saved_x", None)
         saved_y = getattr(client, "saved_y", None)
         if isinstance(saved_x, int) and isinstance(saved_y, int) and self._is_in_bounds(saved_x, saved_y):
@@ -1437,6 +1436,16 @@ class SignalingServer:
         client.last_position_update_ms = now_ms
         client.movement_window_index = self._movement_window_index(now_ms)
         client.movement_window_steps_used = 0
+        client.world_ready = False
+        await self._send_welcome(client)
+
+    async def _activate_authenticated_client(self, client: ClientConnection) -> None:
+        """Move a welcomed authenticated client into active world roster."""
+
+        if client.websocket in self.clients:
+            client.world_ready = True
+            return
+        client.world_ready = True
         self.clients[client.websocket] = client
         LOGGER.info(
             "client authenticated id=%s user_id=%s username=%s total=%d",
@@ -1445,7 +1454,6 @@ class SignalingServer:
             client.username,
             len(self.clients),
         )
-        await self._send_welcome(client)
         await self._broadcast(
             BroadcastChatMessagePacket(
                 type="chat_message",
@@ -1617,7 +1625,7 @@ class SignalingServer:
                 authPolicy=self._auth_policy(),
             ),
         )
-        await self._activate_authenticated_client(client)
+        await self._send_authenticated_welcome(client)
         return True
 
     def _build_ui_definitions(self, client: ClientConnection | None = None) -> dict:
@@ -2080,6 +2088,14 @@ class SignalingServer:
                 client.websocket,
                 AuthResultPacket(type="auth_result", ok=False, message="Authenticate before sending gameplay actions."),
             )
+            return
+
+        if isinstance(packet, WelcomeReadyPacket):
+            await self._activate_authenticated_client(client)
+            return
+
+        if not client.world_ready:
+            PACKET_LOGGER.info("ignoring pre-ready packet id=%s type=%s", client.id, packet.type)
             return
 
         if await self._handle_admin_packet(client, packet):
