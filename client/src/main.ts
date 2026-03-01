@@ -2988,6 +2988,7 @@ function handleConfirmYesNoModeInput(code: string, key: string): void {
   const control = handleYesNoMenuInput(code, key, itemManagementConfirmIndex);
   if (control.type === 'move') {
     itemManagementConfirmIndex = control.index;
+    updateStatus(YES_NO_OPTIONS[itemManagementConfirmIndex].label);
     audio.sfxUiBlip();
     return;
   }
@@ -3302,6 +3303,7 @@ function handleAdminUserDeleteConfirmModeInput(code: string, key: string): void 
   const control = handleYesNoMenuInput(code, key, adminDeleteConfirmIndex);
   if (control.type === 'move') {
     adminDeleteConfirmIndex = control.index;
+    updateStatus(YES_NO_OPTIONS[adminDeleteConfirmIndex].label);
     audio.sfxUiBlip();
     return;
   }
