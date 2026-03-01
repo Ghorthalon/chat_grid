@@ -209,6 +209,7 @@ ClientPacket = (
 
 class RemoteUser(BaseModel):
     id: str
+    userId: str | None = None
     nickname: str
     x: int
     y: int

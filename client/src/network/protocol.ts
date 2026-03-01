@@ -24,6 +24,7 @@ export const welcomeMessageSchema = z.object({
   id: z.string(),
   player: z.object({
     id: z.string(),
+    userId: z.string().nullable().optional(),
     nickname: z.string(),
     x: z.number().int(),
     y: z.number().int(),
@@ -31,6 +32,7 @@ export const welcomeMessageSchema = z.object({
   users: z.array(
     z.object({
       id: z.string(),
+      userId: z.string().nullable().optional(),
       nickname: z.string(),
       x: z.number().int(),
       y: z.number().int(),

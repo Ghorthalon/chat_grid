@@ -154,11 +154,12 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         if (!deps.isPeerNegotiationReady()) {
           deps.enqueuePendingSignal(message);
           if (!deps.state.peers.has(message.senderId)) {
-            deps.state.peers.set(message.senderId, {
-              id: message.senderId,
-              nickname: deps.sanitizeName(message.senderNickname || 'user...') || 'user...',
-              x: Number.isFinite(message.x) ? message.x : 20,
-              y: Number.isFinite(message.y) ? message.y : 20,
+          deps.state.peers.set(message.senderId, {
+            id: message.senderId,
+            userId: null,
+            nickname: deps.sanitizeName(message.senderNickname || 'user...') || 'user...',
+            x: Number.isFinite(message.x) ? message.x : 20,
+            y: Number.isFinite(message.y) ? message.y : 20,
             });
           }
           break;
@@ -167,6 +168,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         if (!deps.state.peers.has(peer.id)) {
           deps.state.peers.set(peer.id, {
             id: peer.id,
+            userId: null,
             nickname: deps.sanitizeName(peer.nickname) || 'user...',
             x: peer.x,
             y: peer.y,

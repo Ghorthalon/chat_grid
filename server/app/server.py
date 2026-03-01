@@ -1389,14 +1389,14 @@ class SignalingServer:
         """Send initial world snapshot to a newly connected client."""
 
         users = [
-            RemoteUser(id=other.id, nickname=other.nickname, x=other.x, y=other.y)
+            RemoteUser(id=other.id, userId=other.user_id, nickname=other.nickname, x=other.x, y=other.y)
             for ws, other in self.clients.items()
             if ws is not client.websocket
         ]
         packet = WelcomePacket(
             type="welcome",
             id=client.id,
-            player=RemoteUser(id=client.id, nickname=client.nickname, x=client.x, y=client.y),
+            player=RemoteUser(id=client.id, userId=client.user_id, nickname=client.nickname, x=client.x, y=client.y),
             users=users,
             items=[self._outbound_item(item).model_dump(exclude_none=True) for item in self.items.values()],
             worldConfig={

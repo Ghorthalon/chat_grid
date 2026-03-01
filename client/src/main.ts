@@ -1060,10 +1060,16 @@ function itemManagementOptionsFor(item: WorldItem): ItemManagementOption[] {
   if (canManageDeleteItem(item)) {
     options.push({ action: 'delete', label: 'Delete item' });
   }
-  if (canManageTransferItem(item) && state.peers.size > 0) {
+  if (canManageTransferItem(item) && (state.player.id !== null || state.peers.size > 0)) {
     options.push({ action: 'transfer', label: 'Transfer item' });
   }
   return options;
+}
+
+/** Resolves transfer-target label for either local player id or a remote peer id. */
+function transferTargetLabel(userPeerId: string): string {
+  if (userPeerId === state.player.id) return state.player.nickname || 'Unknown user';
+  return state.peers.get(userPeerId)?.nickname ?? 'Unknown user';
 }
 
 /** Opens item-management options for one selected item. */
@@ -2894,12 +2900,21 @@ function handleItemManageOptionsModeInput(code: string, key: string): void {
       });
       return;
     }
-    const targetIds = Array.from(state.peers.values())
-      .map((peer) => peer.id)
-      .filter((peerId) => peerId !== state.player.id && state.peers.has(peerId))
+    const ownerUserId = item.createdBy.trim();
+    const targetIds = [
+      ...(state.player.id ? [state.player.id] : []),
+      ...Array.from(state.peers.values()).map((peer) => peer.id),
+    ]
+      .filter((peerId, index, arr) => arr.indexOf(peerId) === index)
+      .filter((peerId) => {
+        if (!ownerUserId) return true;
+        if (peerId === state.player.id) return authUserId !== ownerUserId;
+        const peer = state.peers.get(peerId);
+        return (peer?.userId ?? '') !== ownerUserId;
+      })
       .sort((a, b) => {
-        const left = state.peers.get(a)?.nickname ?? '';
-        const right = state.peers.get(b)?.nickname ?? '';
+        const left = transferTargetLabel(a);
+        const right = transferTargetLabel(b);
         return left.localeCompare(right, undefined, { sensitivity: 'base' });
       });
     if (targetIds.length === 0) {
@@ -2910,7 +2925,7 @@ function handleItemManageOptionsModeInput(code: string, key: string): void {
     itemManagementTargetUserIds = targetIds;
     itemManagementTargetUserIndex = 0;
     state.mode = 'itemManageTransferUser';
-    const firstLabel = state.peers.get(itemManagementTargetUserIds[0])?.nickname ?? 'Unknown user';
+    const firstLabel = transferTargetLabel(itemManagementTargetUserIds[0]);
     updateStatus(firstLabel);
     audio.sfxUiBlip();
     return;
@@ -2930,11 +2945,11 @@ function handleItemManageTransferUserModeInput(code: string, key: string): void 
     return;
   }
   const control = handleListControlKey(code, key, itemManagementTargetUserIds, itemManagementTargetUserIndex, (userId) => {
-    return state.peers.get(userId)?.nickname ?? 'Unknown user';
+    return transferTargetLabel(userId);
   });
   if (control.type === 'move') {
     itemManagementTargetUserIndex = control.index;
-    const label = state.peers.get(itemManagementTargetUserIds[itemManagementTargetUserIndex])?.nickname ?? 'Unknown user';
+    const label = transferTargetLabel(itemManagementTargetUserIds[itemManagementTargetUserIndex]);
     updateStatus(label);
     audio.sfxUiBlip();
     return;
@@ -2947,7 +2962,7 @@ function handleItemManageTransferUserModeInput(code: string, key: string): void 
       audio.sfxUiCancel();
       return;
     }
-    const targetLabel = state.peers.get(targetId)?.nickname ?? 'Unknown user';
+    const targetLabel = transferTargetLabel(targetId);
     openItemManagementConfirm({
       itemId: item.id,
       action: 'transfer',

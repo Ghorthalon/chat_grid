@@ -62,6 +62,7 @@ export type Player = {
 
 export type PeerState = {
   id: string;
+  userId?: string | null;
   nickname: string;
   x: number;
   y: number;
