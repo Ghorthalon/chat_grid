@@ -227,19 +227,27 @@ export class ItemEmitRuntime {
       element.playbackRate = initialRates.playbackRate;
       const initialDelaySeconds = resolveEmitInitialDelaySeconds(item);
       const loopDelaySeconds = resolveEmitLoopDelaySeconds(item);
+      const resumeState = this.resumeStateByItemId.get(item.id);
+      const matchingResumeState = resumeState && resumeState.soundUrl === soundUrl ? resumeState : null;
       const onEnded = () => {
-        const delaySeconds = this.outputs.get(item.id)?.loopDelaySeconds ?? 0;
+        const current = this.outputs.get(item.id);
+        if (!current || current.element !== element) return;
+        const delaySeconds = current.loopDelaySeconds ?? 0;
+        if (delaySeconds <= 0) {
+          this.nextEmitStartAtMs.delete(item.id);
+          this.tryStartEmitPlayback(item.id, element);
+          return;
+        }
         this.nextEmitStartAtMs.set(item.id, Date.now() + delaySeconds * 1000);
       };
       element.addEventListener('ended', onEnded);
-      const resumeState = this.resumeStateByItemId.get(item.id);
-      if (resumeState && resumeState.soundUrl === soundUrl) {
+      if (matchingResumeState) {
         const nowMs = Date.now();
-        const elapsedSeconds = Math.max(0, (nowMs - resumeState.savedAtMs) / 1000);
-        const effectiveRate = resumeState.playbackRate > 0 ? resumeState.playbackRate : 1;
-        const durationSeconds = resumeState.durationSeconds;
+        const elapsedSeconds = Math.max(0, (nowMs - matchingResumeState.savedAtMs) / 1000);
+        const effectiveRate = matchingResumeState.playbackRate > 0 ? matchingResumeState.playbackRate : 1;
+        const durationSeconds = matchingResumeState.durationSeconds;
         if (durationSeconds && durationSeconds > 0) {
-          const loopDelaySeconds = Math.max(0, resumeState.loopDelaySeconds);
+          const loopDelaySeconds = Math.max(0, matchingResumeState.loopDelaySeconds);
           const playWallSeconds = durationSeconds / effectiveRate;
           const cycleWallSeconds = playWallSeconds + loopDelaySeconds;
           const seekAndPlayNow = (targetTimeSeconds: number) => {
@@ -273,10 +281,13 @@ export class ItemEmitRuntime {
             } else {
               seekAndPlayNow(0);
             }
-          } else if (resumeState.wasPlaying) {
-            const playRemainingWallSeconds = Math.max(0, (durationSeconds - Math.max(0, resumeState.currentTimeSeconds)) / effectiveRate);
+          } else if (matchingResumeState.wasPlaying) {
+            const playRemainingWallSeconds = Math.max(
+              0,
+              (durationSeconds - Math.max(0, matchingResumeState.currentTimeSeconds)) / effectiveRate,
+            );
             if (elapsedSeconds < playRemainingWallSeconds) {
-              seekAndPlayNow(Math.max(0, resumeState.currentTimeSeconds) + elapsedSeconds * effectiveRate);
+              seekAndPlayNow(Math.max(0, matchingResumeState.currentTimeSeconds) + elapsedSeconds * effectiveRate);
             } else {
               const afterTrackSeconds = elapsedSeconds - playRemainingWallSeconds;
               if (cycleWallSeconds > 0) {
@@ -329,7 +340,7 @@ export class ItemEmitRuntime {
         gain,
         panner,
       });
-      if (!resumeState && !this.nextEmitStartAtMs.has(item.id) && initialDelaySeconds > 0) {
+      if (!matchingResumeState && !this.nextEmitStartAtMs.has(item.id) && initialDelaySeconds > 0) {
         this.nextEmitStartAtMs.set(item.id, Date.now() + initialDelaySeconds * 1000);
       }
       this.resumeStateByItemId.delete(item.id);
