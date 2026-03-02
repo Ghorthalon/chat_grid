@@ -13,6 +13,7 @@
         "Added chat actions with /me.",
         "Added /version and /up commands for server status.",
         "Added user roles/permissions system.",
+        "Added an admin menu and management commands",
         "Clock item type now is an actual talking clock with optional alarm and top of hour announcement."
       ]
     },
