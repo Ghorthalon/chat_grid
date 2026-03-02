@@ -63,6 +63,7 @@ This document is the authoritative keymap for the client.
 - `Ctrl+C`: Copy current text
 - `Ctrl+X`: Cut current text
 - `Ctrl+V`: Paste
+- `Cmd+A` / `Cmd+C` / `Cmd+X` / `Cmd+V` (macOS): same behavior as `Ctrl` shortcuts above
 
 ## Numeric Edit Fields
 

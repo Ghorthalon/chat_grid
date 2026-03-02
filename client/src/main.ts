@@ -3502,6 +3502,7 @@ function setupInputHandlers(): void {
   document.addEventListener('keydown', (event) => {
     const code = normalizeInputCode(event);
     if (!code) return;
+    const hasShortcutModifier = event.ctrlKey || event.metaKey;
 
     if (!dom.settingsModal.classList.contains('hidden') && code === 'Escape') {
       closeSettings();
@@ -3511,18 +3512,18 @@ function setupInputHandlers(): void {
     if (!state.running) return;
     if (document.activeElement !== dom.canvas) return;
     if (event.altKey) return;
-    if (event.ctrlKey && !isTextEditingMode(state.mode)) return;
+    if (hasShortcutModifier && !isTextEditingMode(state.mode)) return;
     if (activeTeleport && code.startsWith('Arrow')) {
       event.preventDefault();
       return;
     }
 
-    const isNativePasteShortcut = event.ctrlKey && isTextEditingMode(state.mode) && code === 'KeyV';
+    const isNativePasteShortcut = hasShortcutModifier && isTextEditingMode(state.mode) && code === 'KeyV';
     if ((state.mode !== 'normal' || !code.startsWith('Arrow')) && !isNativePasteShortcut) {
       event.preventDefault();
     }
 
-    if (event.ctrlKey && isTextEditingMode(state.mode)) {
+    if (hasShortcutModifier && isTextEditingMode(state.mode)) {
       if (code === 'KeyV') {
         return;
       }
@@ -3551,7 +3552,7 @@ function setupInputHandlers(): void {
       mode: state.mode,
       code,
       key: event.key,
-      ctrlKey: event.ctrlKey,
+      ctrlKey: hasShortcutModifier,
       shiftKey: event.shiftKey,
       handlers: {
         nickname: handleNicknameModeInput,
