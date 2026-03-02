@@ -481,7 +481,10 @@ class SignalingServer:
         forwarded = str(headers.get("X-Forwarded-For", "")).strip()
         if not forwarded:
             return peer_ip
-        for candidate in forwarded.split(","):
+        # In common reverse-proxy chains, the trusted proxy appends the immediate
+        # client IP to the end of X-Forwarded-For. Read right-to-left so a
+        # client-supplied left-side value can't spoof throttling/audit identity.
+        for candidate in reversed(forwarded.split(",")):
             parsed = SignalingServer._normalized_ip(candidate)
             if parsed:
                 return parsed

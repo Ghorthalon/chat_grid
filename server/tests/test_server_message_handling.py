@@ -30,7 +30,7 @@ def test_client_ip_prefers_forwarded_for_from_loopback_proxy() -> None:
         ServerConnection,
         SimpleNamespace(
             remote_address=("127.0.0.1", 12345),
-            request=SimpleNamespace(headers={"X-Forwarded-For": "198.51.100.25, 127.0.0.1"}),
+            request=SimpleNamespace(headers={"X-Forwarded-For": "203.0.113.10, 198.51.100.25"}),
         ),
     )
     client = ClientConnection(websocket=ws, id="u1", nickname="tester")
