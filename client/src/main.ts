@@ -270,8 +270,8 @@ const SYSTEM_SOUND_URLS = {
   logout: withBase('sounds/logout.ogg'),
   notify: withBase('sounds/notify.ogg'),
 } as const;
-const AUTH_SESSION_COOKIE_SET_URL = withBase('auth/session/set');
-const AUTH_SESSION_COOKIE_CLEAR_URL = withBase('auth/session/clear');
+const AUTH_SESSION_COOKIE_SET_URL = '/auth/session/set';
+const AUTH_SESSION_COOKIE_CLEAR_URL = '/auth/session/clear';
 const AUTH_SESSION_COOKIE_CLIENT_HEADER = 'X-Chgrid-Auth-Client';
 const ACTION_SOUND_URL = withBase('sounds/action.ogg');
 const FOOTSTEP_SOUND_URLS = Array.from({ length: 11 }, (_, index) => withBase(`sounds/step-${index + 1}.ogg`));
@@ -1698,7 +1698,7 @@ async function persistHttpOnlySessionCookie(sessionToken: string): Promise<void>
   const token = sessionToken.trim();
   if (!token) return;
   try {
-    await fetch(AUTH_SESSION_COOKIE_SET_URL, {
+    const response = await fetch(AUTH_SESSION_COOKIE_SET_URL, {
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -1707,15 +1707,19 @@ async function persistHttpOnlySessionCookie(sessionToken: string): Promise<void>
       },
       cache: 'no-store',
     });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
   } catch (error) {
     console.warn('Unable to persist auth cookie.', error);
+    pushChatMessage('Session save failed. You may need to log in again after refresh.');
   }
 }
 
 /** Clears server-managed HttpOnly auth session cookie. */
 async function clearHttpOnlySessionCookie(): Promise<void> {
   try {
-    await fetch(AUTH_SESSION_COOKIE_CLEAR_URL, {
+    const response = await fetch(AUTH_SESSION_COOKIE_CLEAR_URL, {
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -1723,8 +1727,12 @@ async function clearHttpOnlySessionCookie(): Promise<void> {
       },
       cache: 'no-store',
     });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
   } catch (error) {
     console.warn('Unable to clear auth cookie.', error);
+    pushChatMessage('Session clear failed. Your browser may retain an old login cookie.');
   }
 }
 

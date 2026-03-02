@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from time import monotonic
 from typing import cast
 import uuid
@@ -21,6 +22,32 @@ def _fake_ws() -> ServerConnection:
 
 def _packet_types(payloads: list[object]) -> list[str]:
     return [getattr(packet, "type", "") for packet in payloads]
+
+
+def test_client_ip_prefers_forwarded_for_from_loopback_proxy() -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = cast(
+        ServerConnection,
+        SimpleNamespace(
+            remote_address=("127.0.0.1", 12345),
+            request=SimpleNamespace(headers={"X-Forwarded-For": "198.51.100.25, 127.0.0.1"}),
+        ),
+    )
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester")
+    assert server._client_ip(client) == "198.51.100.25"
+
+
+def test_client_ip_ignores_forwarded_for_from_non_loopback_peer() -> None:
+    server = SignalingServer("127.0.0.1", 8765, None, None)
+    ws = cast(
+        ServerConnection,
+        SimpleNamespace(
+            remote_address=("203.0.113.20", 12345),
+            request=SimpleNamespace(headers={"X-Forwarded-For": "198.51.100.25"}),
+        ),
+    )
+    client = ClientConnection(websocket=ws, id="u1", nickname="tester")
+    assert server._client_ip(client) == "203.0.113.20"
 
 
 @pytest.mark.asyncio

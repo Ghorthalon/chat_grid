@@ -9,6 +9,7 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from getpass import getpass
 from importlib.metadata import PackageNotFoundError, version as package_version
+import ipaddress
 import json
 import logging
 import os
@@ -456,10 +457,53 @@ class SignalingServer:
 
         address = getattr(client.websocket, "remote_address", None)
         if isinstance(address, tuple) and address:
-            return str(address[0])
-        if isinstance(address, str):
-            return address
-        return "unknown"
+            peer_raw = address[0]
+        elif isinstance(address, str):
+            peer_raw = address
+        else:
+            peer_raw = None
+        peer_ip = SignalingServer._normalized_ip(peer_raw)
+        if not peer_ip:
+            return "unknown"
+
+        # Trust X-Forwarded-For only from a loopback proxy hop (e.g., local Apache/nginx).
+        try:
+            peer_addr = ipaddress.ip_address(peer_ip)
+        except ValueError:
+            return peer_ip
+        if not peer_addr.is_loopback:
+            return peer_ip
+
+        request = getattr(client.websocket, "request", None)
+        headers = getattr(request, "headers", None)
+        if headers is None:
+            return peer_ip
+        forwarded = str(headers.get("X-Forwarded-For", "")).strip()
+        if not forwarded:
+            return peer_ip
+        for candidate in forwarded.split(","):
+            parsed = SignalingServer._normalized_ip(candidate)
+            if parsed:
+                return parsed
+        return peer_ip
+
+    @staticmethod
+    def _normalized_ip(value: object) -> str | None:
+        """Return normalized IP text or None when input is invalid."""
+
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.startswith("[") and text.endswith("]"):
+            text = text[1:-1]
+        if "%" in text:
+            text = text.split("%", 1)[0]
+        try:
+            return str(ipaddress.ip_address(text))
+        except ValueError:
+            return None
 
     @staticmethod
     def _prune_failure_window(bucket: deque[float], now_s: float) -> None:
