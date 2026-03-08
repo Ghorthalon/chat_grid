@@ -40,15 +40,23 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
     onWorldUpdate: () => {
       controller.syncAfterWorldUpdate();
     },
-    handleModeInput: (mode, code) => {
+    handleModeInput: (mode, input) => {
       if (mode !== 'pianoUse') return false;
-      controller.handleModeInput(code);
+      controller.handleModeInput(input);
       return true;
     },
-    handleModeKeyUp: (mode, code) => {
+    handleModeKeyUp: (mode, input) => {
       if (mode !== 'pianoUse') return false;
-      controller.handleModeKeyUp(code);
+      controller.handleModeKeyUp(input);
       return true;
+    },
+    getModeCommands: (mode) => {
+      if (mode !== 'pianoUse') return [];
+      return controller.getModeCommands();
+    },
+    runModeCommand: (mode, commandId) => {
+      if (mode !== 'pianoUse') return false;
+      return controller.runModeCommand(commandId);
     },
     onRemotePianoNote: (message) => {
       if (message.on) {

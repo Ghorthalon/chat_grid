@@ -23,7 +23,9 @@ import {
   moveCursorWordRight,
   shouldReplaceCurrentText,
 } from './input/textInput';
-import { resolveMainModeCommand } from './input/mainCommandRouter';
+import { formatCommandMenuLabel, type CommandDescriptor, type ModeInput } from './input/commandTypes';
+import { getAvailableMainModeCommands } from './input/mainModeCommands';
+import { resolveMainModeCommand, type MainModeCommand } from './input/mainCommandRouter';
 import { dispatchModeInput } from './input/modeDispatcher';
 import { handleListControlKey } from './input/listController';
 import { handleYesNoMenuInput, YES_NO_OPTIONS } from './input/yesNoMenu';
@@ -314,6 +316,9 @@ let mainHelpViewerLines: string[] = [];
 let helpViewerLines: string[] = [];
 let helpViewerIndex = 0;
 let helpViewerReturnMode: GameMode = 'normal';
+const commandPaletteCommands: Array<CommandDescriptor & { run: () => void | Promise<void> }> = [];
+let commandPaletteIndex = 0;
+let commandPaletteReturnMode: GameMode = 'normal';
 let heartbeatTimerId: number | null = null;
 let heartbeatNextPingId = -1;
 let heartbeatAwaitingPong = false;
@@ -2157,6 +2162,457 @@ function toggleMute(): void {
   updateStatus(state.isMuted ? 'Muted.' : 'Unmuted.');
 }
 
+function getCurrentSquareItems(): WorldItem[] {
+  return getItemsAtPosition(state.player.x, state.player.y);
+}
+
+function getUsableItemsOnCurrentSquare(): WorldItem[] {
+  return getCurrentSquareItems().filter((item) => item.capabilities.includes('usable'));
+}
+
+function getManageableItemsOnCurrentSquare(): WorldItem[] {
+  return getCurrentSquareItems().filter((item) => itemManagementOptionsFor(item).length > 0);
+}
+
+function canEditCurrentItem(): boolean {
+  return getCurrentSquareItems().length > 0 || Boolean(getCarriedItem());
+}
+
+function canInspectCurrentItem(): boolean {
+  return canEditCurrentItem();
+}
+
+function openNicknameEditor(): void {
+  state.mode = 'nickname';
+  state.nicknameInput = state.player.nickname;
+  state.cursorPos = state.player.nickname.length;
+  replaceTextOnNextType = true;
+  updateStatus(`Nickname edit: ${state.nicknameInput}`);
+  audio.sfxUiBlip();
+}
+
+function toggleOutputModeCommand(): void {
+  outputMode = audio.toggleOutputMode();
+  mediaSession.saveOutputMode(outputMode);
+  updateStatus(outputMode === 'mono' ? 'Mono output.' : 'Stereo output.');
+  audio.sfxUiBlip();
+}
+
+function toggleLoopbackCommand(): void {
+  const enabled = audio.toggleLoopback();
+  updateStatus(enabled ? 'Loopback on.' : 'Loopback off.');
+  audio.sfxUiBlip();
+}
+
+function adjustMasterVolumeCommand(step: number): void {
+  const next = audio.adjustMasterVolume(step);
+  persistMasterVolume(next);
+  updateStatus(`Master volume ${next}`);
+  audio.sfxEffectLevel(next === 50);
+}
+
+function openEffectSelectCommand(): void {
+  const currentEffect = audio.getCurrentEffect();
+  const currentIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === currentEffect.id);
+  state.effectSelectIndex = currentIndex >= 0 ? currentIndex : 0;
+  state.mode = 'effectSelect';
+  announceMenuEntry('Effects', EFFECT_SEQUENCE[state.effectSelectIndex].label);
+}
+
+function adjustEffectValueCommand(step: number): void {
+  const adjusted = audio.adjustCurrentEffectLevel(step);
+  if (!adjusted) return;
+  persistEffectLevels();
+  audio.sfxEffectLevel(adjusted.value === adjusted.defaultValue);
+  updateStatus(`${adjusted.label} ${adjusted.value}`);
+}
+
+function speakCoordinatesCommand(): void {
+  updateStatus(`${formatCoordinate(state.player.x)}, ${formatCoordinate(state.player.y)}`);
+  audio.sfxUiBlip();
+}
+
+function openMicGainEditCommand(): void {
+  if (!voiceSendAllowed) {
+    updateStatus('Voice send is disabled for this account.');
+    audio.sfxUiCancel();
+    return;
+  }
+  state.mode = 'micGainEdit';
+  state.nicknameInput = formatSteppedNumber(audio.getOutboundInputGain(), MIC_INPUT_GAIN_STEP);
+  state.cursorPos = state.nicknameInput.length;
+  replaceTextOnNextType = true;
+  micGainLoopbackRestoreState = audio.isLoopbackEnabled();
+  audio.setLoopbackEnabled(true);
+  announceMenuEntry('Microphone gain', state.nicknameInput);
+}
+
+function calibrateMicrophoneCommand(): void {
+  if (!voiceSendAllowed) {
+    updateStatus('Voice send is disabled for this account.');
+    audio.sfxUiCancel();
+    return;
+  }
+  void calibrateMicInputGain();
+}
+
+function openAdminMenuCommand(): void {
+  const actions = getAvailableAdminActions();
+  if (actions.length === 0) {
+    updateStatus('No admin actions available.');
+    audio.sfxUiCancel();
+    return;
+  }
+  adminMenuActions.splice(0, adminMenuActions.length, ...actions);
+  adminMenuIndex = 0;
+  state.mode = 'adminMenu';
+  announceMenuEntry('Admin', adminMenuActions[0].label);
+}
+
+function useItemCommand(): void {
+  const carried = getCarriedItem();
+  if (carried) {
+    useItem(carried);
+    return;
+  }
+  const usable = getUsableItemsOnCurrentSquare();
+  if (usable.length === 0) {
+    updateStatus('No usable items here.');
+    audio.sfxUiCancel();
+    return;
+  }
+  if (usable.length === 1) {
+    useItem(usable[0]);
+    return;
+  }
+  beginItemSelection('use', usable);
+}
+
+function secondaryUseItemCommand(): void {
+  const carried = getCarriedItem();
+  if (carried) {
+    secondaryUseItem(carried);
+    return;
+  }
+  const usable = getUsableItemsOnCurrentSquare();
+  if (usable.length === 0) {
+    updateStatus('No usable items here.');
+    audio.sfxUiCancel();
+    return;
+  }
+  if (usable.length === 1) {
+    secondaryUseItem(usable[0]);
+    return;
+  }
+  beginItemSelection('secondaryUse', usable);
+}
+
+function speakUsersCommand(): void {
+  const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((peer) => peer.nickname)];
+  const label = allUsers.length === 1 ? 'user' : 'users';
+  updateStatus(`${allUsers.length} ${label}: ${allUsers.join(', ')}`);
+  audio.sfxUiBlip();
+}
+
+function addItemCommand(): void {
+  const itemTypeSequence = getItemTypeSequence();
+  if (itemTypeSequence.length === 0) {
+    updateStatus('No item types available.');
+    audio.sfxUiCancel();
+    return;
+  }
+  state.addItemTypeIndex = Math.max(0, Math.min(state.addItemTypeIndex, itemTypeSequence.length - 1));
+  state.mode = 'addItem';
+  announceMenuEntry('Add item', itemTypeLabel(itemTypeSequence[state.addItemTypeIndex]));
+}
+
+function listItemsCommand(): void {
+  state.sortedItemIds = Array.from(state.items.entries())
+    .filter(([, item]) => !item.carrierId)
+    .sort(
+      (a, b) =>
+        Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
+        Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
+    )
+    .map(([id]) => id);
+  if (state.sortedItemIds.length === 0) {
+    updateStatus('No items to list.');
+    audio.sfxUiCancel();
+    return;
+  }
+  state.itemListIndex = 0;
+  state.mode = 'listItems';
+  const first = state.items.get(state.sortedItemIds[0]);
+  if (!first) {
+    audio.sfxUiCancel();
+    return;
+  }
+  const itemCount = state.sortedItemIds.length;
+  const itemLabelText = itemCount === 1 ? 'item' : 'items';
+  announceMenuEntry(
+    `${itemCount} ${itemLabelText}`,
+    `${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+  );
+}
+
+function locateNearestItemCommand(): void {
+  const nearest = getNearestItem(state);
+  if (!nearest.itemId) {
+    updateStatus('No items to locate.');
+    audio.sfxUiCancel();
+    return;
+  }
+  const item = state.items.get(nearest.itemId);
+  if (!item) return;
+  audio.sfxLocate({ x: item.x - state.player.x, y: item.y - state.player.y });
+  updateStatus(`${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`);
+}
+
+function pickupDropItemCommand(): void {
+  const carried = getCarriedItem();
+  if (carried) {
+    signaling.send({ type: 'item_drop', itemId: carried.id, x: state.player.x, y: state.player.y });
+    return;
+  }
+  const squareItems = getCurrentSquareItems();
+  if (squareItems.length === 0) {
+    updateStatus('No items to pick up.');
+    audio.sfxUiCancel();
+    return;
+  }
+  if (squareItems.length === 1) {
+    signaling.send({ type: 'item_pickup', itemId: squareItems[0].id });
+    return;
+  }
+  beginItemSelection('pickup', squareItems);
+}
+
+function openItemManagementCommand(): void {
+  const squareItems = getCurrentSquareItems();
+  if (squareItems.length === 0) {
+    updateStatus('No items to manage on this square.');
+    audio.sfxUiCancel();
+    return;
+  }
+  const manageable = squareItems.filter((item) => itemManagementOptionsFor(item).length > 0);
+  if (manageable.length === 0) {
+    updateStatus('No permitted item management actions here.');
+    audio.sfxUiCancel();
+    return;
+  }
+  if (manageable.length === 1) {
+    beginItemManagement(manageable[0]);
+    return;
+  }
+  beginItemSelection('manage', manageable);
+}
+
+function editItemCommand(): void {
+  const squareItems = getCurrentSquareItems();
+  const carried = getCarriedItem();
+  if (squareItems.length === 0) {
+    if (!carried) {
+      updateStatus('No editable item here.');
+      audio.sfxUiCancel();
+      return;
+    }
+    beginItemProperties(carried);
+    return;
+  }
+  if (squareItems.length === 1) {
+    beginItemProperties(squareItems[0]);
+    return;
+  }
+  beginItemSelection('edit', squareItems);
+}
+
+function inspectItemCommand(): void {
+  const squareItems = getCurrentSquareItems();
+  const carried = getCarriedItem();
+  if (squareItems.length === 0) {
+    if (!carried) {
+      updateStatus('No item to inspect.');
+      audio.sfxUiCancel();
+      return;
+    }
+    beginItemProperties(carried, true);
+    return;
+  }
+  if (squareItems.length === 1) {
+    beginItemProperties(squareItems[0], true);
+    return;
+  }
+  beginItemSelection('inspect', squareItems);
+}
+
+function pingServerCommand(): void {
+  signaling.send({ type: 'ping', clientSentAt: Date.now() });
+}
+
+function listUsersCommand(): void {
+  if (state.peers.size === 0) {
+    updateStatus('No users to list.');
+    audio.sfxUiCancel();
+    return;
+  }
+  state.sortedPeerIds = Array.from(state.peers.entries())
+    .sort((a, b) => a[1].nickname.localeCompare(b[1].nickname, undefined, { sensitivity: 'base' }))
+    .map(([id]) => id);
+  state.listIndex = 0;
+  state.mode = 'listUsers';
+  const first = state.peers.get(state.sortedPeerIds[0]);
+  if (!first) {
+    audio.sfxUiCancel();
+    return;
+  }
+  const userCount = state.sortedPeerIds.length;
+  const userLabelText = userCount === 1 ? 'user' : 'users';
+  const gainPhrase = `volume ${formatSteppedNumber(getPeerListenGainForNickname(first.nickname), MIC_INPUT_GAIN_STEP)}`;
+  announceMenuEntry(
+    `${userCount} ${userLabelText}`,
+    `${first.nickname}, ${gainPhrase}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
+  );
+}
+
+function locateNearestUserCommand(): void {
+  const nearest = getNearestPeer(state);
+  if (!nearest.peerId) {
+    updateStatus('No users to locate.');
+    audio.sfxUiCancel();
+    return;
+  }
+  const peer = state.peers.get(nearest.peerId);
+  if (!peer) return;
+  audio.sfxLocate({ x: peer.x - state.player.x, y: peer.y - state.player.y });
+  updateStatus(`${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`);
+}
+
+function openHelpCommand(): void {
+  openHelpViewer(mainHelpViewerLines);
+}
+
+function openChatCommand(): void {
+  state.mode = 'chat';
+  state.nicknameInput = '';
+  state.cursorPos = 0;
+  replaceTextOnNextType = false;
+  updateStatus('Chat.');
+  audio.sfxUiBlip();
+}
+
+function escapeCommand(): void {
+  if (pendingEscapeDisconnect) {
+    pendingEscapeDisconnect = false;
+    disconnect();
+    return;
+  }
+  pendingEscapeDisconnect = true;
+  updateStatus('Press Escape again to disconnect.');
+  audio.sfxUiCancel();
+}
+
+const mainModeCommandHandlers: Record<MainModeCommand, () => void> = {
+  editNickname: openNicknameEditor,
+  toggleMute,
+  toggleOutputMode: toggleOutputModeCommand,
+  toggleLoopback: toggleLoopbackCommand,
+  toggleVoiceLayer: () => toggleAudioLayer('voice'),
+  toggleItemLayer: () => toggleAudioLayer('item'),
+  toggleMediaLayer: () => toggleAudioLayer('media'),
+  toggleWorldLayer: () => toggleAudioLayer('world'),
+  masterVolumeUp: () => adjustMasterVolumeCommand(5),
+  masterVolumeDown: () => adjustMasterVolumeCommand(-5),
+  openEffectSelect: openEffectSelectCommand,
+  effectValueUp: () => adjustEffectValueCommand(5),
+  effectValueDown: () => adjustEffectValueCommand(-5),
+  speakCoordinates: speakCoordinatesCommand,
+  openMicGainEdit: openMicGainEditCommand,
+  calibrateMicrophone: calibrateMicrophoneCommand,
+  useItem: useItemCommand,
+  secondaryUseItem: secondaryUseItemCommand,
+  speakUsers: speakUsersCommand,
+  addItem: addItemCommand,
+  locateNearestItem: locateNearestItemCommand,
+  listItems: listItemsCommand,
+  pickupDropItem: pickupDropItemCommand,
+  openItemManagement: openItemManagementCommand,
+  editItem: editItemCommand,
+  inspectItem: inspectItemCommand,
+  pingServer: pingServerCommand,
+  locateNearestUser: locateNearestUserCommand,
+  listUsers: listUsersCommand,
+  openHelp: openHelpCommand,
+  openChat: openChatCommand,
+  openAdminMenu: openAdminMenuCommand,
+  chatPrev: () => navigateChatBuffer('prev'),
+  chatNext: () => navigateChatBuffer('next'),
+  chatFirst: () => navigateChatBuffer('first'),
+  chatLast: () => navigateChatBuffer('last'),
+  escape: escapeCommand,
+};
+
+function getAvailableCommandPaletteEntriesForMode(mode: GameMode): Array<CommandDescriptor & { run: () => void | Promise<void> }> {
+  if (mode === 'normal') {
+    const descriptors = getAvailableMainModeCommands({
+      voiceSendAllowed,
+      mainHelpAvailable: mainHelpViewerLines.length > 0,
+      hasAdminActions: getAvailableAdminActions().length > 0,
+      itemTypeCount: getItemTypeSequence().length,
+      visibleItemCount: Array.from(state.items.values()).filter((item) => !item.carrierId).length,
+      userCount: state.peers.size,
+      chatMessageCount: messageBuffer.length,
+      hasCarriedItem: Boolean(getCarriedItem()),
+      squareItemCount: getCurrentSquareItems().length,
+      usableItemCount: getUsableItemsOnCurrentSquare().length,
+      manageableItemCount: getManageableItemsOnCurrentSquare().length,
+      hasEditableItemTarget: canEditCurrentItem(),
+      hasInspectableItemTarget: canInspectCurrentItem(),
+    });
+    return descriptors.map((descriptor) => ({
+      ...descriptor,
+      run: mainModeCommandHandlers[descriptor.id],
+    }));
+  }
+  if (mode === 'pianoUse') {
+    return itemBehaviorRegistry.getModeCommands(mode).map((descriptor) => ({
+      ...descriptor,
+      run: () => {
+        itemBehaviorRegistry.runModeCommand(mode, descriptor.id);
+      },
+    }));
+  }
+  return [];
+}
+
+function canOpenCommandPaletteInMode(mode: GameMode): boolean {
+  return mode === 'normal' || mode === 'pianoUse' || mode === 'commandPalette';
+}
+
+function openCommandPalette(): void {
+  const sourceMode = state.mode;
+  if (sourceMode === 'commandPalette') {
+    return;
+  }
+  const commands = getAvailableCommandPaletteEntriesForMode(sourceMode);
+  if (commands.length === 0) {
+    updateStatus('No commands available in this mode.');
+    audio.sfxUiCancel();
+    return;
+  }
+  commandPaletteCommands.splice(0, commandPaletteCommands.length, ...commands);
+  commandPaletteIndex = 0;
+  commandPaletteReturnMode = sourceMode;
+  state.mode = 'commandPalette';
+  announceMenuEntry('Commands', formatCommandMenuLabel(commandPaletteCommands[0]));
+}
+
+function executeCommandPaletteSelection(): void {
+  const selected = commandPaletteCommands[commandPaletteIndex];
+  if (!selected) return;
+  state.mode = commandPaletteReturnMode;
+  void selected.run();
+}
+
 /** Handles command-mode keybindings while in main gameplay mode. */
 function handleNormalModeInput(code: string, shiftKey: boolean): void {
   if (code !== 'Escape' && pendingEscapeDisconnect) {
@@ -2164,369 +2620,7 @@ function handleNormalModeInput(code: string, shiftKey: boolean): void {
   }
   const command = resolveMainModeCommand(code, shiftKey);
   if (!command) return;
-
-  switch (command) {
-    case 'editNickname':
-      state.mode = 'nickname';
-      state.nicknameInput = state.player.nickname;
-      state.cursorPos = state.player.nickname.length;
-      replaceTextOnNextType = true;
-      updateStatus(`Nickname edit: ${state.nicknameInput}`);
-      audio.sfxUiBlip();
-      return;
-    case 'toggleMute':
-      toggleMute();
-      return;
-    case 'toggleOutputMode':
-      outputMode = audio.toggleOutputMode();
-      mediaSession.saveOutputMode(outputMode);
-      updateStatus(outputMode === 'mono' ? 'Mono output.' : 'Stereo output.');
-      audio.sfxUiBlip();
-      return;
-    case 'toggleLoopback': {
-      const enabled = audio.toggleLoopback();
-      updateStatus(enabled ? 'Loopback on.' : 'Loopback off.');
-      audio.sfxUiBlip();
-      return;
-    }
-    case 'toggleVoiceLayer':
-      toggleAudioLayer('voice');
-      return;
-    case 'toggleItemLayer':
-      toggleAudioLayer('item');
-      return;
-    case 'toggleMediaLayer':
-      toggleAudioLayer('media');
-      return;
-    case 'toggleWorldLayer':
-      toggleAudioLayer('world');
-      return;
-    case 'masterVolumeUp':
-    case 'masterVolumeDown': {
-      const step = command === 'masterVolumeUp' ? 5 : -5;
-      const next = audio.adjustMasterVolume(step);
-      persistMasterVolume(next);
-      updateStatus(`Master volume ${next}`);
-      audio.sfxEffectLevel(next === 50);
-      return;
-    }
-    case 'openEffectSelect': {
-      const currentEffect = audio.getCurrentEffect();
-      const currentIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === currentEffect.id);
-      state.effectSelectIndex = currentIndex >= 0 ? currentIndex : 0;
-      state.mode = 'effectSelect';
-      announceMenuEntry('Effects', EFFECT_SEQUENCE[state.effectSelectIndex].label);
-      return;
-    }
-    case 'effectValueUp':
-    case 'effectValueDown': {
-      const step = command === 'effectValueUp' ? 5 : -5;
-      const adjusted = audio.adjustCurrentEffectLevel(step);
-      if (!adjusted) return;
-      persistEffectLevels();
-      audio.sfxEffectLevel(adjusted.value === adjusted.defaultValue);
-      updateStatus(`${adjusted.label} ${adjusted.value}`);
-      return;
-    }
-    case 'speakCoordinates':
-      updateStatus(`${formatCoordinate(state.player.x)}, ${formatCoordinate(state.player.y)}`);
-      audio.sfxUiBlip();
-      return;
-    case 'openMicGainEdit':
-      if (!voiceSendAllowed) {
-        updateStatus('Voice send is disabled for this account.');
-        audio.sfxUiCancel();
-        return;
-      }
-      state.mode = 'micGainEdit';
-      state.nicknameInput = formatSteppedNumber(audio.getOutboundInputGain(), MIC_INPUT_GAIN_STEP);
-      state.cursorPos = state.nicknameInput.length;
-      replaceTextOnNextType = true;
-      micGainLoopbackRestoreState = audio.isLoopbackEnabled();
-      audio.setLoopbackEnabled(true);
-      announceMenuEntry('Microphone gain', state.nicknameInput);
-      return;
-    case 'calibrateMicrophone':
-      if (!voiceSendAllowed) {
-        updateStatus('Voice send is disabled for this account.');
-        audio.sfxUiCancel();
-        return;
-      }
-      void calibrateMicInputGain();
-      return;
-    case 'openAdminMenu': {
-      const actions = getAvailableAdminActions();
-      if (actions.length === 0) {
-        return;
-      }
-      adminMenuActions.splice(0, adminMenuActions.length, ...actions);
-      adminMenuIndex = 0;
-      state.mode = 'adminMenu';
-      announceMenuEntry('Admin', adminMenuActions[0].label);
-      return;
-    }
-    case 'useItem': {
-      const carried = getCarriedItem();
-      if (carried) {
-        useItem(carried);
-        return;
-      }
-      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-      const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
-      if (usable.length === 0) {
-        updateStatus('No usable items here.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (usable.length === 1) {
-        useItem(usable[0]);
-        return;
-      }
-      beginItemSelection('use', usable);
-      return;
-    }
-    case 'secondaryUseItem': {
-      const carried = getCarriedItem();
-      if (carried) {
-        secondaryUseItem(carried);
-        return;
-      }
-      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-      const usable = squareItems.filter((item) => item.capabilities.includes('usable'));
-      if (usable.length === 0) {
-        updateStatus('No usable items here.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (usable.length === 1) {
-        secondaryUseItem(usable[0]);
-        return;
-      }
-      beginItemSelection('secondaryUse', usable);
-      return;
-    }
-    case 'speakUsers': {
-      const allUsers = [state.player.nickname, ...Array.from(state.peers.values()).map((p) => p.nickname)];
-      const label = allUsers.length === 1 ? 'user' : 'users';
-      updateStatus(`${allUsers.length} ${label}: ${allUsers.join(', ')}`);
-      audio.sfxUiBlip();
-      return;
-    }
-    case 'addItem': {
-      const itemTypeSequence = getItemTypeSequence();
-      if (itemTypeSequence.length === 0) {
-        updateStatus('No item types available.');
-        audio.sfxUiCancel();
-        return;
-      }
-      state.addItemTypeIndex = Math.max(0, Math.min(state.addItemTypeIndex, itemTypeSequence.length - 1));
-      state.mode = 'addItem';
-      announceMenuEntry('Add item', itemTypeLabel(itemTypeSequence[state.addItemTypeIndex]));
-      return;
-    }
-    case 'locateOrListItems':
-      if (shiftKey) {
-        if (state.items.size === 0) {
-          updateStatus('No items to list.');
-          audio.sfxUiCancel();
-          return;
-        }
-        state.sortedItemIds = Array.from(state.items.entries())
-          .filter(([, item]) => !item.carrierId)
-          .sort(
-            (a, b) =>
-              Math.hypot(a[1].x - state.player.x, a[1].y - state.player.y) -
-              Math.hypot(b[1].x - state.player.x, b[1].y - state.player.y),
-          )
-          .map(([id]) => id);
-        if (state.sortedItemIds.length === 0) {
-          updateStatus('No items to list.');
-          audio.sfxUiCancel();
-          return;
-        }
-        state.itemListIndex = 0;
-        state.mode = 'listItems';
-        const first = state.items.get(state.sortedItemIds[0]);
-        if (first) {
-          const itemCount = state.sortedItemIds.length;
-          const itemLabelText = itemCount === 1 ? 'item' : 'items';
-          announceMenuEntry(
-            `${itemCount} ${itemLabelText}`,
-            `${itemLabel(first)}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
-          );
-        } else {
-          audio.sfxUiCancel();
-        }
-        return;
-      }
-      {
-        const nearest = getNearestItem(state);
-        if (!nearest.itemId) {
-          updateStatus('No items to locate.');
-          audio.sfxUiCancel();
-          return;
-        }
-        const item = state.items.get(nearest.itemId);
-        if (!item) return;
-        audio.sfxLocate({ x: item.x - state.player.x, y: item.y - state.player.y });
-        updateStatus(
-          `${itemLabel(item)}, ${distanceDirectionPhrase(state.player.x, state.player.y, item.x, item.y)}, ${item.x}, ${item.y}`,
-        );
-        return;
-      }
-    case 'pickupDropItem': {
-      const carried = getCarriedItem();
-      if (carried) {
-        signaling.send({ type: 'item_drop', itemId: carried.id, x: state.player.x, y: state.player.y });
-        return;
-      }
-      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-      if (squareItems.length === 0) {
-        updateStatus('No items to pick up.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (squareItems.length === 1) {
-        signaling.send({ type: 'item_pickup', itemId: squareItems[0].id });
-        return;
-      }
-      beginItemSelection('pickup', squareItems);
-      return;
-    }
-    case 'openItemManagement': {
-      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-      if (squareItems.length === 0) {
-        updateStatus('No items to manage on this square.');
-        audio.sfxUiCancel();
-        return;
-      }
-      const manageable = squareItems.filter((item) => itemManagementOptionsFor(item).length > 0);
-      if (manageable.length === 0) {
-        updateStatus('No permitted item management actions here.');
-        audio.sfxUiCancel();
-        return;
-      }
-      if (manageable.length === 1) {
-        beginItemManagement(manageable[0]);
-        return;
-      }
-      beginItemSelection('manage', manageable);
-      return;
-    }
-    case 'editOrInspectItem': {
-      const squareItems = getItemsAtPosition(state.player.x, state.player.y);
-      const carried = getCarriedItem();
-      if (shiftKey) {
-        if (squareItems.length === 0) {
-          if (!carried) {
-            updateStatus('No item to inspect.');
-            audio.sfxUiCancel();
-            return;
-          }
-          beginItemProperties(carried, true);
-          return;
-        }
-        if (squareItems.length === 1) {
-          beginItemProperties(squareItems[0], true);
-          return;
-        }
-        beginItemSelection('inspect', squareItems);
-        return;
-      }
-      if (squareItems.length === 0) {
-        if (!carried) {
-          updateStatus('No editable item here.');
-          audio.sfxUiCancel();
-          return;
-        }
-        beginItemProperties(carried);
-        return;
-      }
-      if (squareItems.length === 1) {
-        beginItemProperties(squareItems[0]);
-        return;
-      }
-      beginItemSelection('edit', squareItems);
-      return;
-    }
-    case 'pingServer':
-      signaling.send({ type: 'ping', clientSentAt: Date.now() });
-      return;
-    case 'locateOrListUsers':
-      if (shiftKey) {
-        if (state.peers.size === 0) {
-          updateStatus('No users to list.');
-          audio.sfxUiCancel();
-          return;
-        }
-        state.sortedPeerIds = Array.from(state.peers.entries())
-          .sort((a, b) => a[1].nickname.localeCompare(b[1].nickname, undefined, { sensitivity: 'base' }))
-          .map(([id]) => id);
-        state.listIndex = 0;
-        state.mode = 'listUsers';
-        const first = state.peers.get(state.sortedPeerIds[0]);
-        if (first) {
-          const userCount = state.sortedPeerIds.length;
-          const userLabelText = userCount === 1 ? 'user' : 'users';
-          const gainPhrase = `volume ${formatSteppedNumber(getPeerListenGainForNickname(first.nickname), MIC_INPUT_GAIN_STEP)}`;
-          announceMenuEntry(
-            `${userCount} ${userLabelText}`,
-            `${first.nickname}, ${gainPhrase}, ${distanceDirectionPhrase(state.player.x, state.player.y, first.x, first.y)}, ${first.x}, ${first.y}`,
-          );
-        } else {
-          audio.sfxUiCancel();
-        }
-        return;
-      }
-      {
-        const nearest = getNearestPeer(state);
-        if (!nearest.peerId) {
-          updateStatus('No users to locate.');
-          audio.sfxUiCancel();
-          return;
-        }
-        const peer = state.peers.get(nearest.peerId);
-        if (!peer) return;
-        audio.sfxLocate({ x: peer.x - state.player.x, y: peer.y - state.player.y });
-        updateStatus(
-          `${peer.nickname}, ${distanceDirectionPhrase(state.player.x, state.player.y, peer.x, peer.y)}, ${peer.x}, ${peer.y}`,
-        );
-        return;
-      }
-    case 'openHelp':
-      openHelpViewer(mainHelpViewerLines);
-      return;
-    case 'openChat':
-      state.mode = 'chat';
-      state.nicknameInput = '';
-      state.cursorPos = 0;
-      replaceTextOnNextType = false;
-      updateStatus('Chat.');
-      audio.sfxUiBlip();
-      return;
-    case 'chatPrev':
-      navigateChatBuffer('prev');
-      return;
-    case 'chatNext':
-      navigateChatBuffer('next');
-      return;
-    case 'chatFirst':
-      navigateChatBuffer('first');
-      return;
-    case 'chatLast':
-      navigateChatBuffer('last');
-      return;
-    case 'escape':
-      if (pendingEscapeDisconnect) {
-        pendingEscapeDisconnect = false;
-        disconnect();
-        return;
-      }
-      pendingEscapeDisconnect = true;
-      updateStatus('Press Escape again to disconnect.');
-      audio.sfxUiCancel();
-      return;
-  }
+  mainModeCommandHandlers[command]();
 }
 
 /** Handles linear help viewer navigation and exit keys. */
@@ -2565,6 +2659,39 @@ function handleHelpViewModeInput(code: string): void {
   if (code === 'Escape') {
     state.mode = helpViewerReturnMode;
     updateStatus('Closed help.');
+    audio.sfxUiCancel();
+  }
+}
+
+/** Handles command palette list navigation, tooltips, and execution. */
+function handleCommandPaletteModeInput(code: string, key: string): void {
+  if (commandPaletteCommands.length === 0) {
+    state.mode = commandPaletteReturnMode;
+    updateStatus('No commands available.');
+    audio.sfxUiCancel();
+    return;
+  }
+  const control = handleListControlKey(code, key, commandPaletteCommands, commandPaletteIndex, (entry) => formatCommandMenuLabel(entry));
+  if (control.type === 'move') {
+    commandPaletteIndex = control.index;
+    updateStatus(formatCommandMenuLabel(commandPaletteCommands[commandPaletteIndex]));
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'Space') {
+    const selected = commandPaletteCommands[commandPaletteIndex];
+    if (!selected) return;
+    updateStatus(selected.tooltip || 'No tooltip available.');
+    audio.sfxUiBlip();
+    return;
+  }
+  if (control.type === 'select') {
+    executeCommandPaletteSelection();
+    return;
+  }
+  if (control.type === 'cancel') {
+    state.mode = commandPaletteReturnMode;
+    updateStatus('Closed commands.');
     audio.sfxUiCancel();
   }
 }
@@ -3503,6 +3630,12 @@ function setupInputHandlers(): void {
     const code = normalizeInputCode(event);
     if (!code) return;
     const hasShortcutModifier = event.ctrlKey || event.metaKey;
+    const input: ModeInput = {
+      code,
+      key: event.key,
+      ctrlKey: hasShortcutModifier,
+      shiftKey: event.shiftKey,
+    };
 
     if (!dom.settingsModal.classList.contains('hidden') && code === 'Escape') {
       closeSettings();
@@ -3548,41 +3681,58 @@ function setupInputHandlers(): void {
 
     if (isTypingKey(code) && state.keysPressed[code]) return;
 
+    const opensCommandPalette =
+      canOpenCommandPaletteInMode(state.mode) &&
+      ((code === 'KeyK' && event.shiftKey) || code === 'ContextMenu' || (code === 'F10' && event.shiftKey));
+    if (opensCommandPalette) {
+      if (pendingEscapeDisconnect) {
+        pendingEscapeDisconnect = false;
+      }
+      openCommandPalette();
+      state.keysPressed[code] = true;
+      return;
+    }
+
     dispatchModeInput({
       mode: state.mode,
-      code,
-      key: event.key,
-      ctrlKey: hasShortcutModifier,
-      shiftKey: event.shiftKey,
+      input,
       handlers: {
-        nickname: handleNicknameModeInput,
-        chat: handleChatModeInput,
-        micGainEdit: handleMicGainEditModeInput,
-        pianoUse: (currentCode) => {
-          itemBehaviorRegistry.handleModeInput(state.mode, currentCode);
+        nickname: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+          handleNicknameModeInput(currentCode, currentKey, currentCtrlKey),
+        chat: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+          handleChatModeInput(currentCode, currentKey, currentCtrlKey),
+        micGainEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+          handleMicGainEditModeInput(currentCode, currentKey, currentCtrlKey),
+        pianoUse: (currentInput) => {
+          itemBehaviorRegistry.handleModeInput(state.mode, currentInput);
         },
-        effectSelect: (currentCode, currentKey) => handleEffectSelectModeInput(currentCode, currentKey),
-        helpView: (currentCode) => handleHelpViewModeInput(currentCode),
-        listUsers: (currentCode, currentKey) => handleListModeInput(currentCode, currentKey),
-        listItems: (currentCode, currentKey) => handleListItemsModeInput(currentCode, currentKey),
-        addItem: (currentCode, currentKey) => handleAddItemModeInput(currentCode, currentKey),
-        selectItem: (currentCode, currentKey) => handleSelectItemModeInput(currentCode, currentKey),
-        itemManageOptions: (currentCode, currentKey) => handleItemManageOptionsModeInput(currentCode, currentKey),
-        itemManageTransferUser: (currentCode, currentKey) => handleItemManageTransferUserModeInput(currentCode, currentKey),
-        confirmYesNo: (currentCode, currentKey) => handleConfirmYesNoModeInput(currentCode, currentKey),
-        adminMenu: (currentCode, currentKey) => handleAdminMenuModeInput(currentCode, currentKey),
-        adminRoleList: (currentCode, currentKey) => handleAdminRoleListModeInput(currentCode, currentKey),
-        adminRolePermissionList: (currentCode, currentKey) => handleAdminRolePermissionListModeInput(currentCode, currentKey),
-        adminRoleDeleteReplacement: (currentCode, currentKey) => handleAdminRoleDeleteReplacementModeInput(currentCode, currentKey),
-        adminUserList: (currentCode, currentKey) => handleAdminUserListModeInput(currentCode, currentKey),
-        adminUserRoleSelect: (currentCode, currentKey) => handleAdminUserRoleSelectModeInput(currentCode, currentKey),
-        adminUserDeleteConfirm: (currentCode, currentKey) => handleAdminUserDeleteConfirmModeInput(currentCode, currentKey),
-        adminRoleNameEdit: (currentCode, currentKey, currentCtrlKey) =>
+        commandPalette: ({ code: currentCode, key: currentKey }) => handleCommandPaletteModeInput(currentCode, currentKey),
+        effectSelect: ({ code: currentCode, key: currentKey }) => handleEffectSelectModeInput(currentCode, currentKey),
+        helpView: ({ code: currentCode }) => handleHelpViewModeInput(currentCode),
+        listUsers: ({ code: currentCode, key: currentKey }) => handleListModeInput(currentCode, currentKey),
+        listItems: ({ code: currentCode, key: currentKey }) => handleListItemsModeInput(currentCode, currentKey),
+        addItem: ({ code: currentCode, key: currentKey }) => handleAddItemModeInput(currentCode, currentKey),
+        selectItem: ({ code: currentCode, key: currentKey }) => handleSelectItemModeInput(currentCode, currentKey),
+        itemManageOptions: ({ code: currentCode, key: currentKey }) => handleItemManageOptionsModeInput(currentCode, currentKey),
+        itemManageTransferUser: ({ code: currentCode, key: currentKey }) =>
+          handleItemManageTransferUserModeInput(currentCode, currentKey),
+        confirmYesNo: ({ code: currentCode, key: currentKey }) => handleConfirmYesNoModeInput(currentCode, currentKey),
+        adminMenu: ({ code: currentCode, key: currentKey }) => handleAdminMenuModeInput(currentCode, currentKey),
+        adminRoleList: ({ code: currentCode, key: currentKey }) => handleAdminRoleListModeInput(currentCode, currentKey),
+        adminRolePermissionList: ({ code: currentCode, key: currentKey }) =>
+          handleAdminRolePermissionListModeInput(currentCode, currentKey),
+        adminRoleDeleteReplacement: ({ code: currentCode, key: currentKey }) =>
+          handleAdminRoleDeleteReplacementModeInput(currentCode, currentKey),
+        adminUserList: ({ code: currentCode, key: currentKey }) => handleAdminUserListModeInput(currentCode, currentKey),
+        adminUserRoleSelect: ({ code: currentCode, key: currentKey }) => handleAdminUserRoleSelectModeInput(currentCode, currentKey),
+        adminUserDeleteConfirm: ({ code: currentCode, key: currentKey }) => handleAdminUserDeleteConfirmModeInput(currentCode, currentKey),
+        adminRoleNameEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
           handleAdminRoleNameEditModeInput(currentCode, currentKey, currentCtrlKey),
-        itemProperties: (currentCode, currentKey) => itemPropertyEditor.handleItemPropertiesModeInput(currentCode, currentKey),
-        itemPropertyEdit: (currentCode, currentKey, currentCtrlKey) =>
+        itemProperties: ({ code: currentCode, key: currentKey }) =>
+          itemPropertyEditor.handleItemPropertiesModeInput(currentCode, currentKey),
+        itemPropertyEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
           itemPropertyEditor.handleItemPropertyEditModeInput(currentCode, currentKey, currentCtrlKey),
-        itemPropertyOptionSelect: (currentCode, currentKey) =>
+        itemPropertyOptionSelect: ({ code: currentCode, key: currentKey }) =>
           itemPropertyEditor.handleItemPropertyOptionSelectModeInput(currentCode, currentKey),
       },
       onNormalMode: handleNormalModeInput,
@@ -3594,7 +3744,10 @@ function setupInputHandlers(): void {
   document.addEventListener('keyup', (event) => {
     const code = normalizeInputCode(event);
     if (state.mode === 'pianoUse' && code) {
-      itemBehaviorRegistry.handleModeKeyUp(state.mode, code);
+      itemBehaviorRegistry.handleModeKeyUp(state.mode, {
+        code,
+        shiftKey: event.shiftKey,
+      });
     }
     if (code) {
       state.keysPressed[code] = false;

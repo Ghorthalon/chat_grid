@@ -22,12 +22,15 @@ export type MainModeCommand =
   | 'secondaryUseItem'
   | 'speakUsers'
   | 'addItem'
-  | 'locateOrListItems'
+  | 'locateNearestItem'
+  | 'listItems'
   | 'pickupDropItem'
   | 'openItemManagement'
-  | 'editOrInspectItem'
+  | 'editItem'
+  | 'inspectItem'
   | 'pingServer'
-  | 'locateOrListUsers'
+  | 'locateNearestUser'
+  | 'listUsers'
   | 'openHelp'
   | 'openChat'
   | 'openAdminMenu'
@@ -44,9 +47,9 @@ export function resolveMainModeCommand(code: string, shiftKey: boolean): MainMod
   if (code === 'KeyN') return shiftKey ? null : 'editNickname';
   if (code === 'KeyM') return shiftKey ? 'toggleOutputMode' : 'toggleMute';
   if (code === 'Digit1') return shiftKey ? 'toggleLoopback' : 'toggleVoiceLayer';
-  if (code === 'Digit2') return 'toggleItemLayer';
-  if (code === 'Digit3') return 'toggleMediaLayer';
-  if (code === 'Digit4') return 'toggleWorldLayer';
+  if (code === 'Digit2') return shiftKey ? null : 'toggleItemLayer';
+  if (code === 'Digit3') return shiftKey ? null : 'toggleMediaLayer';
+  if (code === 'Digit4') return shiftKey ? null : 'toggleWorldLayer';
   if (code === 'KeyE') return shiftKey ? null : 'openEffectSelect';
   if (code === 'Equal') return shiftKey ? 'effectValueUp' : 'masterVolumeUp';
   if (code === 'Minus') return shiftKey ? 'effectValueDown' : 'masterVolumeDown';
@@ -57,15 +60,15 @@ export function resolveMainModeCommand(code: string, shiftKey: boolean): MainMod
   if (code === 'Enter') return shiftKey ? 'secondaryUseItem' : 'useItem';
   if (code === 'KeyU') return shiftKey ? null : 'speakUsers';
   if (code === 'KeyA') return shiftKey ? null : 'addItem';
-  if (code === 'KeyI') return 'locateOrListItems';
+  if (code === 'KeyI') return shiftKey ? 'listItems' : 'locateNearestItem';
   if (code === 'KeyD') return shiftKey ? null : 'pickupDropItem';
-  if (code === 'KeyO') return 'editOrInspectItem';
+  if (code === 'KeyO') return shiftKey ? 'inspectItem' : 'editItem';
   if (code === 'KeyP') return shiftKey ? null : 'pingServer';
-  if (code === 'KeyL') return 'locateOrListUsers';
+  if (code === 'KeyL') return shiftKey ? 'listUsers' : 'locateNearestUser';
   if (code === 'Slash') return shiftKey ? 'openHelp' : 'openChat';
   if (code === 'KeyZ') return shiftKey ? 'openAdminMenu' : 'openItemManagement';
   if (code === 'Comma') return shiftKey ? 'chatFirst' : 'chatPrev';
   if (code === 'Period') return shiftKey ? 'chatLast' : 'chatNext';
-  if (code === 'Escape') return 'escape';
+  if (code === 'Escape') return shiftKey ? null : 'escape';
   return null;
 }

@@ -6,6 +6,7 @@ This document is the authoritative keymap for the client.
 
 ### Movement
 - `Arrow Keys`: Move
+- `Shift+K`, `Applications`, or `Shift+F10`: Open the command palette in supported modes
 - `?`: Open help viewer
 - `C`: Speak coordinates
 - `Escape`: Press once for disconnect prompt, press again to disconnect
@@ -83,6 +84,17 @@ Applies to effect select, user/item list modes, item selection, item property li
 - `Space`: Read tooltip/help for current option (where metadata is available)
 - First-letter navigation: jump to next matching entry
 
+## Command Palette
+
+- Available in `normal` mode and `pianoUse` mode
+- Opens with `Shift+K`, `Applications`, or `Shift+F10`
+- Shows only commands available in the current mode/context
+- `ArrowUp` / `ArrowDown`: Move selection
+- `Enter`: Run selected command
+- `Escape`: Close palette and return to prior mode
+- `Space`: Read tooltip/help for selected command
+- First-letter navigation: jump to next matching command
+
 ## Yes/No Confirmation Menu
 
 - `ArrowUp` / `ArrowDown`: Move between `No` and `Yes`
@@ -110,6 +122,7 @@ Applies to effect select, user/item list modes, item selection, item property li
 - `A S D F G H J K L ; '`: Play white keys (C major from C4 upward)
 - `W E T Y U O P ]`: Play sharps
 - Multiple keys can be held/played at once
+- Shifted note keys are ignored; `Shift+K` opens the command palette instead
 - `?`: Open piano-mode help viewer
 - `-` / `=`: Shift octave down/up
 - `Z`: Start, pause, or resume recording on this piano (max 30s recorded time)

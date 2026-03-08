@@ -4,6 +4,7 @@ import {
   isPianoInstrumentId,
   type PianoInstrumentId,
 } from '../../../audio/pianoSynth';
+import { type CommandDescriptor, type ModeInput } from '../../../input/commandTypes';
 import { type OutgoingMessage } from '../../../network/protocol';
 import { type GameMode, type WorldItem } from '../../../state/gameState';
 import { getItemPropertyOptionValues } from '../../itemRegistry';
@@ -32,6 +33,26 @@ const PIANO_SHARP_KEY_MIDI_BY_CODE: Record<string, number> = {
   KeyP: 75,
   BracketRight: 78,
 };
+
+type PianoModeCommandId =
+  | 'openHelp'
+  | 'stopUseMode'
+  | 'playDemo'
+  | 'toggleRecord'
+  | 'playbackRecording'
+  | 'stopPlaybackAndRecording'
+  | 'octaveDown'
+  | 'octaveUp'
+  | 'instrumentPreset1'
+  | 'instrumentPreset2'
+  | 'instrumentPreset3'
+  | 'instrumentPreset4'
+  | 'instrumentPreset5'
+  | 'instrumentPreset6'
+  | 'instrumentPreset7'
+  | 'instrumentPreset8'
+  | 'instrumentPreset9'
+  | 'instrumentPreset10';
 
 type PianoDemoEvent = {
   t: number;
@@ -258,14 +279,102 @@ export class PianoController {
     }
   }
 
-  /** Handles realtime keyboard performance while piano item mode is active. */
-  handleModeInput(code: string): void {
-    if (code === 'Escape') {
-      this.stopUseMode(true);
-      return;
+  /** Returns palette-visible commands while piano item mode is active. */
+  getModeCommands(): CommandDescriptor<PianoModeCommandId>[] {
+    if (!this.activePianoItemId) {
+      return [];
     }
-    if (code === 'Slash') {
-      this.deps.openHelpViewer(this.helpViewerLines, 'pianoUse');
+    const commands: CommandDescriptor<PianoModeCommandId>[] = [
+      {
+        id: 'openHelp',
+        label: 'Open piano help',
+        shortcut: '?',
+        tooltip: 'Open piano help.',
+        section: 'Piano',
+      },
+      {
+        id: 'stopUseMode',
+        label: 'Exit piano mode',
+        shortcut: 'Escape',
+        tooltip: 'Stop using the current piano.',
+        section: 'Piano',
+      },
+      {
+        id: 'playDemo',
+        label: 'Play demo',
+        shortcut: 'Enter',
+        tooltip: 'Play the piano demo melody.',
+        section: 'Piano',
+      },
+      {
+        id: 'toggleRecord',
+        label: 'Toggle recording',
+        shortcut: 'Z',
+        tooltip: 'Start, pause, or resume piano recording.',
+        section: 'Piano',
+      },
+      {
+        id: 'playbackRecording',
+        label: 'Play recording',
+        shortcut: 'X',
+        tooltip: 'Play the saved piano recording.',
+        section: 'Piano',
+      },
+      {
+        id: 'stopPlaybackAndRecording',
+        label: 'Stop playback or recording',
+        shortcut: 'C',
+        tooltip: 'Stop demo playback, recording playback, and active recording.',
+        section: 'Piano',
+      },
+      {
+        id: 'octaveDown',
+        label: 'Lower octave',
+        shortcut: '-',
+        tooltip: 'Shift the piano octave down.',
+        section: 'Piano',
+      },
+      {
+        id: 'octaveUp',
+        label: 'Raise octave',
+        shortcut: '=',
+        tooltip: 'Shift the piano octave up.',
+        section: 'Piano',
+      },
+    ];
+    const instruments = this.getShortcutInstruments();
+    for (let index = 0; index < instruments.length; index += 1) {
+      const slot = index + 1;
+      const instrument = instruments[index];
+      if (!instrument) continue;
+      commands.push({
+        id: `instrumentPreset${slot}` as PianoModeCommandId,
+        label: `Switch to ${this.formatInstrumentLabel(instrument)} preset`,
+        shortcut: slot === 10 ? '0' : String(slot),
+        tooltip: `Switch to instrument preset ${slot}: ${this.formatInstrumentLabel(instrument)}.`,
+        section: 'Piano',
+      });
+    }
+    return commands.filter((command) => this.isCommandAvailable(command.id));
+  }
+
+  /** Runs one piano mode command by id. */
+  runModeCommand(commandId: string): boolean {
+    if (!this.activePianoItemId) {
+      return false;
+    }
+    const resolvedId = commandId as PianoModeCommandId;
+    if (!this.isCommandAvailable(resolvedId)) {
+      return false;
+    }
+    return this.executeCommand(resolvedId);
+  }
+
+  /** Handles realtime keyboard performance while piano item mode is active. */
+  handleModeInput(input: ModeInput): void {
+    const command = this.resolveCommand(input);
+    if (command) {
+      this.executeCommand(command);
       return;
     }
     const itemId = this.activePianoItemId;
@@ -278,109 +387,31 @@ export class PianoController {
       this.stopUseMode(false);
       return;
     }
-    if (code === 'Enter') {
-      if (this.activePianoRecordingState !== 'idle') {
-        this.deps.updateStatus('Stop or pause recording first.');
-        this.deps.audio.sfxUiCancel();
-        return;
-      }
-      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
-      this.startDemo(item, itemId);
-      this.deps.updateStatus('demo play');
-      this.deps.audio.sfxUiBlip();
-      return;
-    }
-    if (code === 'KeyZ') {
-      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'toggle_record' });
-      return;
-    }
-    if (code === 'KeyX') {
-      if (this.activePianoRecordingState !== 'idle') {
-        this.deps.updateStatus('Stop or pause recording first.');
-        this.deps.audio.sfxUiCancel();
-        return;
-      }
-      this.stopDemo(true);
-      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'playback' });
-      return;
-    }
-    if (code === 'KeyC') {
-      this.stopDemo(true);
-      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
-      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'stop_record' });
-      this.activePianoRecordingState = 'idle';
-      return;
-    }
-    if (code === 'Equal' || code === 'Minus') {
-      const current = this.getPianoParams(item).octave;
-      const next = Math.max(-2, Math.min(2, current + (code === 'Equal' ? 1 : -1)));
-      item.params.octave = next;
-      this.deps.signalingSend({ type: 'item_update', itemId, params: { octave: next } });
-      this.deps.updateStatus(`octave ${next}.`);
-      return;
-    }
-    if (code.startsWith('Digit')) {
-      const digit = Number(code.slice(5));
-      const instrumentIndex = digit === 0 ? 9 : digit - 1;
-      const shortcutInstruments = this.getShortcutInstruments();
-      if (Number.isInteger(instrumentIndex) && instrumentIndex >= 0 && instrumentIndex < shortcutInstruments.length) {
-        const instrument = shortcutInstruments[instrumentIndex];
-        if (instrument) {
-          const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
-          const voiceMode = this.defaultsVoiceModeForInstrument(instrument);
-          const octave = this.defaultsOctaveForInstrument(instrument);
-          item.params.instrument = instrument;
-          item.params.voiceMode = voiceMode;
-          item.params.octave = octave;
-          item.params.attack = defaults.attack;
-          item.params.decay = defaults.decay;
-          item.params.release = defaults.release;
-          item.params.brightness = defaults.brightness;
-          this.deps.signalingSend({
-            type: 'item_update',
-            itemId,
-            params: {
-              instrument,
-            },
-          });
-          void this.previewSettingChange(item, {
-            instrument,
-            octave,
-            attack: defaults.attack,
-            decay: defaults.decay,
-            release: defaults.release,
-            brightness: defaults.brightness,
-          });
-          this.deps.updateStatus(`Instrument ${instrument}.`);
-        }
-        return;
-      }
-    }
-
-    const midi = this.getPianoMidiForCode(code);
+    const midi = this.getPianoMidiForCode(input);
     if (midi === null) return;
-    if (this.activePianoKeys.has(code)) return;
+    if (this.activePianoKeys.has(input.code)) return;
     const config = this.getPianoParams(item);
     const playedMidi = Math.max(0, Math.min(127, midi + config.octave * 12));
-    this.activePianoKeys.add(code);
-    this.activePianoKeyMidi.set(code, playedMidi);
-    this.activePianoHeldOrder.push(code);
+    this.activePianoKeys.add(input.code);
+    this.activePianoKeyMidi.set(input.code, playedMidi);
+    this.activePianoHeldOrder.push(input.code);
     if (config.voiceMode === 'mono') {
       const previousCode = this.activePianoMonophonicKey;
-      if (previousCode && previousCode !== code) {
+      if (previousCode && previousCode !== input.code) {
         const previousMidi = this.activePianoKeyMidi.get(previousCode);
         this.pianoSynth.noteOff(previousCode);
         if (Number.isFinite(previousMidi)) {
           this.deps.signalingSend({ type: 'item_piano_note', itemId, keyId: previousCode, midi: previousMidi, on: false });
         }
       }
-      this.activePianoMonophonicKey = code;
+      this.activePianoMonophonicKey = input.code;
     }
-    this.playLocalNote(item, itemId, code, playedMidi, config);
+    this.playLocalNote(item, itemId, input.code, playedMidi, config);
   }
 
   /** Handles key release while in piano mode, including mono fallback retrigger behavior. */
-  handleModeKeyUp(code: string): void {
+  handleModeKeyUp(input: Pick<ModeInput, 'code' | 'shiftKey'>): void {
+    const { code } = input;
     if (!this.activePianoKeys.delete(code)) return;
     const orderIndex = this.activePianoHeldOrder.lastIndexOf(code);
     if (orderIndex >= 0) {
@@ -677,7 +708,139 @@ export class PianoController {
     return normalized;
   }
 
-  private getPianoMidiForCode(code: string): number | null {
+  private formatInstrumentLabel(instrument: PianoInstrumentId): string {
+    return instrument.replace(/_/g, ' ');
+  }
+
+  private resolveCommand(input: Pick<ModeInput, 'code' | 'shiftKey'>): PianoModeCommandId | null {
+    if (input.code === 'Escape' && !input.shiftKey) return 'stopUseMode';
+    if (input.code === 'Slash' && input.shiftKey) return 'openHelp';
+    if (input.code === 'Enter' && !input.shiftKey) return 'playDemo';
+    if (input.code === 'KeyZ' && !input.shiftKey) return 'toggleRecord';
+    if (input.code === 'KeyX' && !input.shiftKey) return 'playbackRecording';
+    if (input.code === 'KeyC' && !input.shiftKey) return 'stopPlaybackAndRecording';
+    if (input.code === 'Minus' && !input.shiftKey) return 'octaveDown';
+    if (input.code === 'Equal' && !input.shiftKey) return 'octaveUp';
+    if (input.code.startsWith('Digit') && !input.shiftKey) {
+      const digit = Number(input.code.slice(5));
+      const slot = digit === 0 ? 10 : digit;
+      if (Number.isInteger(slot) && slot >= 1 && slot <= 10) {
+        return `instrumentPreset${slot}` as PianoModeCommandId;
+      }
+    }
+    return null;
+  }
+
+  private isCommandAvailable(commandId: PianoModeCommandId): boolean {
+    if (!this.activePianoItemId) {
+      return false;
+    }
+    if (commandId === 'playDemo' || commandId === 'playbackRecording') {
+      return this.activePianoRecordingState === 'idle';
+    }
+    if (commandId.startsWith('instrumentPreset')) {
+      const slot = Number(commandId.slice('instrumentPreset'.length));
+      return Number.isInteger(slot) && slot >= 1 && slot <= this.getShortcutInstruments().length;
+    }
+    return true;
+  }
+
+  private executeCommand(commandId: PianoModeCommandId): boolean {
+    const itemId = this.activePianoItemId;
+    if (!itemId) {
+      this.deps.state.mode = 'normal';
+      return false;
+    }
+    if (commandId === 'openHelp') {
+      this.deps.openHelpViewer(this.helpViewerLines, 'pianoUse');
+      return true;
+    }
+    if (commandId === 'stopUseMode') {
+      this.stopUseMode(true);
+      return true;
+    }
+    const item = this.deps.state.items.get(itemId);
+    if (!item || item.type !== 'piano') {
+      this.stopUseMode(false);
+      return false;
+    }
+    if (commandId === 'playDemo') {
+      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
+      this.startDemo(item, itemId);
+      this.deps.updateStatus('demo play');
+      this.deps.audio.sfxUiBlip();
+      return true;
+    }
+    if (commandId === 'toggleRecord') {
+      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'toggle_record' });
+      return true;
+    }
+    if (commandId === 'playbackRecording') {
+      this.stopDemo(true);
+      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'playback' });
+      return true;
+    }
+    if (commandId === 'stopPlaybackAndRecording') {
+      this.stopDemo(true);
+      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'stop_playback' });
+      this.deps.signalingSend({ type: 'item_piano_recording', itemId, action: 'stop_record' });
+      this.activePianoRecordingState = 'idle';
+      this.deps.updateStatus('Stopped piano playback and recording.');
+      this.deps.audio.sfxUiCancel();
+      return true;
+    }
+    if (commandId === 'octaveDown' || commandId === 'octaveUp') {
+      const current = this.getPianoParams(item).octave;
+      const next = Math.max(-2, Math.min(2, current + (commandId === 'octaveUp' ? 1 : -1)));
+      item.params.octave = next;
+      this.deps.signalingSend({ type: 'item_update', itemId, params: { octave: next } });
+      this.deps.updateStatus(`octave ${next}.`);
+      this.deps.audio.sfxUiBlip();
+      return true;
+    }
+    if (commandId.startsWith('instrumentPreset')) {
+      const slot = Number(commandId.slice('instrumentPreset'.length));
+      const instrument = this.getShortcutInstruments()[slot - 1];
+      if (!instrument) {
+        return false;
+      }
+      const defaults = DEFAULT_PIANO_SETTINGS_BY_INSTRUMENT[instrument];
+      const voiceMode = this.defaultsVoiceModeForInstrument(instrument);
+      const octave = this.defaultsOctaveForInstrument(instrument);
+      item.params.instrument = instrument;
+      item.params.voiceMode = voiceMode;
+      item.params.octave = octave;
+      item.params.attack = defaults.attack;
+      item.params.decay = defaults.decay;
+      item.params.release = defaults.release;
+      item.params.brightness = defaults.brightness;
+      this.deps.signalingSend({
+        type: 'item_update',
+        itemId,
+        params: {
+          instrument,
+        },
+      });
+      void this.previewSettingChange(item, {
+        instrument,
+        octave,
+        attack: defaults.attack,
+        decay: defaults.decay,
+        release: defaults.release,
+        brightness: defaults.brightness,
+      });
+      this.deps.updateStatus(`Instrument ${instrument}.`);
+      this.deps.audio.sfxUiBlip();
+      return true;
+    }
+    return false;
+  }
+
+  private getPianoMidiForCode(input: Pick<ModeInput, 'code' | 'shiftKey'>): number | null {
+    if (input.shiftKey) {
+      return null;
+    }
+    const { code } = input;
     if (code in PIANO_WHITE_KEY_MIDI_BY_CODE) {
       return PIANO_WHITE_KEY_MIDI_BY_CODE[code]!;
     }

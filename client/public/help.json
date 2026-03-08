@@ -8,6 +8,10 @@
           "description": "Move on the grid"
         },
         {
+          "keys": "Shift+K / Applications / Shift+F10",
+          "description": "Open the command palette in supported modes"
+        },
+        {
           "keys": "C",
           "description": "Speak your coordinates"
         },

@@ -1,0 +1,327 @@
+import type { CommandDescriptor } from './commandTypes';
+import type { MainModeCommand } from './mainCommandRouter';
+
+export type MainModeCommandAvailabilityContext = {
+  voiceSendAllowed: boolean;
+  mainHelpAvailable: boolean;
+  hasAdminActions: boolean;
+  itemTypeCount: number;
+  visibleItemCount: number;
+  userCount: number;
+  chatMessageCount: number;
+  hasCarriedItem: boolean;
+  squareItemCount: number;
+  usableItemCount: number;
+  manageableItemCount: number;
+  hasEditableItemTarget: boolean;
+  hasInspectableItemTarget: boolean;
+};
+
+type MainModeCommandDescriptor = CommandDescriptor<MainModeCommand> & {
+  isAvailable: (context: MainModeCommandAvailabilityContext) => boolean;
+};
+
+const MAIN_MODE_COMMANDS: MainModeCommandDescriptor[] = [
+  {
+    id: 'editNickname',
+    label: 'Edit nickname',
+    shortcut: 'N',
+    tooltip: 'Edit your current nickname.',
+    section: 'Users',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleMute',
+    label: 'Mute or unmute microphone',
+    shortcut: 'M',
+    tooltip: 'Toggle local microphone mute.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleOutputMode',
+    label: 'Toggle stereo or mono output',
+    shortcut: 'Shift+M',
+    tooltip: 'Switch between stereo and mono output.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleLoopback',
+    label: 'Toggle loopback monitor',
+    shortcut: 'Shift+1',
+    tooltip: 'Toggle local microphone loopback monitoring.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleVoiceLayer',
+    label: 'Toggle voice layer',
+    shortcut: '1',
+    tooltip: 'Enable or disable voice audio.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleItemLayer',
+    label: 'Toggle item layer',
+    shortcut: '2',
+    tooltip: 'Enable or disable item sounds.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleMediaLayer',
+    label: 'Toggle media layer',
+    shortcut: '3',
+    tooltip: 'Enable or disable media audio such as radio.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'toggleWorldLayer',
+    label: 'Toggle world layer',
+    shortcut: '4',
+    tooltip: 'Enable or disable other world sounds.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'masterVolumeUp',
+    label: 'Raise master volume',
+    shortcut: '=',
+    tooltip: 'Increase overall output volume.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'masterVolumeDown',
+    label: 'Lower master volume',
+    shortcut: '-',
+    tooltip: 'Decrease overall output volume.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'openEffectSelect',
+    label: 'Open effect select',
+    shortcut: 'E',
+    tooltip: 'Open the effects menu.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'effectValueUp',
+    label: 'Raise active effect value',
+    shortcut: 'Shift+=',
+    tooltip: 'Increase the selected effect amount.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'effectValueDown',
+    label: 'Lower active effect value',
+    shortcut: 'Shift+-',
+    tooltip: 'Decrease the selected effect amount.',
+    section: 'Audio',
+    isAvailable: () => true,
+  },
+  {
+    id: 'speakCoordinates',
+    label: 'Speak coordinates',
+    shortcut: 'C',
+    tooltip: 'Announce your current coordinates.',
+    section: 'Navigation',
+    isAvailable: () => true,
+  },
+  {
+    id: 'openMicGainEdit',
+    label: 'Set microphone gain',
+    shortcut: 'V',
+    tooltip: 'Open microphone gain editing.',
+    section: 'Audio',
+    isAvailable: (context) => context.voiceSendAllowed,
+  },
+  {
+    id: 'calibrateMicrophone',
+    label: 'Calibrate microphone',
+    shortcut: 'Shift+V',
+    tooltip: 'Run microphone calibration.',
+    section: 'Audio',
+    isAvailable: (context) => context.voiceSendAllowed,
+  },
+  {
+    id: 'useItem',
+    label: 'Use item',
+    shortcut: 'Enter',
+    tooltip: 'Use the carried item or a usable item on your current square.',
+    section: 'Items',
+    isAvailable: (context) => context.hasCarriedItem || context.usableItemCount > 0,
+  },
+  {
+    id: 'secondaryUseItem',
+    label: 'Secondary item action',
+    shortcut: 'Shift+Enter',
+    tooltip: 'Run the secondary action for the carried item or a usable item on your current square.',
+    section: 'Items',
+    isAvailable: (context) => context.hasCarriedItem || context.usableItemCount > 0,
+  },
+  {
+    id: 'speakUsers',
+    label: 'Speak connected users',
+    shortcut: 'U',
+    tooltip: 'Announce connected users including yourself.',
+    section: 'Users',
+    isAvailable: () => true,
+  },
+  {
+    id: 'addItem',
+    label: 'Add item',
+    shortcut: 'A',
+    tooltip: 'Open the add-item menu.',
+    section: 'Items',
+    isAvailable: (context) => context.itemTypeCount > 0,
+  },
+  {
+    id: 'locateNearestItem',
+    label: 'Locate nearest item',
+    shortcut: 'I',
+    tooltip: 'Announce the nearest visible item.',
+    section: 'Items',
+    isAvailable: (context) => context.visibleItemCount > 0,
+  },
+  {
+    id: 'listItems',
+    label: 'List items',
+    shortcut: 'Shift+I',
+    tooltip: 'Open the nearby item list and teleport with Enter.',
+    section: 'Items',
+    isAvailable: (context) => context.visibleItemCount > 0,
+  },
+  {
+    id: 'pickupDropItem',
+    label: 'Pick up or drop item',
+    shortcut: 'D',
+    tooltip: 'Pick up an item on your square or drop your carried item.',
+    section: 'Items',
+    isAvailable: (context) => context.hasCarriedItem || context.squareItemCount > 0,
+  },
+  {
+    id: 'openItemManagement',
+    label: 'Item management',
+    shortcut: 'Z',
+    tooltip: 'Open item management actions for items on your square.',
+    section: 'Items',
+    isAvailable: (context) => context.manageableItemCount > 0,
+  },
+  {
+    id: 'editItem',
+    label: 'Edit item properties',
+    shortcut: 'O',
+    tooltip: 'Edit the carried item or an item on your current square.',
+    section: 'Items',
+    isAvailable: (context) => context.hasEditableItemTarget,
+  },
+  {
+    id: 'inspectItem',
+    label: 'Inspect item properties',
+    shortcut: 'Shift+O',
+    tooltip: 'Inspect all properties for the carried item or an item on your current square.',
+    section: 'Items',
+    isAvailable: (context) => context.hasInspectableItemTarget,
+  },
+  {
+    id: 'pingServer',
+    label: 'Ping server',
+    shortcut: 'P',
+    tooltip: 'Measure round-trip latency to the server.',
+    section: 'Network',
+    isAvailable: () => true,
+  },
+  {
+    id: 'locateNearestUser',
+    label: 'Locate nearest user',
+    shortcut: 'L',
+    tooltip: 'Announce the nearest connected user.',
+    section: 'Users',
+    isAvailable: (context) => context.userCount > 0,
+  },
+  {
+    id: 'listUsers',
+    label: 'List users',
+    shortcut: 'Shift+L',
+    tooltip: 'Open the user list; Enter teleports and left or right adjust listen volume.',
+    section: 'Users',
+    isAvailable: (context) => context.userCount > 0,
+  },
+  {
+    id: 'openHelp',
+    label: 'Open help',
+    shortcut: '?',
+    tooltip: 'Open the main help viewer.',
+    section: 'Help',
+    isAvailable: (context) => context.mainHelpAvailable,
+  },
+  {
+    id: 'openChat',
+    label: 'Open chat',
+    shortcut: '/',
+    tooltip: 'Start typing a chat message.',
+    section: 'Chat',
+    isAvailable: () => true,
+  },
+  {
+    id: 'openAdminMenu',
+    label: 'Open admin menu',
+    shortcut: 'Shift+Z',
+    tooltip: 'Open the admin actions menu when permitted.',
+    section: 'Admin',
+    isAvailable: (context) => context.hasAdminActions,
+  },
+  {
+    id: 'chatPrev',
+    label: 'Previous chat message',
+    shortcut: ',',
+    tooltip: 'Read the previous buffered chat message.',
+    section: 'Chat',
+    isAvailable: (context) => context.chatMessageCount > 0,
+  },
+  {
+    id: 'chatNext',
+    label: 'Next chat message',
+    shortcut: '.',
+    tooltip: 'Read the next buffered chat message.',
+    section: 'Chat',
+    isAvailable: (context) => context.chatMessageCount > 0,
+  },
+  {
+    id: 'chatFirst',
+    label: 'First chat message',
+    shortcut: 'Shift+,',
+    tooltip: 'Jump to the first buffered chat message.',
+    section: 'Chat',
+    isAvailable: (context) => context.chatMessageCount > 0,
+  },
+  {
+    id: 'chatLast',
+    label: 'Last chat message',
+    shortcut: 'Shift+.',
+    tooltip: 'Jump to the last buffered chat message.',
+    section: 'Chat',
+    isAvailable: (context) => context.chatMessageCount > 0,
+  },
+  {
+    id: 'escape',
+    label: 'Disconnect prompt',
+    shortcut: 'Escape',
+    tooltip: 'Press once for a disconnect prompt and again to disconnect.',
+    section: 'System',
+    isAvailable: () => true,
+  },
+];
+
+export function getAvailableMainModeCommands(
+  context: MainModeCommandAvailabilityContext,
+): MainModeCommandDescriptor[] {
+  return MAIN_MODE_COMMANDS.filter((command) => command.isAvailable(context));
+}

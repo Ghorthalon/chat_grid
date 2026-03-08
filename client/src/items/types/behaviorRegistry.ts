@@ -1,5 +1,6 @@
 import { type IncomingMessage } from '../../network/protocol';
 import { type GameMode, type WorldItem } from '../../state/gameState';
+import { type CommandDescriptor, type ModeInput } from '../../input/commandTypes';
 import { createPianoBehavior } from './piano/behavior';
 import { type ItemBehavior, type ItemBehaviorDeps } from './runtimeShared';
 
@@ -57,9 +58,9 @@ export class ItemBehaviorRegistry {
   }
 
   /** Gives item behaviors first chance to handle mode input. */
-  handleModeInput(mode: GameMode, code: string): boolean {
+  handleModeInput(mode: GameMode, input: ModeInput): boolean {
     for (const behavior of this.behaviors) {
-      if (behavior.handleModeInput?.(mode, code)) {
+      if (behavior.handleModeInput?.(mode, input)) {
         return true;
       }
     }
@@ -67,9 +68,31 @@ export class ItemBehaviorRegistry {
   }
 
   /** Gives item behaviors first chance to handle mode key-up events. */
-  handleModeKeyUp(mode: GameMode, code: string): boolean {
+  handleModeKeyUp(mode: GameMode, input: Pick<ModeInput, 'code' | 'shiftKey'>): boolean {
     for (const behavior of this.behaviors) {
-      if (behavior.handleModeKeyUp?.(mode, code)) {
+      if (behavior.handleModeKeyUp?.(mode, input)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Returns palette-visible commands for the active item-owned mode, if any. */
+  getModeCommands(mode: GameMode): CommandDescriptor[] {
+    const commands: CommandDescriptor[] = [];
+    for (const behavior of this.behaviors) {
+      const next = behavior.getModeCommands?.(mode);
+      if (next && next.length > 0) {
+        commands.push(...next);
+      }
+    }
+    return commands;
+  }
+
+  /** Runs an item-owned mode command by id, returning true when handled. */
+  runModeCommand(mode: GameMode, commandId: string): boolean {
+    for (const behavior of this.behaviors) {
+      if (behavior.runModeCommand?.(mode, commandId)) {
         return true;
       }
     }

@@ -1,5 +1,6 @@
 import { type IncomingMessage, type OutgoingMessage } from '../../network/protocol';
 import { type GameMode, type WorldItem } from '../../state/gameState';
+import { type CommandDescriptor, type ModeInput } from '../../input/commandTypes';
 
 /** Shared dependencies made available to all client item behavior modules. */
 export type ItemBehaviorDeps = {
@@ -29,8 +30,10 @@ export type ItemBehavior = {
   onActionResultStatus?: (message: Extract<IncomingMessage, { type: 'item_action_result' }>) => boolean;
   onPropertyPreviewChange?: (item: WorldItem, key: string, value: unknown) => void;
   onWorldUpdate?: () => void;
-  handleModeInput?: (mode: GameMode, code: string) => boolean;
-  handleModeKeyUp?: (mode: GameMode, code: string) => boolean;
+  handleModeInput?: (mode: GameMode, input: ModeInput) => boolean;
+  handleModeKeyUp?: (mode: GameMode, input: Pick<ModeInput, 'code' | 'shiftKey'>) => boolean;
+  getModeCommands?: (mode: GameMode) => CommandDescriptor[];
+  runModeCommand?: (mode: GameMode, commandId: string) => boolean;
   onRemotePianoNote?: (message: Extract<IncomingMessage, { type: 'item_piano_note' }>) => void;
   onPianoStatus?: (message: Extract<IncomingMessage, { type: 'item_piano_status' }>) => void;
   onStopAllRemoteNotesForSender?: (senderId: string) => void;

@@ -16,6 +16,10 @@
           "description": "Change instrument presets."
         },
         {
+          "keys": "Shift+K / Applications / Shift+F10",
+          "description": "Open the command palette."
+        },
+        {
           "keys": "Minus / Equals",
           "description": "Shift octave down or up."
         },
@@ -38,6 +42,10 @@
         {
           "keys": "Escape",
           "description": "Exit piano mode."
+        },
+        {
+          "keys": "Shifted note keys",
+          "description": "Ignored in piano mode so shifted shortcuts stay distinct."
         }
       ]
     }

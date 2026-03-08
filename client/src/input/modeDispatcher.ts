@@ -1,15 +1,13 @@
 import type { GameMode } from '../state/gameState';
+import type { ModeInput } from './commandTypes';
 
-type ModeHandler = (code: string, key: string, ctrlKey: boolean) => void;
+type ModeHandler = (input: ModeInput) => void;
 
 type ModeHandlers = Partial<Record<GameMode, ModeHandler>>;
 
 type DispatchOptions = {
   mode: GameMode;
-  code: string;
-  key: string;
-  ctrlKey: boolean;
-  shiftKey: boolean;
+  input: ModeInput;
   handlers: ModeHandlers;
   onNormalMode: (code: string, shiftKey: boolean) => void;
 };
@@ -20,8 +18,8 @@ type DispatchOptions = {
 export function dispatchModeInput(options: DispatchOptions): void {
   const modeHandler = options.handlers[options.mode];
   if (modeHandler) {
-    modeHandler(options.code, options.key, options.ctrlKey);
+    modeHandler(options.input);
     return;
   }
-  options.onNormalMode(options.code, options.shiftKey);
+  options.onNormalMode(options.input.code, options.input.shiftKey);
 }
