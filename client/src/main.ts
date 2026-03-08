@@ -2607,6 +2607,10 @@ function canOpenCommandPaletteInMode(mode: GameMode): boolean {
   return mode === 'normal' || mode === 'pianoUse' || mode === 'commandPalette';
 }
 
+function shouldForwardPianoKeyUp(currentMode: GameMode): boolean {
+  return currentMode === 'pianoUse' || (currentMode === 'commandPalette' && commandPaletteReturnMode === 'pianoUse');
+}
+
 function openCommandPalette(): void {
   const sourceMode = state.mode;
   if (sourceMode === 'commandPalette') {
@@ -3772,8 +3776,8 @@ function setupInputHandlers(): void {
 
   document.addEventListener('keyup', (event) => {
     const code = normalizeInputCode(event);
-    if (state.mode === 'pianoUse' && code) {
-      itemBehaviorRegistry.handleModeKeyUp(state.mode, {
+    if (code && shouldForwardPianoKeyUp(state.mode)) {
+      itemBehaviorRegistry.handleModeKeyUp('pianoUse', {
         code,
         shiftKey: event.shiftKey,
       });
