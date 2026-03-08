@@ -47,6 +47,8 @@ import {
 } from './state/gameState';
 import {
   applyServerItemUiDefinitions,
+  getItemManagementActionMetadata,
+  getServerMainModeCommandMetadata,
   getItemTypeGlobalProperties,
   getItemTypeSequence,
   getEditableItemPropertyKeys,
@@ -192,6 +194,7 @@ type AuthPolicy = {
 type AdminMenuAction = {
   id: string;
   label: string;
+  tooltip?: string;
 };
 
 type AdminRoleSummary = {
@@ -220,6 +223,7 @@ type ItemManagementAction = 'delete' | 'transfer';
 type ItemManagementOption = {
   action: ItemManagementAction;
   label: string;
+  tooltip?: string;
 };
 
 type ItemManagementConfirmContext = {
@@ -650,11 +654,12 @@ function applyAuthPermissions(role: string | null | undefined, permissions: stri
 }
 
 /** Applies server-authored admin menu actions for current session. */
-function applyServerAdminMenuActions(actions: Array<{ id: string; label: string }> | null | undefined): void {
+function applyServerAdminMenuActions(actions: Array<{ id: string; label: string; tooltip?: string }> | null | undefined): void {
   serverAdminMenuActions = (actions || [])
     .map((entry) => ({
       id: String(entry.id || '').trim(),
       label: String(entry.label || '').trim(),
+      tooltip: typeof entry.tooltip === 'string' && entry.tooltip.trim().length > 0 ? entry.tooltip.trim() : undefined,
     }))
     .filter((entry) => entry.id.length > 0 && entry.label.length > 0);
 }
@@ -1064,24 +1069,36 @@ function beginItemSelection(
 
 /** Returns whether the local user can delete the provided item. */
 function canManageDeleteItem(item: WorldItem): boolean {
-  if (hasPermission('item.delete.any')) return true;
-  return hasPermission('item.delete.own') && authUserId.length > 0 && item.createdBy === authUserId;
+  const metadata = getItemManagementActionMetadata('delete');
+  if (metadata?.anyPermission && hasPermission(metadata.anyPermission)) return true;
+  return Boolean(metadata?.ownPermission) && hasPermission(metadata.ownPermission) && authUserId.length > 0 && item.createdBy === authUserId;
 }
 
 /** Returns whether the local user can transfer the provided item. */
 function canManageTransferItem(item: WorldItem): boolean {
-  if (hasPermission('item.transfer.any')) return true;
-  return hasPermission('item.transfer.own') && authUserId.length > 0 && item.createdBy === authUserId;
+  const metadata = getItemManagementActionMetadata('transfer');
+  if (metadata?.anyPermission && hasPermission(metadata.anyPermission)) return true;
+  return Boolean(metadata?.ownPermission) && hasPermission(metadata.ownPermission) && authUserId.length > 0 && item.createdBy === authUserId;
 }
 
 /** Builds available item-management actions for one selected item. */
 function itemManagementOptionsFor(item: WorldItem): ItemManagementOption[] {
   const options: ItemManagementOption[] = [];
+  const transferMetadata = getItemManagementActionMetadata('transfer');
   if (canManageTransferItem(item) && (state.player.id !== null || state.peers.size > 0)) {
-    options.push({ action: 'transfer', label: 'Transfer item' });
+    options.push({
+      action: 'transfer',
+      label: transferMetadata?.label ?? 'Transfer item',
+      tooltip: transferMetadata?.tooltip,
+    });
   }
+  const deleteMetadata = getItemManagementActionMetadata('delete');
   if (canManageDeleteItem(item)) {
-    options.push({ action: 'delete', label: 'Delete item' });
+    options.push({
+      action: 'delete',
+      label: deleteMetadata?.label ?? 'Delete item',
+      tooltip: deleteMetadata?.tooltip,
+    });
   }
   return options;
 }
@@ -2570,6 +2587,8 @@ function getAvailableCommandPaletteEntriesForMode(mode: GameMode): Array<Command
     });
     return descriptors.map((descriptor) => ({
       ...descriptor,
+      label: getServerMainModeCommandMetadata(descriptor.id)?.label ?? descriptor.label,
+      tooltip: getServerMainModeCommandMetadata(descriptor.id)?.tooltip ?? descriptor.tooltip,
       run: mainModeCommandHandlers[descriptor.id],
     }));
   }
@@ -3054,6 +3073,11 @@ function handleItemManageOptionsModeInput(code: string, key: string): void {
     audio.sfxUiBlip();
     return;
   }
+  if (code === 'Space') {
+    updateStatus(itemManagementOptions[itemManagementOptionIndex]?.tooltip ?? 'No tooltip available.');
+    audio.sfxUiBlip();
+    return;
+  }
   if (control.type === 'select') {
     const option = itemManagementOptions[itemManagementOptionIndex];
     if (option.action === 'delete') {
@@ -3173,6 +3197,11 @@ function handleAdminMenuModeInput(code: string, key: string): void {
   if (control.type === 'move') {
     adminMenuIndex = control.index;
     updateStatus(adminMenuActions[adminMenuIndex].label);
+    audio.sfxUiBlip();
+    return;
+  }
+  if (code === 'Space') {
+    updateStatus(adminMenuActions[adminMenuIndex]?.tooltip ?? 'No tooltip available.');
     audio.sfxUiBlip();
     return;
   }

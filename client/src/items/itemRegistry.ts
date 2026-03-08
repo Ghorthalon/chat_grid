@@ -17,6 +17,22 @@ export type ItemPropertyMetadata = {
 };
 
 type UiDefinitionsPayload = {
+  commandMetadata?: {
+    mainModeActions?: Array<{
+      id: string;
+      label?: string;
+      tooltip?: string;
+    }>;
+  };
+  itemManagement?: {
+    actions?: Array<{
+      id: string;
+      label?: string;
+      tooltip?: string;
+      anyPermission?: string;
+      ownPermission?: string;
+    }>;
+  };
   itemTypeOrder?: ItemType[];
   itemTypes?: Array<{
     type: ItemType;
@@ -28,6 +44,17 @@ type UiDefinitionsPayload = {
     globalProperties?: Record<string, unknown>;
   }>;
 };
+
+type ServerCommandMetadata = {
+  label?: string;
+  tooltip?: string;
+};
+
+type ItemManagementActionMetadata = ServerCommandMetadata & {
+  anyPermission?: string;
+  ownPermission?: string;
+};
+
 let itemTypeSequence: ItemType[] = [];
 let itemTypeLabels: Partial<Record<ItemType, string>> = {};
 let itemTypeTooltips: Partial<Record<ItemType, string>> = {};
@@ -36,6 +63,8 @@ let itemTypeCapabilities: Partial<Record<ItemType, string[]>> = {};
 let itemTypeGlobalProperties: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
 let itemTypePropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
 let propertyLabelByKey: Record<string, string> = {};
+let mainModeCommandMetadataById: Record<string, ServerCommandMetadata> = {};
+let itemManagementActionMetadataById: Record<string, ItemManagementActionMetadata> = {};
 
 export let EDITABLE_ITEM_PROPERTY_KEYS = new Set<string>(
   Object.values(itemTypeEditableProperties).flatMap((keys) => keys ?? []),
@@ -150,6 +179,16 @@ export function getItemTypeCapabilities(itemType: ItemType): string[] {
   return [...(itemTypeCapabilities[itemType] ?? [])];
 }
 
+/** Returns server-authored metadata for one server-backed main-mode command id. */
+export function getServerMainModeCommandMetadata(commandId: string): ServerCommandMetadata | undefined {
+  return mainModeCommandMetadataById[commandId];
+}
+
+/** Returns server-authored metadata for one item-management action id. */
+export function getItemManagementActionMetadata(actionId: string): ItemManagementActionMetadata | undefined {
+  return itemManagementActionMetadataById[actionId];
+}
+
 /** Returns human-facing label for a property key. */
 export function itemPropertyLabel(key: string): string {
   const metadataLabel = propertyLabelByKey[key];
@@ -237,6 +276,8 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
     itemTypeGlobalProperties = {};
     itemTypePropertyMetadata = {};
     propertyLabelByKey = {};
+    mainModeCommandMetadataById = {};
+    itemManagementActionMetadataById = {};
     rebuildEditablePropertyKeySet();
     return false;
   }
@@ -253,6 +294,8 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
   const nextGlobals: Partial<Record<ItemType, Record<string, string | number | boolean>>> = {};
   const nextPropertyMetadata: Partial<Record<ItemType, Record<string, ItemPropertyMetadata>>> = {};
   const nextPropertyLabels: Record<string, string> = {};
+  const nextMainModeCommandMetadata: Record<string, ServerCommandMetadata> = {};
+  const nextItemManagementActionMetadata: Record<string, ItemManagementActionMetadata> = {};
 
   for (const definition of uiDefinitions.itemTypes) {
     if (!definition || typeof definition.type !== 'string') continue;
@@ -295,6 +338,28 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
     discoveredOrder.push(definition.type as ItemType);
   }
 
+  for (const action of uiDefinitions.commandMetadata?.mainModeActions ?? []) {
+    const id = String(action?.id ?? '').trim();
+    if (!id) continue;
+    nextMainModeCommandMetadata[id] = {
+      label: typeof action?.label === 'string' && action.label.trim().length > 0 ? action.label.trim() : undefined,
+      tooltip: typeof action?.tooltip === 'string' && action.tooltip.trim().length > 0 ? action.tooltip.trim() : undefined,
+    };
+  }
+
+  for (const action of uiDefinitions.itemManagement?.actions ?? []) {
+    const id = String(action?.id ?? '').trim();
+    if (!id) continue;
+    nextItemManagementActionMetadata[id] = {
+      label: typeof action?.label === 'string' && action.label.trim().length > 0 ? action.label.trim() : undefined,
+      tooltip: typeof action?.tooltip === 'string' && action.tooltip.trim().length > 0 ? action.tooltip.trim() : undefined,
+      anyPermission:
+        typeof action?.anyPermission === 'string' && action.anyPermission.trim().length > 0 ? action.anyPermission.trim() : undefined,
+      ownPermission:
+        typeof action?.ownPermission === 'string' && action.ownPermission.trim().length > 0 ? action.ownPermission.trim() : undefined,
+    };
+  }
+
   itemTypeLabels = nextLabels;
   itemTypeTooltips = nextTooltips;
   itemTypeEditableProperties = nextEditable;
@@ -302,6 +367,8 @@ export function applyServerItemUiDefinitions(uiDefinitions: UiDefinitionsPayload
   itemTypeGlobalProperties = nextGlobals;
   itemTypePropertyMetadata = nextPropertyMetadata;
   propertyLabelByKey = nextPropertyLabels;
+  mainModeCommandMetadataById = nextMainModeCommandMetadata;
+  itemManagementActionMetadataById = nextItemManagementActionMetadata;
   itemTypeSequence = explicitOrder ?? discoveredOrder;
   rebuildEditablePropertyKeySet();
   return itemTypeSequence.length > 0;

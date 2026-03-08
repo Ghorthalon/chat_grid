@@ -134,11 +134,42 @@ AUTH_SESSION_COOKIE_CLIENT_HEADER = "X-Chgrid-Auth-Client"
 AUTH_LOGIN_FAILURE_MESSAGE = "We couldn't log you in. Check your details and try again."
 AUTH_RESUME_FAILURE_MESSAGE = "We couldn't restore your session. Please log in again."
 ADMIN_MENU_ACTION_DEFINITIONS: tuple[dict[str, str], ...] = (
-    {"id": "manage_roles", "label": "Role management", "permission": "role.manage"},
-    {"id": "change_user_role", "label": "Change user role", "permission": "user.change_role"},
-    {"id": "ban_user", "label": "Ban user", "permission": "user.ban_unban"},
-    {"id": "unban_user", "label": "Unban user", "permission": "user.ban_unban"},
-    {"id": "delete_account", "label": "Delete account", "permission": "account.delete.any"},
+    {"id": "manage_roles", "label": "Role management", "tooltip": "Manage roles and their permission sets.", "permission": "role.manage"},
+    {"id": "change_user_role", "label": "Change user role", "tooltip": "Change a user's assigned role.", "permission": "user.change_role"},
+    {"id": "ban_user", "label": "Ban user", "tooltip": "Disable a user account.", "permission": "user.ban_unban"},
+    {"id": "unban_user", "label": "Unban user", "tooltip": "Re-enable a disabled user account.", "permission": "user.ban_unban"},
+    {"id": "delete_account", "label": "Delete account", "tooltip": "Delete a user account permanently.", "permission": "account.delete.any"},
+)
+
+ITEM_MANAGEMENT_ACTION_DEFINITIONS: tuple[dict[str, str], ...] = (
+    {
+        "id": "transfer",
+        "label": "Transfer item",
+        "tooltip": "Transfer this item to another user.",
+        "anyPermission": "item.transfer.any",
+        "ownPermission": "item.transfer.own",
+    },
+    {
+        "id": "delete",
+        "label": "Delete item",
+        "tooltip": "Delete this item from the world.",
+        "anyPermission": "item.delete.any",
+        "ownPermission": "item.delete.own",
+    },
+)
+
+MAIN_MODE_SERVER_COMMAND_DEFINITIONS: tuple[dict[str, str], ...] = (
+    {"id": "addItem", "label": "Add item", "tooltip": "Open the add-item menu."},
+    {"id": "useItem", "label": "Use item", "tooltip": "Use the carried item or a usable item on your current square."},
+    {
+        "id": "secondaryUseItem",
+        "label": "Secondary item action",
+        "tooltip": "Run the secondary action for the carried item or a usable item on your current square.",
+    },
+    {"id": "pickupDropItem", "label": "Pick up or drop item", "tooltip": "Pick up an item or drop your carried item."},
+    {"id": "openItemManagement", "label": "Item management", "tooltip": "Open item management actions for items on your square."},
+    {"id": "editItem", "label": "Edit item properties", "tooltip": "Edit the carried item or an item on your current square."},
+    {"id": "inspectItem", "label": "Inspect item properties", "tooltip": "Inspect all properties for the carried item or an item on your current square."},
 )
 
 
@@ -347,7 +378,7 @@ class SignalingServer:
             return []
         client_permissions = client.permissions or set()
         return [
-            {"id": action["id"], "label": action["label"]}
+            {"id": action["id"], "label": action["label"], "tooltip": action["tooltip"]}
             for action in ADMIN_MENU_ACTION_DEFINITIONS
             if action["permission"] in client_permissions
         ]
@@ -1695,6 +1726,8 @@ class SignalingServer:
         return {
             "itemTypeOrder": list(ITEM_TYPE_SEQUENCE),
             "itemTypes": item_types,
+            "commandMetadata": {"mainModeActions": list(MAIN_MODE_SERVER_COMMAND_DEFINITIONS)},
+            "itemManagement": {"actions": list(ITEM_MANAGEMENT_ACTION_DEFINITIONS)},
             "adminMenu": {"actions": self._build_admin_menu_actions_for_client(client)},
         }
 

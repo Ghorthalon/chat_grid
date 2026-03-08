@@ -33,6 +33,7 @@ This document is the authoritative keymap for the client.
 - `Shift+O`: Inspect all item properties
 - `D`: Pick up/drop item
 - `Z`: Item management menu (delete/transfer when permitted)
+- `Space` in item management menu: Read tooltip/help for the selected action
 - `Enter`: Use item
 - `Shift+Enter`: Secondary item action
 
@@ -104,6 +105,7 @@ Applies to effect select, user/item list modes, item selection, item property li
 ## Admin Modes
 
 - `Shift+Z`: Open admin menu
+- `Space` on admin root actions: Read tooltip/help for the selected action
 - Admin menu options are permission-gated and include:
   - role management
   - change user role

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+const actionMetadataSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  tooltip: z.string().optional(),
+});
+
 export const itemSchema = z.object({
   id: z.string(),
   type: z.string().min(1),
@@ -59,7 +65,7 @@ export const welcomeMessageSchema = z.object({
       username: z.string().nullable().optional(),
       role: z.string().nullable().optional(),
       permissions: z.array(z.string()).optional(),
-      adminMenuActions: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
+      adminMenuActions: z.array(actionMetadataSchema).optional(),
       policy: z
         .object({
           usernameMinLength: z.number().int().positive(),
@@ -105,7 +111,22 @@ export const welcomeMessageSchema = z.object({
       ),
       adminMenu: z
         .object({
-          actions: z.array(z.object({ id: z.string(), label: z.string() })),
+          actions: z.array(actionMetadataSchema),
+        })
+        .optional(),
+      commandMetadata: z
+        .object({
+          mainModeActions: z.array(actionMetadataSchema).optional(),
+        })
+        .optional(),
+      itemManagement: z
+        .object({
+          actions: z.array(
+            actionMetadataSchema.extend({
+              anyPermission: z.string().optional(),
+              ownPermission: z.string().optional(),
+            }),
+          ),
         })
         .optional(),
     })
@@ -133,7 +154,7 @@ export const authResultSchema = z.object({
   username: z.string().optional(),
   role: z.string().optional(),
   permissions: z.array(z.string()).optional(),
-  adminMenuActions: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
+  adminMenuActions: z.array(actionMetadataSchema).optional(),
   nickname: z.string().optional(),
   authPolicy: z
     .object({
@@ -289,7 +310,7 @@ export const authPermissionsSchema = z.object({
   type: z.literal('auth_permissions'),
   role: z.string(),
   permissions: z.array(z.string()),
-  adminMenuActions: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
+  adminMenuActions: z.array(actionMetadataSchema).optional(),
 });
 
 const adminRoleSummarySchema = z.object({

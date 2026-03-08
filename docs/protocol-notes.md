@@ -111,7 +111,9 @@ This is a behavior guide for packet semantics beyond raw schemas.
   - `itemTypes[].editableProperties`: editable property keys by item type
   - `itemTypes[].propertyMetadata`: property-level metadata (`valueType`, optional `label`, optional `range`, optional `tooltip`, optional `maxLength`, optional `options`, optional `visibleWhen`)
   - `itemTypes[].globalProperties`: non-editable global values (`useSound`, `emitSound`, `useCooldownMs`, `emitRange`, `directional`, `emitSoundSpeed`, `emitSoundTempo`, `emitInitialDelay`, `emitLoopDelay`)
-  - `adminMenu.actions`: server-authored admin root menu labels/ordering for the authenticated user.
+  - `commandMetadata.mainModeActions`: server-authored labels/tooltips for server-backed main-mode commands used by the client command palette
+  - `itemManagement.actions`: server-authored labels/tooltips and permission-key metadata for item-management actions (`transfer`, `delete`)
+  - `adminMenu.actions`: server-authored admin root menu labels/tooltips/ordering for the authenticated user
 - Client item UI requires this metadata from the server; there is no fallback item definition map.
 - Client property help/type rendering is metadata-driven; it does not infer fallback types/tooltips from hardcoded key heuristics.
 - `visibleWhen` supports equality checks and string negation via `!` prefix (example: `{"mediaEffect": "!off"}`).
