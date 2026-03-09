@@ -39,7 +39,7 @@
 
 ## Versioning & Configuration
 - Bump `client/public/version.js` on every user-visible client change using shared release version + client revision metadata (`CHGRID_RELEASE_VERSION` and `CHGRID_CLIENT_REVISION`, for example `0.1.1` + `R350`).
-- Keep the server-only revision in `server/app/version.py`; server revisions do not require a client version bump unless browser code/assets changed.
+- Keep the server-only revision in `server/app/version.py` (for example `S350`); server revisions do not require a client version bump unless browser code/assets changed.
 - Commit each completed logical change; include the version bump in that same commit when client behavior changes.
 - Docs-only changes do not require a version bump unless explicitly requested.
 - Do not duplicate version constants elsewhere in client code.

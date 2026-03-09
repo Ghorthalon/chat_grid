@@ -3,6 +3,7 @@
     {
       "date": "March 8, 2026",
       "items": [
+        "First public release, v0.1.0.",
         "Added a command palette with Shift+K, Shift+F10, or the Applications key to show all available commands."
       ]
     },
