@@ -8,6 +8,7 @@ BASE_PATH="${3:-/chgrid/}"
 CLIENT_DIR="$REPO_ROOT/client"
 PHP_PROXY_DIR="$REPO_ROOT/deploy/php"
 SERVER_ENV_FILE="$REPO_ROOT/server/.env"
+SERVER_VENV_PYTHON="$REPO_ROOT/server/.venv/bin/python"
 PUBLIC_HTACCESS_SRC="$REPO_ROOT/deploy/apache/chgrid-public-htaccess"
 
 if [[ ! -d "$CLIENT_DIR" ]]; then
@@ -39,11 +40,19 @@ if [[ -f "$SERVER_ENV_FILE" ]]; then
 fi
 
 if [[ -n "${CHGRID_HOST_ORIGIN:-}" ]]; then
+  config_python="python3"
+  if [[ -x "$SERVER_VENV_PYTHON" ]]; then
+    config_python="$SERVER_VENV_PYTHON"
+  fi
   session_check_url="$(
-    python3 - "$REPO_ROOT/server/config.toml" <<'PY'
+    "$config_python" - "$REPO_ROOT/server/config.toml" <<'PY'
 from pathlib import Path
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - compatibility fallback
+    import tomli as tomllib
 
 config_path = Path(sys.argv[1])
 host = "127.0.0.1"
