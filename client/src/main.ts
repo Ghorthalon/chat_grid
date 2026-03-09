@@ -1483,9 +1483,8 @@ const onAppMessage = createOnMessageHandler({
     );
   },
   handleItemActionResultStatus: (message) => itemBehaviorRegistry.onActionResultStatus(message),
-  handleRemotePianoNote: (message) => itemBehaviorRegistry.onRemotePianoNote(message),
-  handlePianoStatus: (message) => itemBehaviorRegistry.onPianoStatus(message),
-  stopAllRemoteNotesForSender: (senderId) => itemBehaviorRegistry.stopAllRemoteNotesForSender(senderId),
+  handleItemBehaviorIncomingMessage: (message) => itemBehaviorRegistry.onIncomingMessage(message),
+  handleItemBehaviorPeerLeft: (senderId) => itemBehaviorRegistry.onPeerLeft(senderId),
   TELEPORT_SOUND_URL,
   TELEPORT_START_SOUND_URL,
   getAudioLayers: () => audioLayers,
@@ -2034,7 +2033,7 @@ function getAvailableCommandPaletteEntriesForMode(mode: GameMode): Array<Command
       run: mainModeCommandHandlers[descriptor.id],
     }));
   }
-  if (mode === 'pianoUse') {
+  if (itemBehaviorRegistry.canOpenModeCommandPalette(mode)) {
     return itemBehaviorRegistry.getModeCommands(mode).map((descriptor) => ({
       ...descriptor,
       run: () => {
@@ -2046,11 +2045,7 @@ function getAvailableCommandPaletteEntriesForMode(mode: GameMode): Array<Command
 }
 
 function canOpenCommandPaletteInMode(mode: GameMode): boolean {
-  return mode === 'normal' || mode === 'pianoUse' || mode === 'commandPalette';
-}
-
-function shouldForwardPianoKeyUp(currentMode: GameMode): boolean {
-  return currentMode === 'pianoUse' || (currentMode === 'commandPalette' && commandPaletteReturnMode === 'pianoUse');
+  return mode === 'normal' || mode === 'commandPalette' || itemBehaviorRegistry.canOpenModeCommandPalette(mode);
 }
 
 function openCommandPalette(): void {
@@ -2536,6 +2531,9 @@ function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): v
 }
 
 function handleModeInput(input: ModeInput): void {
+  if (itemBehaviorRegistry.handleModeInput(state.mode, input)) {
+    return;
+  }
   dispatchModeInput({
     mode: state.mode,
     input,
@@ -2546,9 +2544,6 @@ function handleModeInput(input: ModeInput): void {
         handleChatModeInput(currentCode, currentKey, currentCtrlKey),
       micGainEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
         handleMicGainEditModeInput(currentCode, currentKey, currentCtrlKey),
-      pianoUse: (currentInput) => {
-        itemBehaviorRegistry.handleModeInput(state.mode, currentInput);
-      },
       commandPalette: ({ code: currentCode, key: currentKey }) => handleCommandPaletteModeInput(currentCode, currentKey),
       effectSelect: ({ code: currentCode, key: currentKey }) => handleEffectSelectModeInput(currentCode, currentKey),
       helpView: ({ code: currentCode }) => handleHelpViewModeInput(currentCode),
@@ -2617,9 +2612,9 @@ setupKeyboardInputHandlers({
   handleModeInput,
   canOpenCommandPaletteInMode,
   openCommandPalette,
-  shouldForwardModeKeyUp: shouldForwardPianoKeyUp,
-  onModeKeyUp: ({ code, shiftKey }) => {
-    itemBehaviorRegistry.handleModeKeyUp('pianoUse', {
+  getModeKeyUpTarget: (activeMode) => itemBehaviorRegistry.getModeKeyUpTarget(activeMode, commandPaletteReturnMode),
+  onModeKeyUp: (mode, { code, shiftKey }) => {
+    itemBehaviorRegistry.handleModeKeyUp(mode, {
       code,
       shiftKey,
     });

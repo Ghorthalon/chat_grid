@@ -32,9 +32,10 @@ export type ItemBehavior = {
   onWorldUpdate?: () => void;
   handleModeInput?: (mode: GameMode, input: ModeInput) => boolean;
   handleModeKeyUp?: (mode: GameMode, input: Pick<ModeInput, 'code' | 'shiftKey'>) => boolean;
+  canOpenModeCommandPalette?: (mode: GameMode) => boolean;
+  getModeKeyUpTarget?: (activeMode: GameMode, returnMode: GameMode) => GameMode | null;
   getModeCommands?: (mode: GameMode) => CommandDescriptor[];
   runModeCommand?: (mode: GameMode, commandId: string) => boolean;
-  onRemotePianoNote?: (message: Extract<IncomingMessage, { type: 'item_piano_note' }>) => void;
-  onPianoStatus?: (message: Extract<IncomingMessage, { type: 'item_piano_status' }>) => void;
-  onStopAllRemoteNotesForSender?: (senderId: string) => void;
+  onIncomingMessage?: (message: IncomingMessage) => boolean;
+  onPeerLeft?: (senderId: string) => void;
 };

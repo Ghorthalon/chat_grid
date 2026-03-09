@@ -46,9 +46,8 @@ type MessageHandlerDeps = {
   randomFootstepUrl: () => string;
   playRemoteSpatialStepOrTeleport: (url: string, peerX: number, peerY: number) => void;
   handleItemActionResultStatus: (message: Extract<IncomingMessage, { type: 'item_action_result' }>) => boolean;
-  handleRemotePianoNote: (message: Extract<IncomingMessage, { type: 'item_piano_note' }>) => void;
-  handlePianoStatus: (message: Extract<IncomingMessage, { type: 'item_piano_status' }>) => void;
-  stopAllRemoteNotesForSender: (senderId: string) => void;
+  handleItemBehaviorIncomingMessage: (message: IncomingMessage) => boolean;
+  handleItemBehaviorPeerLeft: (senderId: string) => void;
   TELEPORT_SOUND_URL: string;
   TELEPORT_START_SOUND_URL: string;
   getAudioLayers: () => { world: boolean; item: boolean };
@@ -225,7 +224,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
         if (peer) {
           deps.updateStatus(`${peer.nickname} has left.`);
         }
-        deps.stopAllRemoteNotesForSender(message.id);
+        deps.handleItemBehaviorPeerLeft(message.id);
         deps.state.peers.delete(message.id);
         deps.peerManager.removePeer(message.id);
         break;
@@ -335,7 +334,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
 
       case 'item_piano_note': {
         if (!deps.getAudioLayers().item) break;
-        deps.handleRemotePianoNote(message);
+        deps.handleItemBehaviorIncomingMessage(message);
         break;
       }
 
@@ -346,7 +345,7 @@ export function createOnMessageHandler(deps: MessageHandlerDeps): (message: Inco
       }
 
       case 'item_piano_status': {
-        deps.handlePianoStatus(message);
+        deps.handleItemBehaviorIncomingMessage(message);
         break;
       }
     }

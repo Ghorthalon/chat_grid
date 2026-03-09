@@ -77,6 +77,27 @@ export class ItemBehaviorRegistry {
     return false;
   }
 
+  /** Returns whether any item-owned mode supports opening the command palette. */
+  canOpenModeCommandPalette(mode: GameMode): boolean {
+    for (const behavior of this.behaviors) {
+      if (behavior.canOpenModeCommandPalette?.(mode)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Resolves an optional suspended mode that still wants key-up events while another overlay is active. */
+  getModeKeyUpTarget(activeMode: GameMode, returnMode: GameMode): GameMode | null {
+    for (const behavior of this.behaviors) {
+      const target = behavior.getModeKeyUpTarget?.(activeMode, returnMode);
+      if (target) {
+        return target;
+      }
+    }
+    return null;
+  }
+
   /** Returns palette-visible commands for the active item-owned mode, if any. */
   getModeCommands(mode: GameMode): CommandDescriptor[] {
     const commands: CommandDescriptor[] = [];
@@ -99,24 +120,20 @@ export class ItemBehaviorRegistry {
     return false;
   }
 
-  /** Routes incoming item-piano-note packets to the item behavior owning that protocol. */
-  onRemotePianoNote(message: Extract<IncomingMessage, { type: 'item_piano_note' }>): void {
+  /** Gives item behaviors a chance to consume custom incoming packets. */
+  onIncomingMessage(message: IncomingMessage): boolean {
     for (const behavior of this.behaviors) {
-      behavior.onRemotePianoNote?.(message);
+      if (behavior.onIncomingMessage?.(message)) {
+        return true;
+      }
     }
+    return false;
   }
 
-  /** Routes incoming item-piano-status packets to behavior modules that track piano runtime state. */
-  onPianoStatus(message: Extract<IncomingMessage, { type: 'item_piano_status' }>): void {
+  /** Notifies behaviors that a peer left so they can release sender-owned runtime state. */
+  onPeerLeft(senderId: string): void {
     for (const behavior of this.behaviors) {
-      behavior.onPianoStatus?.(message);
-    }
-  }
-
-  /** Stops all remote notes for one sender across behavior modules that own remote note runtimes. */
-  stopAllRemoteNotesForSender(senderId: string): void {
-    for (const behavior of this.behaviors) {
-      behavior.onStopAllRemoteNotesForSender?.(senderId);
+      behavior.onPeerLeft?.(senderId);
     }
   }
 }

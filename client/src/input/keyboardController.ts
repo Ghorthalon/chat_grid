@@ -19,8 +19,8 @@ type KeyboardControllerDeps = {
   handleModeInput: (input: ModeInput) => void;
   canOpenCommandPaletteInMode: (mode: GameMode) => boolean;
   openCommandPalette: () => void;
-  shouldForwardModeKeyUp: (mode: GameMode) => boolean;
-  onModeKeyUp: (input: Pick<ModeInput, 'code' | 'shiftKey'>) => void;
+  getModeKeyUpTarget: (activeMode: GameMode) => GameMode | null;
+  onModeKeyUp: (mode: GameMode, input: Pick<ModeInput, 'code' | 'shiftKey'>) => void;
   pasteIntoActiveTextInput: (text: string) => boolean;
   updateStatus: (message: string) => void;
   setReplaceTextOnNextType: (value: boolean) => void;
@@ -157,8 +157,9 @@ export function setupKeyboardInputHandlers(deps: KeyboardControllerDeps): void {
 
   document.addEventListener('keyup', (event) => {
     const code = normalizeInputCode(event);
-    if (code && deps.shouldForwardModeKeyUp(deps.state.mode)) {
-      deps.onModeKeyUp({
+    const keyUpMode = deps.getModeKeyUpTarget(deps.state.mode);
+    if (code && keyUpMode) {
+      deps.onModeKeyUp(keyUpMode, {
         code,
         shiftKey: event.shiftKey,
       });

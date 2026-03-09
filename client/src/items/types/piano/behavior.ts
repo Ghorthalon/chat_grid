@@ -31,9 +31,6 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
       }
       return true;
     },
-    onPianoStatus: (message) => {
-      controller.onPianoStatus(message);
-    },
     onPropertyPreviewChange: (item, key, value) => {
       controller.onPreviewPropertyChange(item, key, value);
     },
@@ -50,6 +47,12 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
       controller.handleModeKeyUp(input);
       return true;
     },
+    canOpenModeCommandPalette: (mode) => mode === 'pianoUse',
+    getModeKeyUpTarget: (activeMode, returnMode) => {
+      if (activeMode === 'pianoUse') return 'pianoUse';
+      if (activeMode === 'commandPalette' && returnMode === 'pianoUse') return 'pianoUse';
+      return null;
+    },
     getModeCommands: (mode) => {
       if (mode !== 'pianoUse') return [];
       return controller.getModeCommands();
@@ -58,29 +61,37 @@ export function createPianoBehavior(deps: ItemBehaviorDeps): ItemBehavior {
       if (mode !== 'pianoUse') return false;
       return controller.runModeCommand(commandId);
     },
-    onRemotePianoNote: (message) => {
-      if (message.on) {
-        controller.playRemoteNote({
-          itemId: message.itemId,
-          senderId: message.senderId,
-          keyId: message.keyId,
-          midi: message.midi,
-          instrument: message.instrument,
-          voiceMode: message.voiceMode,
-          octave: message.octave,
-          attack: message.attack,
-          decay: message.decay,
-          release: message.release,
-          brightness: message.brightness,
-          x: message.x,
-          y: message.y,
-          emitRange: message.emitRange,
-        });
-      } else {
-        controller.stopRemoteNote(message.senderId, message.keyId);
+    onIncomingMessage: (message) => {
+      if (message.type === 'item_piano_note') {
+        if (message.on) {
+          controller.playRemoteNote({
+            itemId: message.itemId,
+            senderId: message.senderId,
+            keyId: message.keyId,
+            midi: message.midi,
+            instrument: message.instrument,
+            voiceMode: message.voiceMode,
+            octave: message.octave,
+            attack: message.attack,
+            decay: message.decay,
+            release: message.release,
+            brightness: message.brightness,
+            x: message.x,
+            y: message.y,
+            emitRange: message.emitRange,
+          });
+        } else {
+          controller.stopRemoteNote(message.senderId, message.keyId);
+        }
+        return true;
       }
+      if (message.type === 'item_piano_status') {
+        controller.onPianoStatus(message);
+        return true;
+      }
+      return false;
     },
-    onStopAllRemoteNotesForSender: (senderId) => {
+    onPeerLeft: (senderId) => {
       controller.stopAllRemoteNotesForSender(senderId);
     },
   };
