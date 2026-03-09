@@ -31,6 +31,12 @@ What this sets up:
 - `server/run_server.sh` (loads `.env` and starts server)
 - first-run admin bootstrap prompt (if no admin exists)
 
+Before starting the service, set `CHGRID_HOST_ORIGIN` in `server/.env` to the exact browser origin that will host Chat Grid, for example:
+
+```bash
+CHGRID_HOST_ORIGIN=https://example.com
+```
+
 ## 3) Publish Client
 
 ```bash
@@ -77,6 +83,8 @@ ProxyPass        /auth/session/  http://127.0.0.1:8765/auth/session/
 ProxyPassReverse /auth/session/  http://127.0.0.1:8765/auth/session/
 ```
 
+The websocket server enforces browser origin matching against `CHGRID_HOST_ORIGIN`, so the public site origin must match that env var exactly.
+
 What each route does:
 - `/ws`: websocket signaling (presence, movement, item actions, chat, voice signaling).
 - `/auth/session/set`: called by client after successful login to set `HttpOnly` session cookie.
@@ -99,6 +107,12 @@ ProxyPassReverse /listen/8000/  http://127.0.0.1:8000/
 ## 8) PHP Media Proxy
 
 `deploy/php/media_proxy.php` is copied into your publish directory by `deploy_client.sh`.
+
+The proxy also requires the same `CHGRID_HOST_ORIGIN` value in the PHP/Apache environment so only your own site origin can read from it. For Apache, one simple option is:
+
+```apache
+SetEnv CHGRID_HOST_ORIGIN https://example.com
+```
 
 Use:
 

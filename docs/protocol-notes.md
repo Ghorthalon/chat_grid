@@ -125,6 +125,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - Server is authoritative for movement acceptance (bounds + rate/delta checks).
 - Server persists account state (last nickname + last position) and restores spawn from that state on auth login/resume.
 - Server also supports websocket handshake cookie resume:
+  - accepts browser sockets only when websocket `Origin` matches `CHGRID_HOST_ORIGIN`
   - reads `chgrid_session_token` from websocket `Cookie` header
   - attempts resume before sending `auth_required`
   - exposes `GET /auth/session/clear` to expire the `HttpOnly` cookie (`X-Chgrid-Auth-Client: 1` required)
@@ -139,6 +140,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
   - `none/off` normalize to empty values
   - bare filenames normalize to `sounds/<name>` for sound-reference fields
   - media URL-like fields are trimmed/validated consistently
+  - radio stream metadata fetches only follow validated public `http`/`https` URLs and revalidate redirect hops
 - Client-side item edit validation is convenience only; server remains source of truth.
 
 ## Heartbeat/Stale Recovery

@@ -58,6 +58,7 @@ print(secrets.token_urlsafe(64))
 PY
   )"
   printf "CHGRID_AUTH_SECRET=%s\n" "$AUTH_SECRET" > .env
+  printf "# Required browser origin, for example CHGRID_HOST_ORIGIN=https://example.com\n" >> .env
   chmod 600 .env
   echo "created $SERVER_DIR/.env with CHGRID_AUTH_SECRET"
 fi
@@ -123,4 +124,4 @@ fi
 chmod +x "$SERVER_DIR/run_server.sh"
 
 echo "server install complete"
-echo "next: edit $SERVER_DIR/config.toml (TLS, bind_ip, port)"
+echo "next: edit $SERVER_DIR/config.toml (TLS, bind_ip, port) and set CHGRID_HOST_ORIGIN in $SERVER_DIR/.env"

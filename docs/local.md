@@ -4,6 +4,8 @@
 
 ```bash
 cd /home/jjm/code/chgrid/server
+export CHGRID_AUTH_SECRET=dev-secret
+export CHGRID_HOST_ORIGIN=http://localhost:5173
 .venv/bin/python main.py --allow-insecure-ws
 ```
 
@@ -22,6 +24,7 @@ Defaults:
 - Server defaults to TLS-required unless you set `network.allow_insecure_ws=true` or pass `--allow-insecure-ws` for local/dev.
 - Client dev default is `localhost:5173`.
 - Auth requires `CHGRID_AUTH_SECRET` in environment.
+- Browser-origin enforcement requires `CHGRID_HOST_ORIGIN` in environment.
 - Saved login uses server-managed `HttpOnly` cookie (`chgrid_session_token`) via `GET /auth/session/set` and `GET /auth/session/clear` (both require `X-Chgrid-Auth-Client: 1`).
 
 ## Quick Restarts
@@ -30,7 +33,7 @@ Server:
 ```bash
 lsof -tiTCP:8765 -sTCP:LISTEN | xargs -r kill
 cd /home/jjm/code/chgrid/server
-nohup .venv/bin/python main.py --allow-insecure-ws > /tmp/chgrid-server.log 2>&1 &
+CHGRID_AUTH_SECRET=dev-secret CHGRID_HOST_ORIGIN=http://localhost:5173 nohup .venv/bin/python main.py --allow-insecure-ws > /tmp/chgrid-server.log 2>&1 &
 ```
 
 Client:

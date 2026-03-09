@@ -115,6 +115,38 @@ function send_text($code, $message)
     exit;
 }
 
+function normalize_origin($value)
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return '';
+    }
+    $parts = parse_url($value);
+    if ($parts === false || !isset($parts['scheme']) || !isset($parts['host'])) {
+        return '';
+    }
+    $scheme = strtolower((string) $parts['scheme']);
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        return '';
+    }
+    if (isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+        return '';
+    }
+    $path = isset($parts['path']) ? (string) $parts['path'] : '';
+    if ($path !== '' && $path !== '/') {
+        return '';
+    }
+    $host = strtolower((string) $parts['host']);
+    if ($host === '') {
+        return '';
+    }
+    if (strpos($host, ':') !== false && substr($host, 0, 1) !== '[') {
+        $host = '[' . $host . ']';
+    }
+    $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+    return $scheme . '://' . $host . $port;
+}
+
 function host_matches_suffix($host, $suffix)
 {
     if ($suffix === '') {
@@ -377,7 +409,20 @@ function resolve_safe_redirect_chain($initialUrl, $allowlistSuffixes, $requestHe
     return '';
 }
 
-header('Access-Control-Allow-Origin: *');
+// Optional allowlist env var: CHGRID_MEDIA_PROXY_ALLOWLIST=dropbox.com,example.com
+$allowlistEnv = getenv('CHGRID_MEDIA_PROXY_ALLOWLIST');
+$allowlistSuffixes = parse_allowlist_suffixes($allowlistEnv);
+$allowedOrigin = normalize_origin(getenv('CHGRID_HOST_ORIGIN'));
+if ($allowedOrigin === '') {
+    send_text(500, 'CHGRID_HOST_ORIGIN is required');
+}
+$requestOrigin = normalize_origin(isset($_SERVER['HTTP_ORIGIN']) ? (string) $_SERVER['HTTP_ORIGIN'] : '');
+if ($requestOrigin !== '' && $requestOrigin !== $allowedOrigin) {
+    send_text(403, 'origin not allowed');
+}
+
+header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+header('Vary: Origin');
 header('Access-Control-Allow-Methods: GET, HEAD, OPTIONS');
 header('Access-Control-Allow-Headers: Range');
 
@@ -395,10 +440,6 @@ if ($rawUrl === '') {
     send_text(400, 'missing url query param');
 }
 $rawUrl = normalize_dropbox_url($rawUrl);
-
-// Optional allowlist env var: CHGRID_MEDIA_PROXY_ALLOWLIST=dropbox.com,example.com
-$allowlistEnv = getenv('CHGRID_MEDIA_PROXY_ALLOWLIST');
-$allowlistSuffixes = parse_allowlist_suffixes($allowlistEnv);
 
 if (!function_exists('curl_init')) {
     send_text(500, 'curl extension is required');

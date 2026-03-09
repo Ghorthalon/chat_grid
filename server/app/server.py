@@ -22,7 +22,6 @@ import uuid
 from pathlib import Path
 from typing import Literal
 from urllib.error import URLError
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError, TypeAdapter
@@ -107,6 +106,7 @@ from .models import (
     WelcomePacket,
     WorldItem,
 )
+from .network_security import normalize_origin, open_validated_public_url
 from .ui_metadata import (
     ADMIN_MENU_ACTION_DEFINITIONS,
     ITEM_MANAGEMENT_ACTION_DEFINITIONS,
@@ -160,6 +160,7 @@ class SignalingServer:
         grid_size: int = 41,
         state_save_debounce_ms: int = 200,
         state_save_max_delay_ms: int = 1000,
+        host_origin: str | None = None,
     ):
         """Initialize runtime state, TLS context, and item service."""
 
@@ -187,6 +188,7 @@ class SignalingServer:
         self.movement_max_steps_per_tick = MOVEMENT_MAX_STEPS_PER_TICK
         self.instance_id = str(uuid.uuid4())
         self.server_version = self._resolve_server_version()
+        self.host_origin = normalize_origin(host_origin, field_name="host origin") if host_origin else None
         self.state_save_debounce_ms = max(1, int(state_save_debounce_ms))
         self.state_save_max_delay_ms = max(self.state_save_debounce_ms, int(state_save_max_delay_ms))
         self._pending_state_save_handle: asyncio.TimerHandle | None = None
@@ -676,11 +678,11 @@ class SignalingServer:
         if not stream_url:
             return "", ""
         try:
-            request = Request(
+            with open_validated_public_url(
                 stream_url,
                 headers={"Icy-MetaData": "1", "User-Agent": "ChatGrid"},
-            )
-            with urlopen(request, timeout=RADIO_METADATA_TIMEOUT_S) as response:
+                timeout=RADIO_METADATA_TIMEOUT_S,
+            ) as response:
                 station = str(response.headers.get("icy-name") or response.headers.get("ice-name") or "").strip()
                 title = ""
                 metaint_raw = response.headers.get("icy-metaint")
@@ -1355,6 +1357,7 @@ class SignalingServer:
                 self.port,
                 ssl=self._ssl_context,
                 max_size=self.max_message_size,
+                origins=[self.host_origin] if self.host_origin else None,
                 process_request=self._process_http_request,
             ):
                 await asyncio.Future()
@@ -3078,6 +3081,13 @@ def run() -> None:
     auth_secret = os.getenv("CHGRID_AUTH_SECRET", "").strip()
     if not auth_secret:
         raise SystemExit("CHGRID_AUTH_SECRET is required.")
+    host_origin = os.getenv("CHGRID_HOST_ORIGIN", "").strip()
+    if not host_origin:
+        raise SystemExit("CHGRID_HOST_ORIGIN is required.")
+    try:
+        host_origin = normalize_origin(host_origin, field_name="CHGRID_HOST_ORIGIN")
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     auth_db_value = config.auth.db_file.strip()
     if not auth_db_value:
         raise SystemExit("auth.db_file must not be empty.")
@@ -3206,6 +3216,6 @@ def run() -> None:
         grid_size=config.world.grid_size,
         state_save_debounce_ms=config.storage.state_save_debounce_ms,
         state_save_max_delay_ms=config.storage.state_save_max_delay_ms,
+        host_origin=host_origin,
     )
     asyncio.run(server.start())
-    ItemClockAnnouncePacket,

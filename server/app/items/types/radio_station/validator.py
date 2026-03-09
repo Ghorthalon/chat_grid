@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ....network_security import validate_media_reference
 from ....models import WorldItem
 from ...sound_policy import enforce_max_length, normalize_media_reference
 from ...helpers import keep_only_known_params
@@ -16,6 +17,7 @@ def validate_update(item: WorldItem, next_params: dict) -> dict:
         max_length=2048,
         field_name="streamUrl",
     )
+    next_params["streamUrl"] = validate_media_reference(next_params["streamUrl"], field_name="streamUrl")
 
     enabled_value = next_params.get("enabled", True)
     if isinstance(enabled_value, bool):
