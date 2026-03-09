@@ -37,6 +37,8 @@ Before starting the service, set `CHGRID_HOST_ORIGIN` in `server/.env` to the ex
 CHGRID_HOST_ORIGIN=https://example.com
 ```
 
+The expected env shape is also shown in [server/.env.sample](/home/jjm/code/chgrid/server/.env.sample).
+
 ## 3) Publish Client
 
 ```bash

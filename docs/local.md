@@ -25,6 +25,7 @@ Defaults:
 - Client dev default is `localhost:5173`.
 - Auth requires `CHGRID_AUTH_SECRET` in environment.
 - Browser-origin enforcement requires `CHGRID_HOST_ORIGIN` in environment.
+- A starter env file is available at `server/.env.sample`.
 - Saved login uses server-managed `HttpOnly` cookie (`chgrid_session_token`) via `GET /auth/session/set` and `GET /auth/session/clear` (both require `X-Chgrid-Auth-Client: 1`).
 
 ## Quick Restarts
