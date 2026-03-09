@@ -46,6 +46,10 @@ cd "$REPO_ROOT"
 ./deploy/scripts/deploy_client.sh "$REPO_ROOT" "$PUBLISH_DIR" "$BASE_PATH"
 ```
 
+Optional 4th arg:
+- server config path used when generating `media_proxy.config.php`
+- use this for secondary grids that do not use `server/config.toml`
+
 ## 4) Install/Reload Service Unit
 
 ```bash
@@ -66,6 +70,9 @@ tail -f "$REPO_ROOT/server/runtime/server.log"
 cd "$REPO_ROOT"
 ./deploy/scripts/up.sh "$REPO_ROOT" "$PUBLISH_DIR" "$BASE_PATH" "$UNIT_NAME"
 ```
+
+Optional 5th arg:
+- server config path used when generating the media proxy session-check URL
 
 ## 6) Apache Websocket Proxy
 
@@ -108,7 +115,7 @@ ProxyPassReverse /listen/8000/  http://127.0.0.1:8000/
 
 `deploy/php/media_proxy.php` is copied into your publish directory by `deploy_client.sh`.
 
-When `server/.env` contains `CHGRID_HOST_ORIGIN`, `deploy_client.sh` also generates `media_proxy.config.php` in the publish directory so the proxy can enforce the same origin and validate authenticated sessions without extra Apache-specific config. The generated file derives the local auth-check URL from `server/config.toml`, so custom signaling ports continue to work, and the proxy reuses `CHGRID_HOST_ORIGIN` for its internal auth check.
+When `server/.env` contains `CHGRID_HOST_ORIGIN`, `deploy_client.sh` also generates `media_proxy.config.php` in the publish directory so the proxy can enforce the same origin and validate authenticated sessions without extra Apache-specific config. The generated file derives the local auth-check URL from the selected server config file (default `server/config.toml`), so custom signaling ports and secondary grid configs continue to work, and the proxy reuses `CHGRID_HOST_ORIGIN` for its internal auth check.
 
 If you deploy the PHP proxy some other way, you can still provide `CHGRID_HOST_ORIGIN` directly through your PHP/web-server environment.
 

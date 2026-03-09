@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${1:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 PUBLISH_DIR="${2:-$REPO_ROOT/deploy/publish/chgrid}"
 BASE_PATH="${3:-/chgrid/}"
+SERVER_CONFIG_PATH="${4:-$REPO_ROOT/server/config.toml}"
 CLIENT_DIR="$REPO_ROOT/client"
 PHP_PROXY_DIR="$REPO_ROOT/deploy/php"
 SERVER_ENV_FILE="$REPO_ROOT/server/.env"
@@ -45,7 +46,7 @@ if [[ -n "${CHGRID_HOST_ORIGIN:-}" ]]; then
     config_python="$SERVER_VENV_PYTHON"
   fi
   session_check_url="$(
-    "$config_python" - "$REPO_ROOT/server/config.toml" <<'PY'
+    "$config_python" - "$SERVER_CONFIG_PATH" <<'PY'
 from pathlib import Path
 import sys
 
@@ -105,3 +106,4 @@ find "$PUBLISH_DIR" -type f -exec chmod 644 {} +
 
 echo "client deploy complete: $PUBLISH_DIR"
 echo "client base path: $BASE_PATH"
+echo "server config path: $SERVER_CONFIG_PATH"
