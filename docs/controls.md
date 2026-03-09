@@ -42,6 +42,7 @@ This document is the authoritative keymap for the client.
 - `V`: Set microphone gain
 - `Shift+V`: Microphone calibration
 - `M`: Mute/unmute local microphone
+- `H`: Toggle classic/HRTF spatial audio
 - `Shift+M`: Toggle stereo/mono output
 - `Shift+1` (`!`): Toggle loopback monitor
 - `1`: Toggle voice layer

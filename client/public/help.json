@@ -107,6 +107,10 @@
           "description": "Mute/unmute yourself"
         },
         {
+          "keys": "H",
+          "description": "Toggle classic/HRTF spatial audio"
+        },
+        {
           "keys": "Shift+M",
           "description": "Toggle stereo/mono output"
         },

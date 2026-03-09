@@ -6,6 +6,7 @@ const AUDIO_OUTPUT_STORAGE_KEY = 'chatGridAudioOutputDeviceId';
 const AUDIO_INPUT_NAME_STORAGE_KEY = 'chatGridAudioInputDeviceName';
 const AUDIO_OUTPUT_NAME_STORAGE_KEY = 'chatGridAudioOutputDeviceName';
 const AUDIO_OUTPUT_MODE_STORAGE_KEY = 'chatGridAudioOutputMode';
+const AUDIO_SPATIAL_MODE_STORAGE_KEY = 'chatGridAudioSpatialMode';
 const AUDIO_LAYER_STATE_STORAGE_KEY = 'chatGridAudioLayers';
 const MIC_INPUT_GAIN_STORAGE_KEY = 'chatGridMicInputGain';
 const MASTER_VOLUME_STORAGE_KEY = 'chatGridMasterVolume';
@@ -144,6 +145,14 @@ export class SettingsStore {
 
   saveOutputMode(value: 'mono' | 'stereo'): void {
     localStorage.setItem(AUDIO_OUTPUT_MODE_STORAGE_KEY, value);
+  }
+
+  loadSpatialMode(): 'classic' | 'hrtf' {
+    return localStorage.getItem(AUDIO_SPATIAL_MODE_STORAGE_KEY) === 'hrtf' ? 'hrtf' : 'classic';
+  }
+
+  saveSpatialMode(value: 'classic' | 'hrtf'): void {
+    localStorage.setItem(AUDIO_SPATIAL_MODE_STORAGE_KEY, value);
   }
 
   loadAudioDevicePreferences(): AudioDevicePreferences {

@@ -5,9 +5,8 @@ import {
 } from './audio/effects';
 import {
   RadioStationRuntime,
-  getProxyUrlForStream,
-  shouldProxyStreamUrl,
 } from './audio/radioStationRuntime';
+import { getProxyUrlForMedia, shouldProxyExternalMediaUrl } from './audio/mediaUrl';
 import { ItemEmitRuntime } from './audio/itemEmitRuntime';
 import { ClockAnnouncer } from './audio/clockAnnouncer';
 import { normalizeDegrees } from './audio/spatial';
@@ -260,6 +259,7 @@ let lastFocusedElement: Element | null = null;
 let lastAnnouncementText = '';
 let lastAnnouncementAt = 0;
 let outputMode = settings.loadOutputMode();
+let spatialMode = settings.loadSpatialMode();
 let activeGridName = DEFAULT_GRID_NAME;
 let activeWelcomeMessage = DEFAULT_WELCOME_MESSAGE;
 const messageBuffer: string[] = [];
@@ -354,6 +354,7 @@ const itemBehaviorRegistry = new ItemBehaviorRegistry({
 });
 
 audio.setOutputMode(outputMode);
+audio.setSpatialMode(spatialMode);
 
 loadEffectLevels();
 loadAudioLayerState();
@@ -715,6 +716,17 @@ async function applyAudioLayerState(): Promise<void> {
   await itemEmitRuntime.setLayerEnabled(audioLayers.item, state.items.values(), listenerPosition);
 }
 
+/** Rebuilds active spatial audio node graphs after output or spatial rendering mode changes. */
+async function rebuildSpatialAudioGraphs(): Promise<void> {
+  peerManager.suspendRemoteAudio();
+  if (audioLayers.voice) {
+    await peerManager.resumeRemoteAudio();
+  }
+  radioRuntime.cleanupAll();
+  itemEmitRuntime.cleanupAll();
+  await refreshAudioSubscriptionsAt({ x: state.player.x, y: state.player.y }, true);
+}
+
 /** Refreshes distance-gated radio/item stream subscriptions for a listener position. */
 async function refreshAudioSubscriptionsAt(listenerPosition: { x: number; y: number }, force = false): Promise<void> {
   await refreshAudioSubscriptionsForListeners([listenerPosition], force);
@@ -848,7 +860,7 @@ function resolveIncomingSoundUrl(url: string): string {
   const lowered = raw.toLowerCase();
   if (lowered === 'none' || lowered === 'off') return '';
   if (/^https?:/i.test(raw)) {
-    return shouldProxyStreamUrl(raw) ? getProxyUrlForStream(raw) : raw;
+    return shouldProxyExternalMediaUrl(raw) ? getProxyUrlForMedia(raw) : raw;
   }
   if (/^(data:|blob:)/i.test(raw)) return raw;
   if (raw.startsWith('/sounds/')) {
@@ -1735,6 +1747,15 @@ function toggleOutputModeCommand(): void {
   mediaSession.saveOutputMode(outputMode);
   updateStatus(outputMode === 'mono' ? 'Mono output.' : 'Stereo output.');
   audio.sfxUiBlip();
+  void rebuildSpatialAudioGraphs();
+}
+
+function toggleSpatialModeCommand(): void {
+  spatialMode = audio.toggleSpatialMode();
+  settings.saveSpatialMode(spatialMode);
+  updateStatus(spatialMode === 'hrtf' ? 'HRTF spatial audio.' : 'Classic spatial audio.');
+  audio.sfxUiBlip();
+  void rebuildSpatialAudioGraphs();
 }
 
 function toggleLoopbackCommand(): void {
@@ -2044,6 +2065,7 @@ function escapeCommand(): void {
 const mainModeCommandHandlers: Record<MainModeCommand, () => void> = {
   editNickname: openNicknameEditor,
   toggleMute,
+  toggleSpatialMode: toggleSpatialModeCommand,
   toggleOutputMode: toggleOutputModeCommand,
   toggleLoopback: toggleLoopbackCommand,
   toggleVoiceLayer: () => toggleAudioLayer('voice'),

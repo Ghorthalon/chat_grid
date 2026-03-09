@@ -3,7 +3,8 @@ import { getItemTypeGlobalProperties } from '../items/itemRegistry';
 import { AudioEngine } from './audioEngine';
 import { connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
 import { normalizeRadioEffect, normalizeRadioEffectValue } from './radioStationRuntime';
-import { applySpatialMixToNodes, resolveSpatialMix } from './spatial';
+import { resolveSpatialMix } from './spatial';
+import { applySpatialOutput, createSpatialOutputRuntime, disconnectSpatialOutputRuntime, type SpatialOutputRuntime } from './spatialOutput';
 import { volumePercentToGain } from './volume';
 
 type EmitOutput = {
@@ -18,7 +19,7 @@ type EmitOutput = {
   initialDelaySeconds: number;
   loopDelaySeconds: number;
   gain: GainNode;
-  panner: StereoPannerNode | null;
+  spatialOutput: SpatialOutputRuntime;
 };
 
 type EmitResumeState = {
@@ -132,7 +133,7 @@ export class ItemEmitRuntime {
       output.effectInput.disconnect();
       disconnectEffectRuntime(output.effectRuntime);
       output.gain.disconnect();
-      output.panner?.disconnect();
+      disconnectSpatialOutputRuntime(output.spatialOutput);
       this.outputs.delete(itemId);
     }
     this.pendingEmitStarts.delete(itemId);
@@ -217,7 +218,6 @@ export class ItemEmitRuntime {
       const effectInput = audioCtx.createGain();
       const gain = audioCtx.createGain();
       gain.gain.value = 0;
-      let panner: StereoPannerNode | null = null;
       source.connect(effectInput);
       const effect = normalizeRadioEffect(item.params.emitEffect);
       const effectValue = normalizeRadioEffectValue(item.params.emitEffectValue);
@@ -321,12 +321,13 @@ export class ItemEmitRuntime {
         }
       }
       const destination = this.audio.getOutputDestinationNode() ?? audioCtx.destination;
-      if (this.audio.supportsStereoPanner()) {
-        panner = audioCtx.createStereoPanner();
-        gain.connect(panner).connect(destination);
-      } else {
-        gain.connect(destination);
-      }
+      const spatialOutput = createSpatialOutputRuntime({
+        audioCtx,
+        inputNode: gain,
+        destination,
+        outputMode: this.audio.getOutputMode(),
+        spatialMode: this.audio.getSpatialMode(),
+      });
       this.outputs.set(item.id, {
         soundUrl,
         element,
@@ -339,7 +340,7 @@ export class ItemEmitRuntime {
         initialDelaySeconds,
         loopDelaySeconds,
         gain,
-        panner,
+        spatialOutput,
       });
       if (!matchingResumeState && !this.nextEmitStartAtMs.has(item.id) && initialDelaySeconds > 0) {
         this.nextEmitStartAtMs.set(item.id, Date.now() + initialDelaySeconds * 1000);
@@ -422,13 +423,15 @@ export class ItemEmitRuntime {
       });
       const emitVolume = volumePercentToGain(item.params.emitVolume, 100);
       const scaledMix = mix ? { ...mix, gain: mix.gain * emitVolume } : null;
-      applySpatialMixToNodes({
+      applySpatialOutput({
         audioCtx,
+        runtime: output.spatialOutput,
         gainNode: output.gain,
-        pannerNode: output.panner,
         mix: scaledMix,
         outputMode: this.audio.getOutputMode(),
         transition: 'target',
+        dx: item.x - playerPosition.x,
+        dy: item.y - playerPosition.y,
       });
       this.tryStartEmitPlayback(itemId, output.element);
     }
