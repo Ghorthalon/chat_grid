@@ -27,7 +27,20 @@ body {
 #appVersion {
   display: block;
   color: #94a3b8;
+  margin-bottom: 0.2rem;
+}
+
+#appGithubLinkWrap {
+  display: block;
   margin-bottom: 0.5rem;
+}
+
+#appGithubLink {
+  color: #93c5fd;
+}
+
+#appGithubLink:visited {
+  color: #bfdbfe;
 }
 
 #appFooter {

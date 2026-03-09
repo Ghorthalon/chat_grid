@@ -38,7 +38,7 @@
 - Runtime/protocol behavior changes: update `docs/runtime-flow.md` and/or `docs/protocol-notes.md`.
 
 ## Versioning & Configuration
-- Bump `client/public/version.js` on every user-visible change using `YYYY.MM.DD Rn`.
+- Bump `client/public/version.js` on every user-visible change using release version + revision metadata (`CHGRID_RELEASE_VERSION`, `CHGRID_BUILD_REVISION`, and derived `CHGRID_WEB_VERSION`, for example `0.1.0` + `R340`).
 - Commit each completed logical change; include the version bump in that same commit when client behavior changes.
 - Docs-only changes do not require a version bump unless explicitly requested.
 - Do not duplicate version constants elsewhere in client code.

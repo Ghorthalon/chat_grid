@@ -91,6 +91,8 @@ const AUTH_POLICY_STORAGE_KEY = 'chgridAuthPolicy';
 
 declare global {
   interface Window {
+    CHGRID_RELEASE_VERSION?: string;
+    CHGRID_BUILD_REVISION?: string;
     CHGRID_WEB_VERSION?: string;
   }
 }
@@ -210,7 +212,12 @@ function announceMenuEntry(title: string, firstOption: string): void {
   audio.sfxUiBlip();
 }
 
-const APP_VERSION = String(window.CHGRID_WEB_VERSION ?? '').trim();
+const APP_RELEASE_VERSION = String(window.CHGRID_RELEASE_VERSION ?? '').trim();
+const APP_BUILD_REVISION = String(window.CHGRID_BUILD_REVISION ?? '').trim();
+const APP_VERSION = String(
+  window.CHGRID_WEB_VERSION ??
+    [APP_RELEASE_VERSION, APP_BUILD_REVISION].filter((value) => value.length > 0).join(' ')
+).trim();
 dom.appVersion.textContent = APP_VERSION
   ? `Another AI experiment with Jage. Version ${APP_VERSION}`
   : 'Another AI experiment with Jage. Version unknown';
