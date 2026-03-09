@@ -49,6 +49,7 @@ cd "$REPO_ROOT"
 Optional 4th arg:
 - server config path used when generating `media_proxy.config.php`
 - use this for secondary grids that do not use `server/config.toml`
+- the same config is also used to generate `client_branding.json` for pre-login client branding
 
 ## 4) Install/Reload Service Unit
 

@@ -45,6 +45,32 @@ if [[ -n "${CHGRID_HOST_ORIGIN:-}" ]]; then
   if [[ -x "$SERVER_VENV_PYTHON" ]]; then
     config_python="$SERVER_VENV_PYTHON"
   fi
+  branding_json="$(
+    "$config_python" - "$SERVER_CONFIG_PATH" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - compatibility fallback
+    import tomli as tomllib
+
+config_path = Path(sys.argv[1])
+grid_name = "Chat Grid"
+welcome_message = (
+    "Welcome to the Chat Grid, your immersive audio playground. "
+    "Configure your audio, then Log in or register to join the grid."
+)
+if config_path.exists():
+    with config_path.open("rb") as fp:
+        data = tomllib.load(fp)
+    server = data.get("server", {})
+    grid_name = str(server.get("grid_name", grid_name)).strip() or grid_name
+    welcome_message = str(server.get("welcome_message", welcome_message)).strip() or welcome_message
+print(json.dumps({"gridName": grid_name, "welcomeMessage": welcome_message}))
+PY
+  )"
   session_check_url="$(
     "$config_python" - "$SERVER_CONFIG_PATH" <<'PY'
 from pathlib import Path
@@ -83,6 +109,7 @@ PY
   escaped_host_origin=${escaped_host_origin//\'/\\\'}
   escaped_session_check_url=${session_check_url//\\/\\\\}
   escaped_session_check_url=${escaped_session_check_url//\'/\\\'}
+  printf '%s\n' "$branding_json" > "$PUBLISH_DIR/client_branding.json"
   cat > "$PUBLISH_DIR/media_proxy.config.php" <<EOF
 <?php
 return array(
@@ -92,6 +119,7 @@ return array(
 EOF
 else
   rm -f "$PUBLISH_DIR/media_proxy.config.php"
+  rm -f "$PUBLISH_DIR/client_branding.json"
 fi
 
 if [[ -f "$PUBLIC_HTACCESS_SRC" ]]; then

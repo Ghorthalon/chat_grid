@@ -366,6 +366,7 @@ loadMasterVolume();
 void loadHelp();
 void itemBehaviorRegistry.initialize();
 void loadChangelog();
+void loadClientBranding();
 
 function applyGridBranding(gridName: string | null | undefined, welcomeMessage: string | null | undefined): void {
   const nextGridName = String(gridName ?? '').trim() || DEFAULT_GRID_NAME;
@@ -376,6 +377,25 @@ function applyGridBranding(gridName: string | null | undefined, welcomeMessage: 
   dom.gridTitle.textContent = nextGridName;
   dom.focusGridButton.textContent = nextGridName;
   dom.canvas.setAttribute('aria-label', `${nextGridName}, press question mark for help.`);
+}
+
+async function loadClientBranding(): Promise<void> {
+  try {
+    const response = await fetch(withBase('client_branding.json'), { cache: 'no-store' });
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as { gridName?: unknown; welcomeMessage?: unknown };
+    applyGridBranding(
+      typeof data.gridName === 'string' ? data.gridName : null,
+      typeof data.welcomeMessage === 'string' ? data.welcomeMessage : null,
+    );
+    if (!state.running && !isVersionReloadedSession()) {
+      setConnectionStatus(activeWelcomeMessage);
+    }
+  } catch {
+    // Branding falls back to built-in defaults when deploy-time branding is unavailable.
+  }
 }
 
 /** Fetches a required DOM element and casts it to the requested element type. */
