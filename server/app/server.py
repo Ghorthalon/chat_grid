@@ -235,11 +235,9 @@ class SignalingServer:
         try:
             version_file = Path(__file__).resolve().parents[2] / "client" / "public" / "version.js"
             text = version_file.read_text(encoding="utf-8")
-            match = re.search(r'CHGRID_WEB_VERSION\s*=\s*"([^"]+)"', text)
-            if match:
-                token = match.group(1).strip()
-                if token:
-                    return token
+            token = SignalingServer._version_from_web_version_text(text)
+            if token:
+                return token
         except OSError:
             pass
 
@@ -247,6 +245,25 @@ class SignalingServer:
             return package_version("chgrid-server")
         except PackageNotFoundError:
             return "unknown"
+
+    @staticmethod
+    def _version_from_web_version_text(text: str) -> str:
+        """Parse release/build metadata from one client version.js file."""
+
+        release_match = re.search(r'CHGRID_RELEASE_VERSION\s*=\s*"([^"]+)"', text)
+        revision_match = re.search(r'CHGRID_BUILD_REVISION\s*=\s*"([^"]+)"', text)
+        if release_match or revision_match:
+            parts = [
+                release_match.group(1).strip() if release_match else "",
+                revision_match.group(1).strip() if revision_match else "",
+            ]
+            token = " ".join(part for part in parts if part)
+            if token:
+                return token
+        legacy_match = re.search(r'CHGRID_WEB_VERSION\s*=\s*"([^"]+)"', text)
+        if legacy_match:
+            return legacy_match.group(1).strip()
+        return ""
 
     @property
     def items(self) -> dict[str, WorldItem]:
