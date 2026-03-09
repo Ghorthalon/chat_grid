@@ -65,15 +65,14 @@ def test_client_ip_ignores_forwarded_for_from_non_loopback_peer() -> None:
     assert server._client_ip(client) == "203.0.113.20"
 
 
-def test_resolve_server_version_reads_release_and_revision(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_client_version_metadata_reads_release_and_revision(monkeypatch: pytest.MonkeyPatch) -> None:
     version_text = """
-window.CHGRID_RELEASE_VERSION = "0.1.0";
-window.CHGRID_BUILD_REVISION = "R348";
-window.CHGRID_WEB_VERSION = `${window.CHGRID_RELEASE_VERSION} ${window.CHGRID_BUILD_REVISION}`;
+window.CHGRID_RELEASE_VERSION = "0.1.1";
+window.CHGRID_CLIENT_REVISION = "R350";
 """.strip()
-    resolved = SignalingServer._version_from_web_version_text(version_text)
+    resolved = SignalingServer._client_version_metadata_from_web_version_text(version_text)
 
-    assert resolved == "0.1.0 R348"
+    assert resolved == ("0.1.1", "R350")
 
 
 @pytest.mark.asyncio

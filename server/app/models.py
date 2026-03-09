@@ -244,6 +244,9 @@ class AuthRequiredPacket(BasePacket):
     authPolicy: dict | None = None
     gridName: str | None = None
     welcomeMessage: str | None = None
+    releaseVersion: str | None = None
+    expectedClientRevision: str | None = None
+    serverVersion: str | None = None
 
 
 class AuthResultPacket(BasePacket):

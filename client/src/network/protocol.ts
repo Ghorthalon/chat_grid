@@ -55,7 +55,9 @@ export const welcomeMessageSchema = z.object({
   serverInfo: z
     .object({
       instanceId: z.string(),
-      version: z.string().optional(),
+      releaseVersion: z.string().optional(),
+      serverVersion: z.string().optional(),
+      expectedClientRevision: z.string().optional(),
       gridName: z.string().optional(),
       welcomeMessage: z.string().optional(),
     })
@@ -140,6 +142,9 @@ export const authRequiredSchema = z.object({
   message: z.string(),
   gridName: z.string().optional(),
   welcomeMessage: z.string().optional(),
+  releaseVersion: z.string().optional(),
+  expectedClientRevision: z.string().optional(),
+  serverVersion: z.string().optional(),
   authPolicy: z
     .object({
       usernameMinLength: z.number().int().positive(),

@@ -38,6 +38,7 @@ This is a behavior guide for packet semantics beyond raw schemas.
 ## Server -> Client
 
 - `auth_required`: authentication challenge after websocket connect.
+  - includes `gridName`, `welcomeMessage`, `serverVersion`, and `expectedClientRevision`.
 - `auth_result`: auth success/failure and session/account metadata.
 - `auth_permissions`: server-pushed live role/permission refresh for current session.
 - `admin_roles_list`: role list response payload.
@@ -96,6 +97,8 @@ This is a behavior guide for packet semantics beyond raw schemas.
   - `policy` (`usernameMinLength`, `usernameMaxLength`, `passwordMinLength`, `passwordMaxLength`)
 - `auth_required.authPolicy`: server auth limits advertised before login/register submit.
 - `auth_required.gridName` / `auth_required.welcomeMessage`: server-owned pre-login branding values.
+- `auth_required.serverVersion`: server diagnostics version text shown in connect/reconnect messaging.
+- `auth_required.expectedClientRevision`: authoritative browser asset revision required by this server instance.
 - `auth_result.authPolicy`: server auth limits echoed on auth success/failure responses.
 - `auth_result.sessionToken` is used by the client to call the instance-scoped HTTP endpoint `GET <base_path>auth/session/set` (`Authorization: Bearer <sessionToken>`, `X-Chgrid-Auth-Client: 1`) so the server can issue an instance-scoped `HttpOnly` session cookie.
 - `welcome.worldConfig.gridSize`: server-authoritative grid size used by clients for bounds/drawing.
@@ -104,7 +107,9 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - `welcome.player`: server-assigned spawn/current self position at connect time.
 - `welcome.serverInfo`: server process identity/version metadata:
   - `instanceId`: unique id generated at server startup
-  - `version`: server package version (or `unknown` fallback)
+  - `releaseVersion`: shared public release version
+  - `serverVersion`: server diagnostics version text (`release + server revision`)
+  - `expectedClientRevision`: browser asset revision required by this server instance
   - `gridName`: server-owned user-facing grid name
   - `welcomeMessage`: server-owned pre-login welcome string
 - `welcome.uiDefinitions`: server-provided item UI definitions:
@@ -157,4 +162,5 @@ This is a behavior guide for packet semantics beyond raw schemas.
 - After reconnect, if `welcome.serverInfo.instanceId` changed, client announces `Server restarted.`
 - Client emits `Connected to server. Version <version>.` on initial `welcome` and
   `Reconnected to server. Version <version>.` after reconnect.
-- If `welcome.serverInfo.version` differs from running client version, client auto-reloads.
+- If `auth_required.expectedClientRevision` or `welcome.serverInfo.expectedClientRevision` differs from the running client revision, client auto-reloads.
+- Server-only version changes do not trigger browser reload unless `expectedClientRevision` also changes.

@@ -8,7 +8,6 @@ from collections import deque
 from contextlib import suppress
 from datetime import datetime, timezone
 from getpass import getpass
-from importlib.metadata import PackageNotFoundError, version as package_version
 import ipaddress
 import json
 import logging
@@ -113,6 +112,7 @@ from .ui_metadata import (
     ITEM_MANAGEMENT_ACTION_DEFINITIONS,
     MAIN_MODE_SERVER_COMMAND_DEFINITIONS,
 )
+from .version import format_server_version
 
 LOGGER = logging.getLogger("chgrid.server")
 PACKET_LOGGER = logging.getLogger("chgrid.server.packet")
@@ -196,7 +196,8 @@ class SignalingServer:
         self.movement_tick_ms = MOVEMENT_TICK_MS
         self.movement_max_steps_per_tick = MOVEMENT_MAX_STEPS_PER_TICK
         self.instance_id = str(uuid.uuid4())
-        self.server_version = self._resolve_server_version()
+        self.release_version, self.expected_client_revision = self._resolve_client_version_metadata()
+        self.server_version = self._resolve_server_version(self.release_version)
         self.host_origin = normalize_origin(host_origin, field_name="host origin") if host_origin else None
         self.base_path = self._normalize_base_path(base_path)
         self.grid_name = str(grid_name).strip() or "Chat Grid"
@@ -225,45 +226,36 @@ class SignalingServer:
         self._pending_reboot_task: asyncio.Task[None] | None = None
 
     @staticmethod
-    def _resolve_server_version() -> str:
-        """Resolve serverInfo version, preferring synced web version when available."""
+    def _resolve_server_version(release_version: str) -> str:
+        """Resolve server diagnostics version text."""
 
         env_override = os.getenv("CHGRID_SERVER_VERSION", "").strip()
         if env_override:
             return env_override
 
+        return format_server_version(release_version)
+
+    @staticmethod
+    def _resolve_client_version_metadata() -> tuple[str, str]:
+        """Resolve shared release version and expected client revision from version.js."""
+
         try:
             version_file = Path(__file__).resolve().parents[2] / "client" / "public" / "version.js"
             text = version_file.read_text(encoding="utf-8")
-            token = SignalingServer._version_from_web_version_text(text)
-            if token:
-                return token
+            return SignalingServer._client_version_metadata_from_web_version_text(text)
         except OSError:
-            pass
-
-        try:
-            return package_version("chgrid-server")
-        except PackageNotFoundError:
-            return "unknown"
+            return "", ""
 
     @staticmethod
-    def _version_from_web_version_text(text: str) -> str:
-        """Parse release/build metadata from one client version.js file."""
+    def _client_version_metadata_from_web_version_text(text: str) -> tuple[str, str]:
+        """Parse release/client revision metadata from one client version.js file."""
 
         release_match = re.search(r'CHGRID_RELEASE_VERSION\s*=\s*"([^"]+)"', text)
-        revision_match = re.search(r'CHGRID_BUILD_REVISION\s*=\s*"([^"]+)"', text)
-        if release_match or revision_match:
-            parts = [
-                release_match.group(1).strip() if release_match else "",
-                revision_match.group(1).strip() if revision_match else "",
-            ]
-            token = " ".join(part for part in parts if part)
-            if token:
-                return token
-        legacy_match = re.search(r'CHGRID_WEB_VERSION\s*=\s*"([^"]+)"', text)
-        if legacy_match:
-            return legacy_match.group(1).strip()
-        return ""
+        revision_match = re.search(r'CHGRID_CLIENT_REVISION\s*=\s*"([^"]+)"', text)
+        return (
+            release_match.group(1).strip() if release_match else "",
+            revision_match.group(1).strip() if revision_match else "",
+        )
 
     @property
     def items(self) -> dict[str, WorldItem]:
@@ -1522,6 +1514,9 @@ class SignalingServer:
                         authPolicy=self._auth_policy(),
                         gridName=self.grid_name,
                         welcomeMessage=self.welcome_message,
+                        releaseVersion=self.release_version or None,
+                        expectedClientRevision=self.expected_client_revision or None,
+                        serverVersion=self.server_version,
                     ),
                 )
             async for raw_message in websocket:
@@ -1580,7 +1575,9 @@ class SignalingServer:
             uiDefinitions=self._build_ui_definitions(client),
             serverInfo={
                 "instanceId": self.instance_id,
-                "version": self.server_version,
+                "releaseVersion": self.release_version,
+                "serverVersion": self.server_version,
+                "expectedClientRevision": self.expected_client_revision,
                 "gridName": self.grid_name,
                 "welcomeMessage": self.welcome_message,
             },

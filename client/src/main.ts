@@ -92,8 +92,7 @@ const AUTH_POLICY_STORAGE_KEY = 'chgridAuthPolicy';
 declare global {
   interface Window {
     CHGRID_RELEASE_VERSION?: string;
-    CHGRID_BUILD_REVISION?: string;
-    CHGRID_WEB_VERSION?: string;
+    CHGRID_CLIENT_REVISION?: string;
   }
 }
 
@@ -219,13 +218,10 @@ function announceMenuEntry(title: string, firstOption: string): void {
 }
 
 const APP_RELEASE_VERSION = String(window.CHGRID_RELEASE_VERSION ?? '').trim();
-const APP_BUILD_REVISION = String(window.CHGRID_BUILD_REVISION ?? '').trim();
-const APP_VERSION = String(
-  window.CHGRID_WEB_VERSION ??
-    [APP_RELEASE_VERSION, APP_BUILD_REVISION].filter((value) => value.length > 0).join(' ')
-).trim();
-dom.appVersion.textContent = APP_VERSION
-  ? `Another AI experiment with Jage. Version ${APP_VERSION}`
+const APP_CLIENT_REVISION = String(window.CHGRID_CLIENT_REVISION ?? '').trim();
+const APP_DISPLAY_VERSION = [APP_RELEASE_VERSION, APP_CLIENT_REVISION].filter((value) => value.length > 0).join(' ').trim();
+dom.appVersion.textContent = APP_DISPLAY_VERSION
+  ? `Another AI experiment with Jage. Version ${APP_DISPLAY_VERSION}`
   : 'Another AI experiment with Jage. Version unknown';
 const DEFAULT_GRID_NAME = 'Chat Grid';
 const DEFAULT_WELCOME_MESSAGE =
@@ -803,9 +799,9 @@ function handleSignalingStatus(message: string): void {
 }
 
 /** Performs cache-busted navigation so the browser loads the newest client bundle. */
-function reloadClientForVersion(version: string): void {
+function reloadClientForVersion(versionToken: string): void {
   const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.set('v', version || 'unknown');
+  nextUrl.searchParams.set('v', versionToken || 'unknown');
   nextUrl.searchParams.set('t', String(Date.now()));
   window.location.replace(nextUrl.toString());
 }
@@ -1385,6 +1381,18 @@ function sendAuthRequest(): void {
 /** Handles server auth-required prompts prior to world welcome. */
 function handleAuthRequired(message: Extract<IncomingMessage, { type: 'auth_required' }>): void {
   applyGridBranding(message.gridName, message.welcomeMessage);
+  const expectedClientRevision = String(message.expectedClientRevision ?? '').trim();
+  if (!reloadScheduledForVersionMismatch && expectedClientRevision && expectedClientRevision !== APP_CLIENT_REVISION) {
+    reloadScheduledForVersionMismatch = true;
+    const serverVersion = String(message.serverVersion ?? '').trim() || 'unknown';
+    pushChatMessage(
+      `Server ${serverVersion} expects client ${expectedClientRevision}. Reloading client...`,
+    );
+    window.setTimeout(() => {
+      reloadClientForVersion(expectedClientRevision);
+    }, 50);
+    return;
+  }
   authController.handleAuthRequired(message);
 }
 
@@ -1609,22 +1617,21 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
       message.auth?.adminMenuActions;
     authController.applyWelcomeAuth(message.auth, uiAdminActions);
     const incomingInstanceId = String(message.serverInfo?.instanceId ?? '').trim() || null;
-    const incomingVersion = String(message.serverInfo?.version ?? '').trim() || 'unknown';
+    const incomingServerVersion = String(message.serverInfo?.serverVersion ?? '').trim() || 'unknown';
+    const expectedClientRevision = String(message.serverInfo?.expectedClientRevision ?? '').trim();
     connectedAnnouncement = reconnectInFlight
-      ? `Reconnected to server. Version ${incomingVersion}.`
-      : `Connected to server. Version ${incomingVersion}.`;
+      ? `Reconnected to server. Version ${incomingServerVersion}.`
+      : `Connected to server. Version ${incomingServerVersion}.`;
     playSelfLoginSound = !reconnectInFlight;
     if (
       !reloadScheduledForVersionMismatch &&
-      APP_VERSION &&
-      incomingVersion &&
-      incomingVersion !== 'unknown' &&
-      incomingVersion !== APP_VERSION
+      expectedClientRevision &&
+      expectedClientRevision !== APP_CLIENT_REVISION
     ) {
       reloadScheduledForVersionMismatch = true;
-      pushChatMessage(`Server version ${incomingVersion} detected. Reloading client...`);
+      pushChatMessage(`Server expects client ${expectedClientRevision}. Reloading client...`);
       window.setTimeout(() => {
-        reloadClientForVersion(incomingVersion);
+        reloadClientForVersion(expectedClientRevision);
       }, 50);
       return;
     }

@@ -8,6 +8,7 @@
 4. Server accepts the socket only on the configured instance websocket path and when the browser `Origin` matches `CHGRID_HOST_ORIGIN`, then attempts cookie-based session resume from the instance-scoped websocket handshake cookie.
 5. If resume does not authenticate, server sends `auth_required`.
    - includes `gridName` and `welcomeMessage` for pre-login branding.
+   - includes `serverVersion` and `expectedClientRevision` for stale-client detection before login.
    - includes `authPolicy` limits for username/password.
 6. Client sends `auth_login` or `auth_register` (or explicit `auth_resume` if provided by caller).
 7. Server sends `auth_result`.
@@ -20,8 +21,8 @@
    - applies `welcome.worldConfig.movementTickMs` as movement pacing guidance
    - applies `welcome.worldConfig.movementMaxStepsPerTick` for movement-rate parity
   - uses `welcome.player` as authoritative starting position (restored from server-side account state when available)
-   - records `welcome.serverInfo` (`instanceId`, `version`, `gridName`, `welcomeMessage`) for restart detection and client branding
-   - if `welcome.serverInfo.version` differs from running client version, auto-reloads the page
+   - records `welcome.serverInfo` (`instanceId`, `releaseVersion`, `serverVersion`, `expectedClientRevision`, `gridName`, `welcomeMessage`) for restart detection and client branding
+   - if `welcome.serverInfo.expectedClientRevision` differs from the running client revision, auto-reloads the page
    - applies `welcome.uiDefinitions` for item menus/properties/options, server-backed command metadata, item-management metadata, and admin menu labels/order
    - sends initial `update_position` echo from server-assigned starting tile
    - sends initial `update_nickname`
@@ -75,6 +76,7 @@ Core incoming message effects:
 - Reconnect flow waits 5 seconds and retries up to 3 times.
 - If reconnect lands on a different `welcome.serverInfo.instanceId`, client announces server restart.
 - Connect/reconnect status message is emitted from `welcome` and includes server version.
+- Server-only deploys no longer force browser reloads unless `expectedClientRevision` changes.
 
 ## Authorization Runtime
 
