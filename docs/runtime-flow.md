@@ -12,6 +12,7 @@
 7. Server sends `auth_result`.
    - includes role + permissions for authenticated session.
 8. Client persists authenticated session into a server-managed `HttpOnly` cookie via `GET /auth/session/set` (`Authorization: Bearer <sessionToken>`, `X-Chgrid-Auth-Client: 1`), and clears it via `GET /auth/session/clear` (`X-Chgrid-Auth-Client: 1`) on logout/session errors.
+   - the optional PHP media proxy validates that same cookie through `GET /auth/session/check` before relaying media
 9. Server sends `welcome` with users/items snapshot.
 10. Client:
    - applies `welcome.worldConfig.gridSize` for authoritative grid bounds/rendering

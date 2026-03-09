@@ -39,12 +39,42 @@ if [[ -f "$SERVER_ENV_FILE" ]]; then
 fi
 
 if [[ -n "${CHGRID_HOST_ORIGIN:-}" ]]; then
+  session_check_url="$(
+    python3 - "$REPO_ROOT/server/config.toml" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+config_path = Path(sys.argv[1])
+host = "127.0.0.1"
+port = 8765
+if config_path.exists():
+    with config_path.open("rb") as fp:
+        data = tomllib.load(fp)
+    server = data.get("server", {})
+    bind_ip = str(server.get("bind_ip", host)).strip() or host
+    if bind_ip in {"0.0.0.0", ""}:
+        host = "127.0.0.1"
+    elif bind_ip == "::":
+        host = "[::1]"
+    else:
+        host = bind_ip
+    try:
+        port = int(server.get("port", port))
+    except (TypeError, ValueError):
+        port = 8765
+print(f"http://{host}:{port}/auth/session/check")
+PY
+  )"
   escaped_host_origin=${CHGRID_HOST_ORIGIN//\\/\\\\}
   escaped_host_origin=${escaped_host_origin//\'/\\\'}
+  escaped_session_check_url=${session_check_url//\\/\\\\}
+  escaped_session_check_url=${escaped_session_check_url//\'/\\\'}
   cat > "$PUBLISH_DIR/media_proxy.config.php" <<EOF
 <?php
 return array(
     'host_origin' => '$escaped_host_origin',
+    'session_check_url' => '$escaped_session_check_url',
 );
 EOF
 else

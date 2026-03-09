@@ -165,6 +165,73 @@ function load_proxy_host_origin()
     return normalize_origin($config['host_origin']);
 }
 
+function load_proxy_session_check_url()
+{
+    $fromEnv = trim((string) getenv('CHGRID_MEDIA_PROXY_SESSION_CHECK_URL'));
+    if ($fromEnv !== '') {
+        return $fromEnv;
+    }
+
+    $configPath = __DIR__ . '/media_proxy.config.php';
+    if (!is_file($configPath)) {
+        return 'http://127.0.0.1:8765/auth/session/check';
+    }
+    $config = require $configPath;
+    if (!is_array($config) || !isset($config['session_check_url'])) {
+        return 'http://127.0.0.1:8765/auth/session/check';
+    }
+    $value = trim((string) $config['session_check_url']);
+    if ($value === '') {
+        return 'http://127.0.0.1:8765/auth/session/check';
+    }
+    return $value;
+}
+
+function require_valid_proxy_session($sessionCheckUrl)
+{
+    $cookieHeader = isset($_SERVER['HTTP_COOKIE']) ? trim((string) $_SERVER['HTTP_COOKIE']) : '';
+    if ($cookieHeader === '') {
+        send_text(401, 'session required');
+    }
+    if (!function_exists('curl_init')) {
+        send_text(500, 'curl extension is required');
+    }
+
+    $ch = curl_init();
+    if (!$ch) {
+        send_text(500, 'proxy init failed');
+    }
+
+    curl_setopt($ch, CURLOPT_URL, $sessionCheckUrl);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+    curl_setopt($ch, CURLOPT_MAXREDIRS, 0);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_NOSIGNAL, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'ChatGridMediaProxy/1.0');
+    curl_setopt(
+        $ch,
+        CURLOPT_HTTPHEADER,
+        array(
+            'Cookie: ' . $cookieHeader,
+            'X-Chgrid-Auth-Client: 1',
+        )
+    );
+
+    $response = curl_exec($ch);
+    if ($response === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        send_text(502, 'session check failed: ' . $error);
+    }
+    $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($status !== 204) {
+        send_text(401, 'session required');
+    }
+}
+
 function host_matches_suffix($host, $suffix)
 {
     if ($suffix === '') {
@@ -431,6 +498,7 @@ function resolve_safe_redirect_chain($initialUrl, $allowlistSuffixes, $requestHe
 $allowlistEnv = getenv('CHGRID_MEDIA_PROXY_ALLOWLIST');
 $allowlistSuffixes = parse_allowlist_suffixes($allowlistEnv);
 $allowedOrigin = load_proxy_host_origin();
+$sessionCheckUrl = load_proxy_session_check_url();
 if ($allowedOrigin === '') {
     send_text(500, 'CHGRID_HOST_ORIGIN is required');
 }
@@ -452,6 +520,8 @@ if ($method === 'OPTIONS') {
 if ($method !== 'GET' && $method !== 'HEAD') {
     send_text(405, 'method not allowed');
 }
+
+require_valid_proxy_session($sessionCheckUrl);
 
 $rawUrl = isset($_GET['url']) ? trim((string) $_GET['url']) : '';
 if ($rawUrl === '') {

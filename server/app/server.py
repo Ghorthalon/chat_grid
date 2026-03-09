@@ -135,6 +135,7 @@ AUTH_SESSION_COOKIE_NAME = "chgrid_session_token"
 AUTH_SESSION_COOKIE_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
 AUTH_SESSION_COOKIE_SET_PATH = "/auth/session/set"
 AUTH_SESSION_COOKIE_CLEAR_PATH = "/auth/session/clear"
+AUTH_SESSION_COOKIE_CHECK_PATH = "/auth/session/check"
 AUTH_SESSION_COOKIE_CLIENT_HEADER = "X-Chgrid-Auth-Client"
 AUTH_LOGIN_FAILURE_MESSAGE = "We couldn't log you in. Check your details and try again."
 AUTH_RESUME_FAILURE_MESSAGE = "We couldn't restore your session. Please log in again."
@@ -301,7 +302,7 @@ class SignalingServer:
         """Handle lightweight same-origin auth cookie set/clear HTTP endpoints."""
 
         path = request.path.split("?", 1)[0]
-        if path not in {AUTH_SESSION_COOKIE_SET_PATH, AUTH_SESSION_COOKIE_CLEAR_PATH}:
+        if path not in {AUTH_SESSION_COOKIE_SET_PATH, AUTH_SESSION_COOKIE_CLEAR_PATH, AUTH_SESSION_COOKIE_CHECK_PATH}:
             return None
 
         headers = Headers()
@@ -310,6 +311,17 @@ class SignalingServer:
         client_header = str(request.headers.get(AUTH_SESSION_COOKIE_CLIENT_HEADER, "")).strip()
         if client_header != "1":
             return HttpResponse(400, "Bad Request", headers, b"missing client header")
+
+        if path == AUTH_SESSION_COOKIE_CHECK_PATH:
+            cookie_header = str(request.headers.get("Cookie", "")).strip()
+            token = self._cookie_value(cookie_header, AUTH_SESSION_COOKIE_NAME)
+            if not token:
+                return HttpResponse(401, "Unauthorized", headers, b"missing session")
+            try:
+                self.auth_service.resume(token)
+            except AuthError:
+                return HttpResponse(401, "Unauthorized", headers, b"invalid session")
+            return HttpResponse(204, "No Content", headers, b"")
 
         if path == AUTH_SESSION_COOKIE_CLEAR_PATH:
             headers["Set-Cookie"] = self._clear_session_cookie_header(request=request)
