@@ -28,6 +28,8 @@ import { getAvailableMainModeCommands } from './input/mainModeCommands';
 import { resolveMainModeCommand, type MainModeCommand } from './input/mainCommandRouter';
 import { dispatchModeInput } from './input/modeDispatcher';
 import { handleListControlKey } from './input/listController';
+import { createAdminController, type AdminMenuAction } from './input/adminController';
+import { setupKeyboardInputHandlers } from './input/keyboardController';
 import { handleYesNoMenuInput, YES_NO_OPTIONS } from './input/yesNoMenu';
 import { getEditSessionAction } from './input/editSession';
 import { formatSteppedNumber, snapNumberToStep } from './input/numeric';
@@ -59,10 +61,12 @@ import {
   getItemTypeTooltip,
   itemTypeLabel,
 } from './items/itemRegistry';
+import { createItemInteractionController } from './items/itemInteractionController';
 import { createItemPropertyEditor } from './items/itemPropertyEditor';
 import { createItemPropertyPresentation } from './items/itemPropertyPresentation';
 import { ItemBehaviorRegistry } from './items/types/behaviorRegistry';
 import { SettingsStore } from './settings/settingsStore';
+import { createAuthController } from './session/authController';
 import { runConnectFlow, runDisconnectFlow, type ConnectFlowDeps } from './session/connectionFlow';
 import { MediaSession } from './session/mediaSession';
 import { type AudioLayerState } from './types/audio';
@@ -184,61 +188,6 @@ type HelpData = {
   sections: HelpSection[];
 };
 
-type AuthPolicy = {
-  usernameMinLength: number;
-  usernameMaxLength: number;
-  passwordMinLength: number;
-  passwordMaxLength: number;
-};
-
-type AdminMenuAction = {
-  id: string;
-  label: string;
-  tooltip?: string;
-};
-
-type AdminRoleSummary = {
-  id: number;
-  name: string;
-  isSystem: boolean;
-  userCount: number;
-  permissions: string[];
-};
-
-type AdminUserSummary = {
-  id: string;
-  username: string;
-  role: string;
-  status: 'active' | 'disabled';
-};
-
-type AdminPendingUserMutation =
-  | { action: 'set_role'; username: string; role: string }
-  | { action: 'ban'; username: string }
-  | { action: 'unban'; username: string }
-  | { action: 'delete_account'; username: string };
-
-type ItemManagementAction = 'delete' | 'transfer';
-
-type ItemManagementOption = {
-  action: ItemManagementAction;
-  label: string;
-  tooltip?: string;
-};
-
-type ItemManagementConfirmContext = {
-  itemId: string;
-  action: ItemManagementAction;
-  prompt: string;
-  targetUserId?: string;
-};
-
-type ItemTransferTarget = {
-  userId: string;
-  username: string;
-  online: boolean;
-};
-
 /** Builds linearized help-view lines from sectioned help content. */
 function buildHelpLines(help: HelpData): string[] {
   const lines: string[] = [];
@@ -299,20 +248,11 @@ let lastFocusedElement: Element | null = null;
 let lastAnnouncementText = '';
 let lastAnnouncementAt = 0;
 let outputMode = settings.loadOutputMode();
-let authMode: 'login' | 'register' = 'login';
-let authUsername = settings.loadAuthUsername();
-let authUserId = '';
-let authPolicy: AuthPolicy | null = null;
-let authRole = 'user';
-let authPermissions = new Set<string>();
-let voiceSendAllowed = true;
-let pendingAuthRequest = false;
 const messageBuffer: string[] = [];
 let messageCursor = -1;
 const radioRuntime = new RadioStationRuntime(audio, getItemSpatialConfig);
 const itemEmitRuntime = new ItemEmitRuntime(audio, resolveIncomingSoundUrl, getItemSpatialConfig);
 const clockAnnouncer = new ClockAnnouncer(audio, () => ({ x: state.player.x, y: state.player.y }));
-let internalClipboardText = '';
 let replaceTextOnNextType = false;
 let pendingEscapeDisconnect = false;
 let micGainLoopbackRestoreState: boolean | null = null;
@@ -344,32 +284,8 @@ let lastSubscriptionRefreshTileY = Math.round(state.player.y);
 let subscriptionRefreshInFlight = false;
 let subscriptionRefreshPending = false;
 let suppressItemPropertyEchoUntilMs = 0;
-let itemPropertiesShowAll = false;
 let activeTeleportLoopStop: (() => void) | null = null;
 let activeTeleportLoopToken = 0;
-const adminMenuActions: AdminMenuAction[] = [];
-let serverAdminMenuActions: AdminMenuAction[] = [];
-let adminMenuIndex = 0;
-let adminRoles: AdminRoleSummary[] = [];
-let adminRoleIndex = 0;
-let adminPermissionKeys: string[] = [];
-let adminPermissionTooltips: Record<string, string> = {};
-let adminRolePermissionIndex = 0;
-let adminRoleDeleteReplacementIndex = 0;
-let adminUsers: AdminUserSummary[] = [];
-let adminUserIndex = 0;
-let adminPendingUserAction: 'set_role' | 'ban' | 'unban' | 'delete_account' | null = null;
-let adminSelectedRoleName = '';
-let adminSelectedUsername = '';
-let adminPendingUserMutation: AdminPendingUserMutation | null = null;
-let adminDeleteConfirmIndex = 0;
-let itemManagementSelectedItemId: string | null = null;
-let itemManagementOptions: ItemManagementOption[] = [];
-let itemManagementOptionIndex = 0;
-let itemManagementTargetUserIndex = 0;
-let itemManagementTransferTargets: ItemTransferTarget[] = [];
-let itemManagementConfirmIndex = 0;
-let itemManagementConfirmContext: ItemManagementConfirmContext | null = null;
 let activeTeleport:
   | {
       startX: number;
@@ -447,6 +363,62 @@ const getItemPropertyValue = itemPropertyPresentation.getItemPropertyValue;
 const isItemPropertyEditable = itemPropertyPresentation.isItemPropertyEditable;
 const describeItemPropertyHelp = itemPropertyPresentation.describeItemPropertyHelp;
 const validateNumericItemPropertyInput = itemPropertyPresentation.validateNumericItemPropertyInput;
+const authController = createAuthController({
+  dom,
+  authPolicyStorageKey: AUTH_POLICY_STORAGE_KEY,
+  authSessionCookieSetUrl: AUTH_SESSION_COOKIE_SET_URL,
+  authSessionCookieClearUrl: AUTH_SESSION_COOKIE_CLEAR_URL,
+  authSessionCookieClientHeader: AUTH_SESSION_COOKIE_CLIENT_HEADER,
+  initialAuthUsername: settings.loadAuthUsername(),
+  isRunning: () => state.running,
+  isMuted: () => state.isMuted,
+  isConnecting: () => mediaSession.isConnecting(),
+  setConnecting: (value) => mediaSession.setConnecting(value),
+  applyMuteToTrack: (muted) => {
+    mediaSession.applyMuteToTrack(muted);
+  },
+  signalingSend: (message) => signaling.send(message),
+  disconnect,
+  saveAuthUsername: (username) => {
+    settings.saveAuthUsername(username);
+  },
+  setConnectionStatus,
+  updateStatus,
+  pushChatMessage,
+  onServerAdminMenuActions: (actions) => {
+    adminController.setServerAdminMenuActions(actions);
+  },
+});
+const adminController = createAdminController({
+  state,
+  signalingSend: (message) => signaling.send(message),
+  announceMenuEntry,
+  updateStatus,
+  sfxUiBlip: () => audio.sfxUiBlip(),
+  sfxUiCancel: () => audio.sfxUiCancel(),
+  applyTextInputEdit,
+  setReplaceTextOnNextType: (value) => {
+    replaceTextOnNextType = value;
+  },
+});
+const itemInteractionController = createItemInteractionController({
+  state,
+  signalingSend: (message) => signaling.send(message),
+  announceMenuEntry,
+  updateStatus,
+  sfxUiBlip: () => audio.sfxUiBlip(),
+  sfxUiCancel: () => audio.sfxUiCancel(),
+  hasPermission: (key) => authController.hasPermission(key),
+  getAuthUserId: () => authController.getAuthUserId(),
+  getItemManagementActionMetadata,
+  itemLabel,
+  getEditableItemPropertyKeys,
+  getInspectItemPropertyKeys,
+  getItemPropertyValue,
+  itemPropertyLabel,
+  useItem: (item) => useItem(item),
+  secondaryUseItem: (item) => secondaryUseItem(item),
+});
 
 /** Toggles updates panel visibility and syncs associated ARIA state. */
 function setUpdatesExpanded(expanded: boolean): void {
@@ -580,146 +552,9 @@ function sanitizeName(value: string): string {
   return value.replace(/[\u0000-\u001F\u007F<>]/g, '').trim().slice(0, NICKNAME_MAX_LENGTH);
 }
 
-/** Normalizes auth username according to server policy. */
-function sanitizeAuthUsername(value: string): string {
-  const maxLength = authPolicy?.usernameMaxLength ?? 128;
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '')
-    .slice(0, Math.max(1, maxLength));
-}
-
-/** Normalizes and stores server-advertised auth policy limits, then refreshes auth UI hints. */
-function applyAuthPolicy(policy: unknown): void {
-  if (!policy || typeof policy !== 'object') return;
-  const raw = policy as Partial<AuthPolicy>;
-  const usernameMin = Number(raw.usernameMinLength);
-  const usernameMax = Number(raw.usernameMaxLength);
-  const passwordMin = Number(raw.passwordMinLength);
-  const passwordMax = Number(raw.passwordMaxLength);
-  if (
-    !Number.isInteger(usernameMin) ||
-    !Number.isInteger(usernameMax) ||
-    !Number.isInteger(passwordMin) ||
-    !Number.isInteger(passwordMax)
-  ) {
-    return;
-  }
-  if (usernameMin < 1 || usernameMax < usernameMin || passwordMin < 1 || passwordMax < passwordMin) {
-    return;
-  }
-  authPolicy = {
-    usernameMinLength: usernameMin,
-    usernameMaxLength: usernameMax,
-    passwordMinLength: passwordMin,
-    passwordMaxLength: passwordMax,
-  };
-  localStorage.setItem(AUTH_POLICY_STORAGE_KEY, JSON.stringify(authPolicy));
-  dom.authPolicyHintRegister.textContent = `Username, ${usernameMin}-${usernameMax} characters. Password, ${passwordMin}-${passwordMax} characters.`;
-  dom.authUsername.minLength = usernameMin;
-  dom.authUsername.maxLength = usernameMax;
-  dom.registerUsername.minLength = usernameMin;
-  dom.registerUsername.maxLength = usernameMax;
-  dom.authPassword.minLength = passwordMin;
-  dom.authPassword.maxLength = passwordMax;
-  dom.registerPassword.minLength = passwordMin;
-  dom.registerPassword.maxLength = passwordMax;
-  dom.registerPasswordConfirm.minLength = passwordMin;
-  dom.registerPasswordConfirm.maxLength = passwordMax;
-  updateConnectAvailability();
-}
-
-/** Loads most recently-seen auth policy limits from local storage for pre-connect UI hints. */
-function loadPersistedAuthPolicy(): void {
-  const raw = localStorage.getItem(AUTH_POLICY_STORAGE_KEY);
-  if (!raw) return;
-  try {
-    applyAuthPolicy(JSON.parse(raw));
-  } catch {
-    // Ignore malformed persisted policy and keep live server policy source of truth.
-  }
-}
-
-/** Returns whether currently authenticated user has a specific permission key. */
-function hasPermission(key: string): boolean {
-  return authPermissions.has(key);
-}
-
-/** Applies latest role + permission set from server auth packets. */
-function applyAuthPermissions(role: string | null | undefined, permissions: string[] | null | undefined): void {
-  authRole = String(role || 'user').trim() || 'user';
-  authPermissions = new Set((permissions || []).map((value) => String(value).trim()).filter((value) => value.length > 0));
-  applyVoiceSendPermission();
-}
-
-/** Applies server-authored admin menu actions for current session. */
-function applyServerAdminMenuActions(actions: Array<{ id: string; label: string; tooltip?: string }> | null | undefined): void {
-  serverAdminMenuActions = (actions || [])
-    .map((entry) => ({
-      id: String(entry.id || '').trim(),
-      label: String(entry.label || '').trim(),
-      tooltip: typeof entry.tooltip === 'string' && entry.tooltip.trim().length > 0 ? entry.tooltip.trim() : undefined,
-    }))
-    .filter((entry) => entry.id.length > 0 && entry.label.length > 0);
-}
-
-/** Applies server-authoritative voice.send permission immediately to local outbound track state. */
-function applyVoiceSendPermission(): void {
-  voiceSendAllowed = hasPermission('voice.send');
-  if (voiceSendAllowed) {
-    mediaSession.applyMuteToTrack(state.isMuted);
-    return;
-  }
-  mediaSession.applyMuteToTrack(true);
-}
-
 /** Enables/disables the connect button based on state and nickname validity. */
 function updateConnectAvailability(): void {
-  const hasSavedSessionHint = sanitizeAuthUsername(authUsername).length > 0;
-  const showLogout = state.running || hasSavedSessionHint;
-  dom.logoutButton.classList.toggle('hidden', !showLogout);
-  dom.logoutButton.disabled = !showLogout;
-  if (state.running) {
-    dom.connectButton.textContent = 'Connect';
-    dom.connectButton.disabled = true;
-    dom.loginView.classList.add('hidden');
-    dom.registerView.classList.add('hidden');
-    dom.authSessionView.classList.add('hidden');
-    return;
-  }
-  if (hasSavedSessionHint) {
-    dom.authSessionText.textContent = `Logged in as ${sanitizeAuthUsername(authUsername)}.`;
-    dom.showRegisterButton.classList.add('hidden');
-    dom.authModeSeparator.classList.add('hidden');
-    dom.loginView.classList.add('hidden');
-    dom.registerView.classList.add('hidden');
-    dom.authSessionView.classList.remove('hidden');
-  } else {
-    dom.showRegisterButton.classList.remove('hidden');
-    dom.authModeSeparator.classList.remove('hidden');
-    dom.showRegisterButton.textContent = authMode === 'login' ? 'Register' : 'Login';
-    dom.loginView.classList.toggle('hidden', authMode !== 'login');
-    dom.registerView.classList.toggle('hidden', authMode !== 'register');
-    dom.authSessionView.classList.add('hidden');
-  }
-  const usernameMin = authPolicy?.usernameMinLength ?? 1;
-  const passwordMin = authPolicy?.passwordMinLength ?? 1;
-  const hasLoginCredentials =
-    sanitizeAuthUsername(dom.authUsername.value).length >= usernameMin && dom.authPassword.value.trim().length >= passwordMin;
-  const hasRegisterCredentials =
-    sanitizeAuthUsername(dom.registerUsername.value).length >= usernameMin &&
-    dom.registerPassword.value.trim().length >= passwordMin &&
-    dom.registerPassword.value === dom.registerPasswordConfirm.value;
-  const authReady = authMode === 'login' ? true : hasRegisterCredentials;
-  dom.connectButton.textContent = hasSavedSessionHint
-    ? 'Connect'
-    : authMode === 'register'
-      ? 'Register & Connect'
-      : hasLoginCredentials
-        ? 'Log In & Connect'
-        : 'Connect';
-  dom.connectButton.disabled = mediaSession.isConnecting() || !authReady;
+  authController.updateConnectAvailability();
 }
 
 /** Restores persisted outbound effect levels from local storage. */
@@ -1055,141 +890,27 @@ function beginItemSelection(
   context: 'pickup' | 'delete' | 'edit' | 'use' | 'secondaryUse' | 'inspect' | 'manage',
   items: WorldItem[],
 ): void {
-  if (items.length === 0) {
-    updateStatus('No items available.');
-    audio.sfxUiCancel();
-    return;
-  }
-  state.mode = 'selectItem';
-  state.selectionContext = context;
-  state.selectedItemIds = items.map((item) => item.id);
-  state.selectedItemIndex = 0;
-  announceMenuEntry('Select item', itemLabel(items[0]));
-}
-
-/** Returns whether the local user can delete the provided item. */
-function canManageDeleteItem(item: WorldItem): boolean {
-  const metadata = getItemManagementActionMetadata('delete');
-  if (metadata?.anyPermission && hasPermission(metadata.anyPermission)) return true;
-  return Boolean(metadata?.ownPermission) && hasPermission(metadata.ownPermission) && authUserId.length > 0 && item.createdBy === authUserId;
-}
-
-/** Returns whether the local user can transfer the provided item. */
-function canManageTransferItem(item: WorldItem): boolean {
-  const metadata = getItemManagementActionMetadata('transfer');
-  if (metadata?.anyPermission && hasPermission(metadata.anyPermission)) return true;
-  return Boolean(metadata?.ownPermission) && hasPermission(metadata.ownPermission) && authUserId.length > 0 && item.createdBy === authUserId;
+  itemInteractionController.beginItemSelection(context, items);
 }
 
 /** Builds available item-management actions for one selected item. */
-function itemManagementOptionsFor(item: WorldItem): ItemManagementOption[] {
-  const options: ItemManagementOption[] = [];
-  const transferMetadata = getItemManagementActionMetadata('transfer');
-  if (canManageTransferItem(item) && (state.player.id !== null || state.peers.size > 0)) {
-    options.push({
-      action: 'transfer',
-      label: transferMetadata?.label ?? 'Transfer item',
-      tooltip: transferMetadata?.tooltip,
-    });
-  }
-  const deleteMetadata = getItemManagementActionMetadata('delete');
-  if (canManageDeleteItem(item)) {
-    options.push({
-      action: 'delete',
-      label: deleteMetadata?.label ?? 'Delete item',
-      tooltip: deleteMetadata?.tooltip,
-    });
-  }
-  return options;
-}
-
-/** Resolves spoken label for one transfer target entry. */
-function transferTargetLabel(target: ItemTransferTarget): string {
-  return target.online ? `${target.username}, online` : `${target.username}, offline`;
+function itemManagementOptionsFor(item: WorldItem) {
+  return itemInteractionController.getManagementOptions(item);
 }
 
 /** Opens item-management options for one selected item. */
 function beginItemManagement(item: WorldItem): void {
-  const options = itemManagementOptionsFor(item);
-  if (options.length === 0) {
-    updateStatus('No item management actions available.');
-    audio.sfxUiCancel();
-    return;
-  }
-  itemManagementSelectedItemId = item.id;
-  itemManagementOptions = options;
-  itemManagementOptionIndex = 0;
-  state.mode = 'itemManageOptions';
-  announceMenuEntry('Items', itemManagementOptions[0].label);
-}
-
-/** Opens standardized yes/no confirmation prompt for a pending item-management action. */
-function openItemManagementConfirm(context: ItemManagementConfirmContext): void {
-  itemManagementConfirmContext = context;
-  itemManagementConfirmIndex = 0;
-  state.mode = 'confirmYesNo';
-  announceMenuEntry(context.prompt, YES_NO_OPTIONS[itemManagementConfirmIndex].label);
-}
-
-/** Clears temporary item-management menu state. */
-function resetItemManagementState(): void {
-  itemManagementSelectedItemId = null;
-  itemManagementOptions = [];
-  itemManagementOptionIndex = 0;
-  itemManagementTransferTargets = [];
-  itemManagementTargetUserIndex = 0;
-  itemManagementConfirmIndex = 0;
-  itemManagementConfirmContext = null;
+  itemInteractionController.beginItemManagement(item);
 }
 
 /** Opens item property browsing/editing mode for one item. */
 function beginItemProperties(item: WorldItem, showAll = false): void {
-  itemPropertiesShowAll = showAll;
-  state.selectedItemId = item.id;
-  state.mode = 'itemProperties';
-  state.editingPropertyKey = null;
-  state.itemPropertyOptionValues = [];
-  state.itemPropertyOptionIndex = 0;
-  if (showAll) {
-    state.itemPropertyKeys = getInspectItemPropertyKeys(item);
-  } else {
-    state.itemPropertyKeys = getEditableItemPropertyKeys(item);
-  }
-  state.itemPropertyIndex = 0;
-  if (state.itemPropertyKeys.length === 0) {
-    updateStatus('No properties available.');
-    audio.sfxUiCancel();
-    state.mode = 'normal';
-    state.selectedItemId = null;
-    return;
-  }
-  const key = state.itemPropertyKeys[0];
-  const value = getItemPropertyValue(item, key);
-  updateStatus(`${itemPropertyLabel(key)}: ${value}`);
-  audio.sfxUiBlip();
+  itemInteractionController.beginItemProperties(item, showAll);
 }
 
 /** Recomputes visible property rows for the active item-property view after item updates. */
 function recomputeActiveItemPropertyKeys(itemId: string): void {
-  if (state.mode !== 'itemProperties' || state.selectedItemId !== itemId) {
-    return;
-  }
-  const item = state.items.get(itemId);
-  if (!item) {
-    return;
-  }
-  const previousKey = state.itemPropertyKeys[state.itemPropertyIndex] ?? null;
-  const nextKeys = itemPropertiesShowAll ? getInspectItemPropertyKeys(item) : getEditableItemPropertyKeys(item);
-  state.itemPropertyKeys = nextKeys;
-  if (nextKeys.length === 0) {
-    state.itemPropertyIndex = 0;
-    return;
-  }
-  if (previousKey && nextKeys.includes(previousKey)) {
-    state.itemPropertyIndex = nextKeys.indexOf(previousKey);
-    return;
-  }
-  state.itemPropertyIndex = Math.max(0, Math.min(state.itemPropertyIndex, nextKeys.length - 1));
+  itemInteractionController.recomputeActiveItemPropertyKeys(itemId);
 }
 
 /** Sends an item-use request for the selected item. */
@@ -1593,322 +1314,55 @@ async function reconnectWithRetry(reason: 'heartbeat' | 'socketClose'): Promise<
   reconnectInFlight = false;
 }
 
-/** Switches pre-connect auth view between login and register modes. */
-function setAuthMode(mode: 'login' | 'register'): void {
-  authMode = mode;
-  dom.loginView.classList.toggle('hidden', mode !== 'login');
-  dom.registerView.classList.toggle('hidden', mode !== 'register');
-  updateConnectAvailability();
-}
-
-/** Builds outbound auth packet from active login/register form fields. */
-function buildAuthRequestPacket(): OutgoingMessage | null {
-  if (authMode === 'register') {
-    const username = sanitizeAuthUsername(dom.registerUsername.value);
-    const password = dom.registerPassword.value;
-    const email = dom.registerEmail.value.trim();
-    if (!username || !password || password !== dom.registerPasswordConfirm.value) return null;
-    return { type: 'auth_register', username, password, ...(email ? { email } : {}) };
-  }
-  const username = sanitizeAuthUsername(dom.authUsername.value);
-  const password = dom.authPassword.value;
-  if (!username || !password) return null;
-  return { type: 'auth_login', username, password };
-}
-
 /** Sends current auth request over signaling websocket after socket open. */
 function sendAuthRequest(): void {
-  const packet = buildAuthRequestPacket();
-  if (!packet) {
-    pendingAuthRequest = false;
-    setConnectionStatus('Attempting saved session...');
-    mediaSession.setConnecting(false);
-    updateConnectAvailability();
-    return;
-  }
-  pendingAuthRequest = true;
-  setConnectionStatus('Authenticating...');
-  signaling.send(packet);
+  authController.sendAuthRequest();
 }
 
 /** Handles server auth-required prompts prior to world welcome. */
 function handleAuthRequired(message: Extract<IncomingMessage, { type: 'auth_required' }>): void {
-  const hadPendingRequest = pendingAuthRequest;
-  pendingAuthRequest = false;
-  authUserId = '';
-  applyAuthPolicy(message.authPolicy);
-  applyAuthPermissions('user', []);
-  applyServerAdminMenuActions([]);
-  setConnectionStatus('Authentication required.');
-  updateStatus(message.message);
-  if (!hadPendingRequest) {
-    const packet = buildAuthRequestPacket();
-    if (packet) {
-      pendingAuthRequest = true;
-      setConnectionStatus('Authenticating...');
-      signaling.send(packet);
-      return;
-    }
-    mediaSession.setConnecting(false);
-    updateConnectAvailability();
-  }
+  authController.handleAuthRequired(message);
 }
 
 /** Applies auth result state and terminates failed auth attempts quickly. */
 async function handleAuthResult(message: Extract<IncomingMessage, { type: 'auth_result' }>): Promise<void> {
-  pendingAuthRequest = false;
-  applyAuthPolicy(message.authPolicy);
-  if (!message.ok) {
-    authUserId = '';
-    dom.authPassword.value = '';
-    dom.registerPassword.value = '';
-    dom.registerPasswordConfirm.value = '';
-    if (message.message.toLowerCase().includes('session')) {
-      void clearHttpOnlySessionCookie();
-    }
-    applyAuthPermissions('user', []);
-    applyServerAdminMenuActions([]);
-    setConnectionStatus(message.message);
-    mediaSession.setConnecting(false);
-    updateConnectAvailability();
-    signaling.disconnect();
-    return;
-  }
-
-  if (message.sessionToken) {
-    void persistHttpOnlySessionCookie(message.sessionToken);
-  }
-  if (message.username) {
-    authUsername = message.username;
-    settings.saveAuthUsername(message.username);
-    dom.authUsername.value = message.username;
-    dom.registerUsername.value = message.username;
-  }
   if (message.nickname) {
     const resolved = sanitizeName(message.nickname);
     if (resolved) {
       state.player.nickname = resolved;
     }
   }
-  applyAuthPermissions(message.role, message.permissions);
-  applyServerAdminMenuActions(message.adminMenuActions);
-  dom.authPassword.value = '';
-  dom.registerPassword.value = '';
-  dom.registerPasswordConfirm.value = '';
-  setConnectionStatus('Authenticated. Joining world...');
-}
-
-/** Clears stored auth session and returns UI to login mode. */
-function logOutAccount(): void {
-  authUserId = '';
-  authUsername = '';
-  void clearHttpOnlySessionCookie();
-  settings.saveAuthUsername('');
-  applyAuthPermissions('user', []);
-  applyServerAdminMenuActions([]);
-  if (state.running) {
-    signaling.send({ type: 'auth_logout' });
-    disconnect();
-  }
-  setAuthMode('login');
-  updateStatus('Logged out.');
-  updateConnectAvailability();
-}
-
-/** Persists active auth session in a server-managed HttpOnly cookie. */
-async function persistHttpOnlySessionCookie(sessionToken: string): Promise<void> {
-  const token = sessionToken.trim();
-  if (!token) return;
-  try {
-    const response = await fetch(AUTH_SESSION_COOKIE_SET_URL, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        [AUTH_SESSION_COOKIE_CLIENT_HEADER]: '1',
-      },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-  } catch (error) {
-    console.warn('Unable to persist auth cookie.', error);
-    pushChatMessage('Session save failed. You may need to log in again after refresh.');
-  }
-}
-
-/** Clears server-managed HttpOnly auth session cookie. */
-async function clearHttpOnlySessionCookie(): Promise<void> {
-  try {
-    const response = await fetch(AUTH_SESSION_COOKIE_CLEAR_URL, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        [AUTH_SESSION_COOKIE_CLIENT_HEADER]: '1',
-      },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-  } catch (error) {
-    console.warn('Unable to clear auth cookie.', error);
-    pushChatMessage('Session clear failed. Your browser may retain an old login cookie.');
-  }
+  await authController.handleAuthResult(message);
 }
 
 /** Handles server-pushed role/permission refresh events for the current session. */
 function handleAuthPermissions(message: Extract<IncomingMessage, { type: 'auth_permissions' }>): void {
-  const hadVoiceSend = voiceSendAllowed;
-  applyAuthPermissions(message.role, message.permissions);
-  applyServerAdminMenuActions(message.adminMenuActions);
-  if (hadVoiceSend && !voiceSendAllowed) {
-    updateStatus('Voice send permission revoked.');
-  }
-  if (!hadVoiceSend && voiceSendAllowed) {
-    updateStatus('Voice send permission granted.');
-  }
+  authController.handleAuthPermissions(message);
 }
 
 /** Returns available admin-menu root actions based on current permission set. */
 function getAvailableAdminActions(): AdminMenuAction[] {
-  return [...serverAdminMenuActions];
+  return adminController.getAvailableAdminActions();
 }
 
 /** Handles server role-list response for admin menu flows. */
 function handleAdminRolesList(message: Extract<IncomingMessage, { type: 'admin_roles_list' }>): void {
-  adminRoles = [...message.roles].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  adminPermissionKeys = [...message.permissionKeys].sort((a, b) => a.localeCompare(b));
-  adminPermissionTooltips = { ...(message.permissionTooltips ?? {}) };
-  if (adminPendingUserAction === 'set_role' && adminSelectedUsername) {
-    state.mode = 'adminUserRoleSelect';
-    const selectedUser = adminUsers.find((entry) => entry.username === adminSelectedUsername);
-    const currentRoleIndex =
-      selectedUser ? adminRoles.findIndex((entry) => entry.name === selectedUser.role) : -1;
-    adminRoleIndex = currentRoleIndex >= 0 ? currentRoleIndex : 0;
-    const first = adminRoles[0];
-    if (first && adminRoles[adminRoleIndex]) {
-      announceMenuEntry('Roles', adminRoles[adminRoleIndex].name);
-    } else {
-      updateStatus('No roles available.');
-      audio.sfxUiCancel();
-      state.mode = 'normal';
-      adminPendingUserAction = null;
-      adminSelectedUsername = '';
-    }
-    return;
-  }
-  state.mode = 'adminRoleList';
-  adminRoleIndex = 0;
-  const first = adminRoles[0];
-  if (first) {
-    announceMenuEntry('Roles', `${first.name}, ${first.userCount}`);
-  } else {
-    updateStatus('No roles found.');
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminRolesList(message);
 }
 
 /** Handles server user-list response for admin menu flows. */
 function handleAdminUsersList(message: Extract<IncomingMessage, { type: 'admin_users_list' }>): void {
-  adminUsers = [...message.users].sort((a, b) => a.username.localeCompare(b.username, undefined, { sensitivity: 'base' }));
-  if (adminUsers.length === 0) {
-    updateStatus('No users available.');
-    audio.sfxUiCancel();
-    state.mode = 'normal';
-    adminPendingUserAction = null;
-    return;
-  }
-  state.mode = 'adminUserList';
-  adminUserIndex = 0;
-  const first = adminUsers[0];
-  announceMenuEntry('Users', `${first.username}, ${first.role}, ${first.status}`);
+  adminController.handleAdminUsersList(message);
 }
 
 /** Handles server transfer-target list response for item-management transfer flow. */
 function handleItemTransferTargets(message: Extract<IncomingMessage, { type: 'item_transfer_targets' }>): void {
-  if (itemManagementSelectedItemId !== message.itemId) return;
-  itemManagementTransferTargets = [...message.targets].sort((a, b) =>
-    a.username.localeCompare(b.username, undefined, { sensitivity: 'base' }),
-  );
-  if (itemManagementTransferTargets.length === 0) {
-    state.mode = 'itemManageOptions';
-    updateStatus('No users available to transfer to.');
-    audio.sfxUiCancel();
-    return;
-  }
-  itemManagementTargetUserIndex = 0;
-  state.mode = 'itemManageTransferUser';
-  announceMenuEntry('Users', transferTargetLabel(itemManagementTransferTargets[0]));
+  itemInteractionController.handleItemTransferTargets(message);
 }
 
 /** Handles structured admin action result packets. */
 function handleAdminActionResult(message: Extract<IncomingMessage, { type: 'admin_action_result' }>): void {
-  if (message.action === 'role_update_permissions') {
-    return;
-  }
-  const suppressStatusMessage =
-    message.ok && message.action === 'user_set_role' && adminPendingUserMutation?.action === 'set_role';
-  if (!suppressStatusMessage) {
-    updateStatus(message.message);
-  }
-  if (!message.ok) {
-    adminPendingUserMutation = null;
-    audio.sfxUiCancel();
-    return;
-  }
-
-  if (adminPendingUserMutation) {
-    if (adminPendingUserMutation.action === 'set_role') {
-      const target = adminUsers.find((entry) => entry.username === adminPendingUserMutation.username);
-      if (target) {
-        target.role = adminPendingUserMutation.role;
-      }
-      if (state.mode === 'adminUserRoleSelect') {
-        state.mode = 'adminUserList';
-        adminPendingUserAction = 'set_role';
-        const userIndex = adminUsers.findIndex((entry) => entry.username === adminPendingUserMutation.username);
-        if (userIndex >= 0) {
-          adminUserIndex = userIndex;
-          const selected = adminUsers[adminUserIndex];
-          updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
-        }
-      }
-    } else if (adminPendingUserMutation.action === 'ban') {
-      adminUsers = adminUsers.filter((entry) => entry.username !== adminPendingUserMutation.username);
-      if (state.mode === 'adminUserList' && adminPendingUserAction === 'ban') {
-        if (adminUsers.length > 0) {
-          adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
-        } else {
-          state.mode = 'adminMenu';
-          adminPendingUserAction = null;
-        }
-      }
-    } else if (adminPendingUserMutation.action === 'unban') {
-      adminUsers = adminUsers.filter((entry) => entry.username !== adminPendingUserMutation.username);
-      if (state.mode === 'adminUserList' && adminPendingUserAction === 'unban') {
-        if (adminUsers.length > 0) {
-          adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
-        } else {
-          state.mode = 'adminMenu';
-          adminPendingUserAction = null;
-        }
-      }
-    } else if (adminPendingUserMutation.action === 'delete_account') {
-      adminUsers = adminUsers.filter((entry) => entry.username !== adminPendingUserMutation.username);
-      if (state.mode === 'adminUserList' && adminPendingUserAction === 'delete_account') {
-        if (adminUsers.length > 0) {
-          adminUserIndex = Math.max(0, Math.min(adminUserIndex, adminUsers.length - 1));
-        } else {
-          state.mode = 'adminMenu';
-          adminPendingUserAction = null;
-        }
-      }
-    }
-    adminPendingUserMutation = null;
-  }
-
+  adminController.handleAdminActionResult(message);
   audio.sfxUiConfirm();
 }
 
@@ -1972,7 +1426,7 @@ function disconnect(): void {
   activeTeleport = null;
   peerNegotiationReady = false;
   pendingSignalMessages = [];
-  resetItemManagementState();
+  itemInteractionController.reset();
   itemBehaviorRegistry.cleanup();
 }
 
@@ -2086,13 +1540,10 @@ async function onSignalingMessage(message: IncomingMessage): Promise<void> {
   let connectedAnnouncement: string | null = null;
   let playSelfLoginSound = false;
   if (message.type === 'welcome') {
-    authUserId = String(message.auth?.userId || '').trim();
-    applyAuthPolicy(message.auth?.policy);
-    applyAuthPermissions(message.auth?.role, message.auth?.permissions);
     const uiAdminActions =
       (message.uiDefinitions as { adminMenu?: { actions?: Array<{ id: string; label: string }> } } | undefined)?.adminMenu?.actions ??
       message.auth?.adminMenuActions;
-    applyServerAdminMenuActions(uiAdminActions);
+    authController.applyWelcomeAuth(message.auth, uiAdminActions);
     const incomingInstanceId = String(message.serverInfo?.instanceId ?? '').trim() || null;
     const incomingVersion = String(message.serverInfo?.version ?? '').trim() || 'unknown';
     connectedAnnouncement = reconnectInFlight
@@ -2169,7 +1620,7 @@ async function setupMediaAfterAuth(): Promise<void> {
 
 /** Toggles local microphone track mute state. */
 function toggleMute(): void {
-  if (!voiceSendAllowed) {
+  if (!authController.getVoiceSendAllowed()) {
     updateStatus('Voice send is disabled for this account.');
     audio.sfxUiCancel();
     return;
@@ -2250,7 +1701,7 @@ function speakCoordinatesCommand(): void {
 }
 
 function openMicGainEditCommand(): void {
-  if (!voiceSendAllowed) {
+  if (!authController.getVoiceSendAllowed()) {
     updateStatus('Voice send is disabled for this account.');
     audio.sfxUiCancel();
     return;
@@ -2265,7 +1716,7 @@ function openMicGainEditCommand(): void {
 }
 
 function calibrateMicrophoneCommand(): void {
-  if (!voiceSendAllowed) {
+  if (!authController.getVoiceSendAllowed()) {
     updateStatus('Voice send is disabled for this account.');
     audio.sfxUiCancel();
     return;
@@ -2274,16 +1725,7 @@ function calibrateMicrophoneCommand(): void {
 }
 
 function openAdminMenuCommand(): void {
-  const actions = getAvailableAdminActions();
-  if (actions.length === 0) {
-    updateStatus('No admin actions available.');
-    audio.sfxUiCancel();
-    return;
-  }
-  adminMenuActions.splice(0, adminMenuActions.length, ...actions);
-  adminMenuIndex = 0;
-  state.mode = 'adminMenu';
-  announceMenuEntry('Admin', adminMenuActions[0].label);
+  adminController.openAdminMenu();
 }
 
 function useItemCommand(): void {
@@ -2571,7 +2013,7 @@ const mainModeCommandHandlers: Record<MainModeCommand, () => void> = {
 function getAvailableCommandPaletteEntriesForMode(mode: GameMode): Array<CommandDescriptor & { run: () => void | Promise<void> }> {
   if (mode === 'normal') {
     const descriptors = getAvailableMainModeCommands({
-      voiceSendAllowed,
+      voiceSendAllowed: authController.getVoiceSendAllowed(),
       mainHelpAvailable: mainHelpViewerLines.length > 0,
       hasAdminActions: getAvailableAdminActions().length > 0,
       itemTypeCount: getItemTypeSequence().length,
@@ -2980,568 +2422,62 @@ function handleAddItemModeInput(code: string, key: string): void {
 
 /** Handles generic selected-item list flow used by pickup/delete/edit/use/inspect contexts. */
 function handleSelectItemModeInput(code: string, key: string): void {
-  if (state.selectedItemIds.length === 0) {
-    state.mode = 'normal';
-    state.selectionContext = null;
-    return;
-  }
-  const control = handleListControlKey(code, key, state.selectedItemIds, state.selectedItemIndex, (itemId) => {
-    const item = state.items.get(itemId);
-    return item ? itemLabel(item) : '';
-  });
-  if (control.type === 'move') {
-    state.selectedItemIndex = control.index;
-    const current = state.items.get(state.selectedItemIds[state.selectedItemIndex]);
-    if (current) {
-      updateStatus(itemLabel(current));
-      audio.sfxUiBlip();
-    }
-    return;
-  }
-  if (control.type === 'select') {
-    const selected = state.items.get(state.selectedItemIds[state.selectedItemIndex]);
-    if (!selected) {
-      state.mode = 'normal';
-      state.selectionContext = null;
-      return;
-    }
-    const context = state.selectionContext;
-    state.mode = 'normal';
-    state.selectionContext = null;
-    if (context === 'pickup') {
-      signaling.send({ type: 'item_pickup', itemId: selected.id });
-      return;
-    }
-    if (context === 'delete') {
-      signaling.send({ type: 'item_delete', itemId: selected.id });
-      return;
-    }
-    if (context === 'edit') {
-      beginItemProperties(selected);
-      return;
-    }
-    if (context === 'use') {
-      useItem(selected);
-      return;
-    }
-    if (context === 'secondaryUse') {
-      secondaryUseItem(selected);
-      return;
-    }
-    if (context === 'inspect') {
-      beginItemProperties(selected, true);
-      return;
-    }
-    if (context === 'manage') {
-      beginItemManagement(selected);
-      return;
-    }
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'normal';
-    state.selectionContext = null;
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-  }
+  itemInteractionController.handleSelectItemModeInput(code, key);
 }
 
 /** Handles item-management action menu (`z`) for the selected square item. */
 function handleItemManageOptionsModeInput(code: string, key: string): void {
-  if (!itemManagementSelectedItemId) {
-    state.mode = 'normal';
-    resetItemManagementState();
-    return;
-  }
-  const item = state.items.get(itemManagementSelectedItemId);
-  if (!item) {
-    state.mode = 'normal';
-    resetItemManagementState();
-    updateStatus('Item no longer exists.');
-    audio.sfxUiCancel();
-    return;
-  }
-  itemManagementOptions = itemManagementOptionsFor(item);
-  if (itemManagementOptions.length === 0) {
-    state.mode = 'normal';
-    resetItemManagementState();
-    updateStatus('No item management actions available.');
-    audio.sfxUiCancel();
-    return;
-  }
-  itemManagementOptionIndex = Math.max(0, Math.min(itemManagementOptionIndex, itemManagementOptions.length - 1));
-  const control = handleListControlKey(code, key, itemManagementOptions, itemManagementOptionIndex, (entry) => entry.label);
-  if (control.type === 'move') {
-    itemManagementOptionIndex = control.index;
-    updateStatus(itemManagementOptions[itemManagementOptionIndex].label);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (code === 'Space') {
-    updateStatus(itemManagementOptions[itemManagementOptionIndex]?.tooltip ?? 'No tooltip available.');
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const option = itemManagementOptions[itemManagementOptionIndex];
-    if (option.action === 'delete') {
-      openItemManagementConfirm({
-        itemId: item.id,
-        action: 'delete',
-        prompt: `Delete ${itemLabel(item)}?`,
-      });
-      return;
-    }
-    itemManagementTransferTargets = [];
-    itemManagementTargetUserIndex = 0;
-    signaling.send({ type: 'item_transfer_targets', itemId: item.id });
-    updateStatus('Loading users...');
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'normal';
-    resetItemManagementState();
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-  }
+  itemInteractionController.handleItemManageOptionsModeInput(code, key);
 }
 
 /** Handles target-user selection for item transfer action. */
 function handleItemManageTransferUserModeInput(code: string, key: string): void {
-  if (!itemManagementSelectedItemId || itemManagementTransferTargets.length === 0) {
-    state.mode = 'itemManageOptions';
-    return;
-  }
-  const control = handleListControlKey(
-    code,
-    key,
-    itemManagementTransferTargets,
-    itemManagementTargetUserIndex,
-    (target) => transferTargetLabel(target),
-  );
-  if (control.type === 'move') {
-    itemManagementTargetUserIndex = control.index;
-    const label = transferTargetLabel(itemManagementTransferTargets[itemManagementTargetUserIndex]);
-    updateStatus(label);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const item = state.items.get(itemManagementSelectedItemId);
-    const target = itemManagementTransferTargets[itemManagementTargetUserIndex];
-    if (!item || !target) {
-      state.mode = 'itemManageOptions';
-      audio.sfxUiCancel();
-      return;
-    }
-    openItemManagementConfirm({
-      itemId: item.id,
-      action: 'transfer',
-      prompt: `Transfer ${itemLabel(item)} to ${target.username}?`,
-      targetUserId: target.userId,
-    });
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'itemManageOptions';
-    updateStatus(itemManagementOptions[itemManagementOptionIndex]?.label ?? 'Item management.');
-    audio.sfxUiCancel();
-  }
+  itemInteractionController.handleItemManageTransferUserModeInput(code, key);
 }
 
 /** Handles standardized yes/no confirmation for pending item-management actions. */
 function handleConfirmYesNoModeInput(code: string, key: string): void {
-  if (!itemManagementConfirmContext) {
-    state.mode = 'normal';
-    resetItemManagementState();
-    return;
-  }
-  const control = handleYesNoMenuInput(code, key, itemManagementConfirmIndex);
-  if (control.type === 'move') {
-    itemManagementConfirmIndex = control.index;
-    updateStatus(YES_NO_OPTIONS[itemManagementConfirmIndex].label);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'itemManageOptions';
-    itemManagementConfirmContext = null;
-    updateStatus(itemManagementOptions[itemManagementOptionIndex]?.label ?? 'Item management.');
-    audio.sfxUiCancel();
-    return;
-  }
-  if (control.type === 'select') {
-    const selected = YES_NO_OPTIONS[itemManagementConfirmIndex];
-    const context = itemManagementConfirmContext;
-    itemManagementConfirmContext = null;
-    if (selected.id === 'no') {
-      state.mode = 'itemManageOptions';
-      updateStatus(itemManagementOptions[itemManagementOptionIndex]?.label ?? 'Cancelled.');
-      audio.sfxUiCancel();
-      return;
-    }
-    state.mode = 'normal';
-    if (context.action === 'delete') {
-      signaling.send({ type: 'item_delete', itemId: context.itemId });
-    } else if (context.action === 'transfer' && context.targetUserId) {
-      signaling.send({ type: 'item_transfer', itemId: context.itemId, targetUserId: context.targetUserId });
-    }
-    resetItemManagementState();
-  }
+  itemInteractionController.handleConfirmYesNoModeInput(code, key);
 }
 
 /** Handles top-level Shift+Z admin menu action selection. */
 function handleAdminMenuModeInput(code: string, key: string): void {
-  if (adminMenuActions.length === 0) {
-    state.mode = 'normal';
-    return;
-  }
-  const control = handleListControlKey(code, key, adminMenuActions, adminMenuIndex, (entry) => entry.label);
-  if (control.type === 'move') {
-    adminMenuIndex = control.index;
-    updateStatus(adminMenuActions[adminMenuIndex].label);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (code === 'Space') {
-    updateStatus(adminMenuActions[adminMenuIndex]?.tooltip ?? 'No tooltip available.');
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const selected = adminMenuActions[adminMenuIndex];
-    if (!selected) return;
-    if (selected.id === 'manage_roles') {
-      signaling.send({ type: 'admin_roles_list' });
-      updateStatus('Loading roles...');
-      return;
-    }
-    if (selected.id === 'change_user_role') {
-      adminPendingUserAction = 'set_role';
-      signaling.send({ type: 'admin_users_list', action: 'set_role' });
-      updateStatus('Loading users...');
-      return;
-    }
-    if (selected.id === 'ban_user') {
-      adminPendingUserAction = 'ban';
-      signaling.send({ type: 'admin_users_list', action: 'ban' });
-      updateStatus('Loading users...');
-      return;
-    }
-    if (selected.id === 'unban_user') {
-      adminPendingUserAction = 'unban';
-      signaling.send({ type: 'admin_users_list', action: 'unban' });
-      updateStatus('Loading users...');
-      return;
-    }
-    if (selected.id === 'delete_account') {
-      adminPendingUserAction = 'delete_account';
-      signaling.send({ type: 'admin_users_list', action: 'delete_account' });
-      updateStatus('Loading users...');
-    }
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'normal';
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminMenuModeInput(code, key);
 }
 
 /** Handles role list selection flow, including add-role entry. */
 function handleAdminRoleListModeInput(code: string, key: string): void {
-  const entries: Array<{ label: string; role?: AdminRoleSummary }> = [
-    ...adminRoles.map((role) => ({ label: `${role.name}, ${role.userCount}`, role })),
-    { label: 'Add role' },
-  ];
-  const control = handleListControlKey(code, key, entries, adminRoleIndex, (entry) => entry.label);
-  if (control.type === 'move') {
-    adminRoleIndex = control.index;
-    updateStatus(entries[adminRoleIndex]?.label || '');
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const selected = entries[adminRoleIndex];
-    if (!selected) return;
-    if (!selected.role) {
-      state.mode = 'adminRoleNameEdit';
-      state.nicknameInput = '';
-      state.cursorPos = 0;
-      replaceTextOnNextType = false;
-      updateStatus('New role name.');
-      audio.sfxUiBlip();
-      return;
-    }
-    adminSelectedRoleName = selected.role.name;
-    adminRolePermissionIndex = 0;
-    state.mode = 'adminRolePermissionList';
-    updateStatus(`${adminSelectedRoleName} permissions.`);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'normal';
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminRoleListModeInput(code, key);
 }
 
 /** Handles role permission toggle and delete flow. */
 function handleAdminRolePermissionListModeInput(code: string, key: string): void {
-  const role = adminRoles.find((entry) => entry.name === adminSelectedRoleName);
-  if (!role) {
-    state.mode = 'adminRoleList';
-    return;
-  }
-  const entries = [...adminPermissionKeys, '__delete_role__'];
-  const control = handleListControlKey(code, key, entries, adminRolePermissionIndex, (entry) =>
-    entry === '__delete_role__' ? `Delete role ${role.name}` : `${entry}: ${role.permissions.includes(entry) ? 'on' : 'off'}`,
-  );
-  if (control.type === 'move') {
-    adminRolePermissionIndex = control.index;
-    const value = entries[adminRolePermissionIndex];
-    if (value === '__delete_role__') {
-      updateStatus(`Delete role ${role.name}.`);
-    } else {
-      updateStatus(`${value}: ${role.permissions.includes(value) ? 'on' : 'off'}`);
-    }
-    audio.sfxUiBlip();
-    return;
-  }
-  if (code === 'Space') {
-    const value = entries[adminRolePermissionIndex];
-    if (value === '__delete_role__') {
-      updateStatus('Delete the current role and reassign affected users.');
-    } else {
-      updateStatus(adminPermissionTooltips[value] || 'No tooltip available.');
-    }
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const value = entries[adminRolePermissionIndex];
-    if (value === '__delete_role__') {
-      if (role.name === 'admin' || role.name === 'user') {
-        updateStatus('Admin and user roles cannot be deleted.');
-        audio.sfxUiCancel();
-        return;
-      }
-      const replacementCandidates = adminRoles.filter((entry) => entry.name !== role.name);
-      if (replacementCandidates.length === 0) {
-        updateStatus('No replacement role available.');
-        audio.sfxUiCancel();
-        return;
-      }
-      adminRoleDeleteReplacementIndex = 0;
-      state.mode = 'adminRoleDeleteReplacement';
-      updateStatus(`Replacement role: ${replacementCandidates[0].name}.`);
-      audio.sfxUiBlip();
-      return;
-    }
-    const nextPermissions = new Set(role.permissions);
-    if (nextPermissions.has(value)) {
-      nextPermissions.delete(value);
-    } else {
-      nextPermissions.add(value);
-    }
-    role.permissions = [...nextPermissions].sort((a, b) => a.localeCompare(b));
-    signaling.send({ type: 'admin_role_update_permissions', role: role.name, permissions: role.permissions });
-    updateStatus(`${value}: ${role.permissions.includes(value) ? 'on' : 'off'}`);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'adminRoleList';
-    updateStatus('Roles.');
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminRolePermissionListModeInput(code, key);
 }
 
 /** Handles replacement-role selection while deleting a role. */
 function handleAdminRoleDeleteReplacementModeInput(code: string, key: string): void {
-  const candidates = adminRoles.filter((entry) => entry.name !== adminSelectedRoleName);
-  if (candidates.length === 0) {
-    state.mode = 'adminRolePermissionList';
-    return;
-  }
-  const control = handleListControlKey(code, key, candidates, adminRoleDeleteReplacementIndex, (entry) => entry.name);
-  if (control.type === 'move') {
-    adminRoleDeleteReplacementIndex = control.index;
-    updateStatus(candidates[adminRoleDeleteReplacementIndex].name);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const replacement = candidates[adminRoleDeleteReplacementIndex];
-    signaling.send({
-      type: 'admin_role_delete',
-      role: adminSelectedRoleName,
-      replacementRole: replacement.name,
-    });
-    state.mode = 'adminRoleList';
-    updateStatus(`Deleting ${adminSelectedRoleName}...`);
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'adminRolePermissionList';
-    updateStatus(`${adminSelectedRoleName} permissions.`);
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminRoleDeleteReplacementModeInput(code, key);
 }
 
 /** Handles user list selection for change-role/ban/unban flows. */
 function handleAdminUserListModeInput(code: string, key: string): void {
-  if (adminUsers.length === 0) {
-    state.mode = 'normal';
-    adminPendingUserAction = null;
-    return;
-  }
-  const control = handleListControlKey(code, key, adminUsers, adminUserIndex, (entry) => `${entry.username}, ${entry.role}, ${entry.status}`);
-  if (control.type === 'move') {
-    adminUserIndex = control.index;
-    const selected = adminUsers[adminUserIndex];
-    updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const selected = adminUsers[adminUserIndex];
-    if (!selected) return;
-    adminSelectedUsername = selected.username;
-    if (adminPendingUserAction === 'set_role') {
-      signaling.send({ type: 'admin_roles_list' });
-      updateStatus(`Select new role for ${selected.username}.`);
-      return;
-    }
-    if (adminPendingUserAction === 'ban') {
-      adminPendingUserMutation = { action: 'ban', username: selected.username };
-      signaling.send({ type: 'admin_user_ban', username: selected.username });
-      adminPendingUserAction = 'ban';
-      return;
-    }
-    if (adminPendingUserAction === 'unban') {
-      adminPendingUserMutation = { action: 'unban', username: selected.username };
-      signaling.send({ type: 'admin_user_unban', username: selected.username });
-      adminPendingUserAction = 'unban';
-      return;
-    }
-    if (adminPendingUserAction === 'delete_account') {
-      adminDeleteConfirmIndex = 0;
-      state.mode = 'adminUserDeleteConfirm';
-      announceMenuEntry(`Delete account ${selected.username}?`, YES_NO_OPTIONS[adminDeleteConfirmIndex].label);
-      return;
-    }
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'adminMenu';
-    adminPendingUserAction = null;
-    updateStatus('Admin menu.');
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminUserListModeInput(code, key);
 }
 
 /** Handles role selection for a previously selected user target. */
 function handleAdminUserRoleSelectModeInput(code: string, key: string): void {
-  if (adminRoles.length === 0) {
-    state.mode = 'normal';
-    adminPendingUserAction = null;
-    return;
-  }
-  const control = handleListControlKey(code, key, adminRoles, adminRoleIndex, (entry) => entry.name);
-  if (control.type === 'move') {
-    adminRoleIndex = control.index;
-    updateStatus(adminRoles[adminRoleIndex].name);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'select') {
-    const selectedRole = adminRoles[adminRoleIndex];
-    adminPendingUserMutation = { action: 'set_role', username: adminSelectedUsername, role: selectedRole.name };
-    signaling.send({ type: 'admin_user_set_role', username: adminSelectedUsername, role: selectedRole.name });
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'adminUserList';
-    updateStatus('Select user.');
-    audio.sfxUiCancel();
-  }
+  adminController.handleAdminUserRoleSelectModeInput(code, key);
 }
 
 /** Handles yes/no confirmation for delete-account admin flow. */
 function handleAdminUserDeleteConfirmModeInput(code: string, key: string): void {
-  if (!adminSelectedUsername || adminPendingUserAction !== 'delete_account') {
-    state.mode = 'adminUserList';
-    return;
-  }
-  const control = handleYesNoMenuInput(code, key, adminDeleteConfirmIndex);
-  if (control.type === 'move') {
-    adminDeleteConfirmIndex = control.index;
-    updateStatus(YES_NO_OPTIONS[adminDeleteConfirmIndex].label);
-    audio.sfxUiBlip();
-    return;
-  }
-  if (control.type === 'cancel') {
-    state.mode = 'adminUserList';
-    const selected = adminUsers[adminUserIndex];
-    if (selected) {
-      updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
-    } else {
-      updateStatus('Select user.');
-    }
-    audio.sfxUiCancel();
-    return;
-  }
-  if (control.type === 'select') {
-    const choice = YES_NO_OPTIONS[adminDeleteConfirmIndex];
-    if (choice.id === 'no') {
-      state.mode = 'adminUserList';
-      const selected = adminUsers[adminUserIndex];
-      if (selected) {
-        updateStatus(`${selected.username}, ${selected.role}, ${selected.status}.`);
-      } else {
-        updateStatus('Select user.');
-      }
-      audio.sfxUiCancel();
-      return;
-    }
-    state.mode = 'adminUserList';
-    updateStatus(`Deleting account ${adminSelectedUsername}...`);
-    adminPendingUserMutation = { action: 'delete_account', username: adminSelectedUsername };
-    signaling.send({ type: 'admin_user_delete', username: adminSelectedUsername });
-  }
+  adminController.handleAdminUserDeleteConfirmModeInput(code, key);
 }
 
 /** Handles text edit for new-role creation from admin role list. */
 function handleAdminRoleNameEditModeInput(code: string, key: string, ctrlKey: boolean): void {
-  const editAction = getEditSessionAction(code);
-  if (editAction === 'submit') {
-    const name = state.nicknameInput.trim().toLowerCase();
-    if (!name) {
-      updateStatus('Role name required.');
-      audio.sfxUiCancel();
-      return;
-    }
-    signaling.send({ type: 'admin_role_create', name });
-    state.mode = 'adminRoleList';
-    state.nicknameInput = '';
-    state.cursorPos = 0;
-    replaceTextOnNextType = false;
-    updateStatus(`Creating role ${name}...`);
-    return;
-  }
-  if (editAction === 'cancel') {
-    state.mode = 'adminRoleList';
-    state.nicknameInput = '';
-    state.cursorPos = 0;
-    replaceTextOnNextType = false;
-    updateStatus('Cancelled.');
-    audio.sfxUiCancel();
-    return;
-  }
-  applyTextInputEdit(code, key, 32, ctrlKey, true);
+  adminController.handleAdminRoleNameEditModeInput(code, key, ctrlKey);
 }
 
 const itemPropertyEditor = createItemPropertyEditor({
@@ -3599,204 +2535,50 @@ function handleNicknameModeInput(code: string, key: string, ctrlKey: boolean): v
   applyTextInputEdit(code, key, NICKNAME_MAX_LENGTH, ctrlKey, true);
 }
 
-/** Returns whether a key code should be treated as a repeat-suppressed typing key. */
-function isTypingKey(code: string): boolean {
-  return code.startsWith('Key') || code === 'Space';
-}
-
-/** Maps normalized `event.key` values to canonical `event.code` strings when code is unavailable. */
-function codeFromKey(key: string, location: number): string | null {
-  if (key === 'Escape' || key === 'Esc') return 'Escape';
-  if (key === 'Enter' || key === 'Return') return 'Enter';
-  if (key === 'Backspace') return 'Backspace';
-  if (key === 'Delete' || key === 'Del') return 'Delete';
-  if (key === 'ArrowUp' || key === 'Up') return 'ArrowUp';
-  if (key === 'ArrowDown' || key === 'Down') return 'ArrowDown';
-  if (key === 'ArrowLeft' || key === 'Left') return 'ArrowLeft';
-  if (key === 'ArrowRight' || key === 'Right') return 'ArrowRight';
-  if (key === 'Home') return 'Home';
-  if (key === 'End') return 'End';
-  if (key === 'PageUp') return 'PageUp';
-  if (key === 'PageDown') return 'PageDown';
-  if (key === 'Tab') return 'Tab';
-  if (key === ' ' || key === 'Spacebar') return 'Space';
-  if (key.length === 1) {
-    if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
-    if (/^[0-9]$/.test(key)) return `Digit${key}`;
-    if (key === '!') return 'Digit1';
-    if (key === '@') return 'Digit2';
-    if (key === '#') return 'Digit3';
-    if (key === '$') return 'Digit4';
-    if (key === '%') return 'Digit5';
-    if (key === '^') return 'Digit6';
-    if (key === '&') return 'Digit7';
-    if (key === '*') return 'Digit8';
-    if (key === '(') return 'Digit9';
-    if (key === ')') return 'Digit0';
-    if (key === '+' && location === 3) return 'NumpadAdd';
-    if (key === '-' && location === 3) return 'NumpadSubtract';
-    if (key === '+' || key === '=') return 'Equal';
-    if (key === '-' || key === '_') return 'Minus';
-    if (key === '/' || key === '?') return 'Slash';
-    if (key === ',' || key === '<') return 'Comma';
-    if (key === '.' || key === '>') return 'Period';
-    if (key === ';' || key === ':') return 'Semicolon';
-    if (key === "'" || key === '"') return 'Quote';
-    if (key === '[' || key === '{') return 'BracketLeft';
-    if (key === ']' || key === '}') return 'BracketRight';
-    if (key === '\\' || key === '|') return 'Backslash';
-  }
-  return null;
-}
-
-/** Returns best-effort canonical key code across desktop + Safari/iOS keyboard event variants. */
-function normalizeInputCode(event: KeyboardEvent): string {
-  if (event.code && event.code !== 'Unidentified') {
-    return event.code;
-  }
-  return codeFromKey(event.key, event.location) ?? event.code ?? '';
-}
-
-/** Wires global keyboard/paste input handlers and routes events by current mode. */
-function setupInputHandlers(): void {
-  document.addEventListener('keydown', (event) => {
-    const code = normalizeInputCode(event);
-    if (!code) return;
-    const hasShortcutModifier = event.ctrlKey || event.metaKey;
-    const input: ModeInput = {
-      code,
-      key: event.key,
-      ctrlKey: hasShortcutModifier,
-      shiftKey: event.shiftKey,
-    };
-
-    if (!dom.settingsModal.classList.contains('hidden') && code === 'Escape') {
-      closeSettings();
-      return;
-    }
-
-    if (!state.running) return;
-    if (document.activeElement !== dom.canvas) return;
-    if (event.altKey) return;
-    if (hasShortcutModifier && !isTextEditingMode(state.mode)) return;
-    if (activeTeleport && code.startsWith('Arrow')) {
-      event.preventDefault();
-      return;
-    }
-
-    const isNativePasteShortcut = hasShortcutModifier && isTextEditingMode(state.mode) && code === 'KeyV';
-    if ((state.mode !== 'normal' || !code.startsWith('Arrow')) && !isNativePasteShortcut) {
-      event.preventDefault();
-    }
-
-    if (hasShortcutModifier && isTextEditingMode(state.mode)) {
-      if (code === 'KeyV') {
-        return;
-      }
-      if (code === 'KeyC') {
-        const text = state.nicknameInput;
-        internalClipboardText = text;
-        void navigator.clipboard?.writeText(text).catch(() => undefined);
-        updateStatus('copied');
-        return;
-      }
-      if (code === 'KeyX') {
-        const text = state.nicknameInput;
-        internalClipboardText = text;
-        void navigator.clipboard?.writeText(text).catch(() => undefined);
-        state.nicknameInput = '';
-        state.cursorPos = 0;
-        replaceTextOnNextType = false;
-        updateStatus('cut');
-        return;
-      }
-    }
-
-    if (isTypingKey(code) && state.keysPressed[code]) return;
-
-    const opensCommandPalette =
-      canOpenCommandPaletteInMode(state.mode) &&
-      ((code === 'KeyK' && event.shiftKey) || code === 'ContextMenu' || (code === 'F10' && event.shiftKey));
-    if (opensCommandPalette) {
-      if (pendingEscapeDisconnect) {
-        pendingEscapeDisconnect = false;
-      }
-      openCommandPalette();
-      state.keysPressed[code] = true;
-      return;
-    }
-
-    dispatchModeInput({
-      mode: state.mode,
-      input,
-      handlers: {
-        nickname: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
-          handleNicknameModeInput(currentCode, currentKey, currentCtrlKey),
-        chat: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
-          handleChatModeInput(currentCode, currentKey, currentCtrlKey),
-        micGainEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
-          handleMicGainEditModeInput(currentCode, currentKey, currentCtrlKey),
-        pianoUse: (currentInput) => {
-          itemBehaviorRegistry.handleModeInput(state.mode, currentInput);
-        },
-        commandPalette: ({ code: currentCode, key: currentKey }) => handleCommandPaletteModeInput(currentCode, currentKey),
-        effectSelect: ({ code: currentCode, key: currentKey }) => handleEffectSelectModeInput(currentCode, currentKey),
-        helpView: ({ code: currentCode }) => handleHelpViewModeInput(currentCode),
-        listUsers: ({ code: currentCode, key: currentKey }) => handleListModeInput(currentCode, currentKey),
-        listItems: ({ code: currentCode, key: currentKey }) => handleListItemsModeInput(currentCode, currentKey),
-        addItem: ({ code: currentCode, key: currentKey }) => handleAddItemModeInput(currentCode, currentKey),
-        selectItem: ({ code: currentCode, key: currentKey }) => handleSelectItemModeInput(currentCode, currentKey),
-        itemManageOptions: ({ code: currentCode, key: currentKey }) => handleItemManageOptionsModeInput(currentCode, currentKey),
-        itemManageTransferUser: ({ code: currentCode, key: currentKey }) =>
-          handleItemManageTransferUserModeInput(currentCode, currentKey),
-        confirmYesNo: ({ code: currentCode, key: currentKey }) => handleConfirmYesNoModeInput(currentCode, currentKey),
-        adminMenu: ({ code: currentCode, key: currentKey }) => handleAdminMenuModeInput(currentCode, currentKey),
-        adminRoleList: ({ code: currentCode, key: currentKey }) => handleAdminRoleListModeInput(currentCode, currentKey),
-        adminRolePermissionList: ({ code: currentCode, key: currentKey }) =>
-          handleAdminRolePermissionListModeInput(currentCode, currentKey),
-        adminRoleDeleteReplacement: ({ code: currentCode, key: currentKey }) =>
-          handleAdminRoleDeleteReplacementModeInput(currentCode, currentKey),
-        adminUserList: ({ code: currentCode, key: currentKey }) => handleAdminUserListModeInput(currentCode, currentKey),
-        adminUserRoleSelect: ({ code: currentCode, key: currentKey }) => handleAdminUserRoleSelectModeInput(currentCode, currentKey),
-        adminUserDeleteConfirm: ({ code: currentCode, key: currentKey }) => handleAdminUserDeleteConfirmModeInput(currentCode, currentKey),
-        adminRoleNameEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
-          handleAdminRoleNameEditModeInput(currentCode, currentKey, currentCtrlKey),
-        itemProperties: ({ code: currentCode, key: currentKey }) =>
-          itemPropertyEditor.handleItemPropertiesModeInput(currentCode, currentKey),
-        itemPropertyEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
-          itemPropertyEditor.handleItemPropertyEditModeInput(currentCode, currentKey, currentCtrlKey),
-        itemPropertyOptionSelect: ({ code: currentCode, key: currentKey }) =>
-          itemPropertyEditor.handleItemPropertyOptionSelectModeInput(currentCode, currentKey),
+function handleModeInput(input: ModeInput): void {
+  dispatchModeInput({
+    mode: state.mode,
+    input,
+    handlers: {
+      nickname: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+        handleNicknameModeInput(currentCode, currentKey, currentCtrlKey),
+      chat: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+        handleChatModeInput(currentCode, currentKey, currentCtrlKey),
+      micGainEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+        handleMicGainEditModeInput(currentCode, currentKey, currentCtrlKey),
+      pianoUse: (currentInput) => {
+        itemBehaviorRegistry.handleModeInput(state.mode, currentInput);
       },
-      onNormalMode: handleNormalModeInput,
-    });
-
-    state.keysPressed[code] = true;
-  });
-
-  document.addEventListener('keyup', (event) => {
-    const code = normalizeInputCode(event);
-    if (code && shouldForwardPianoKeyUp(state.mode)) {
-      itemBehaviorRegistry.handleModeKeyUp('pianoUse', {
-        code,
-        shiftKey: event.shiftKey,
-      });
-    }
-    if (code) {
-      state.keysPressed[code] = false;
-    }
-    if (event.code && event.code !== code) {
-      state.keysPressed[event.code] = false;
-    }
-  });
-
-  document.addEventListener('paste', (event) => {
-    if (document.activeElement !== dom.canvas) return;
-    if (!state.running) return;
-    const pasted = event.clipboardData?.getData('text') ?? internalClipboardText;
-    if (!pasteIntoActiveTextInput(pasted)) return;
-    event.preventDefault();
-    updateStatus('pasted');
+      commandPalette: ({ code: currentCode, key: currentKey }) => handleCommandPaletteModeInput(currentCode, currentKey),
+      effectSelect: ({ code: currentCode, key: currentKey }) => handleEffectSelectModeInput(currentCode, currentKey),
+      helpView: ({ code: currentCode }) => handleHelpViewModeInput(currentCode),
+      listUsers: ({ code: currentCode, key: currentKey }) => handleListModeInput(currentCode, currentKey),
+      listItems: ({ code: currentCode, key: currentKey }) => handleListItemsModeInput(currentCode, currentKey),
+      addItem: ({ code: currentCode, key: currentKey }) => handleAddItemModeInput(currentCode, currentKey),
+      selectItem: ({ code: currentCode, key: currentKey }) => handleSelectItemModeInput(currentCode, currentKey),
+      itemManageOptions: ({ code: currentCode, key: currentKey }) => handleItemManageOptionsModeInput(currentCode, currentKey),
+      itemManageTransferUser: ({ code: currentCode, key: currentKey }) =>
+        handleItemManageTransferUserModeInput(currentCode, currentKey),
+      confirmYesNo: ({ code: currentCode, key: currentKey }) => handleConfirmYesNoModeInput(currentCode, currentKey),
+      adminMenu: ({ code: currentCode, key: currentKey }) => handleAdminMenuModeInput(currentCode, currentKey),
+      adminRoleList: ({ code: currentCode, key: currentKey }) => handleAdminRoleListModeInput(currentCode, currentKey),
+      adminRolePermissionList: ({ code: currentCode, key: currentKey }) =>
+        handleAdminRolePermissionListModeInput(currentCode, currentKey),
+      adminRoleDeleteReplacement: ({ code: currentCode, key: currentKey }) =>
+        handleAdminRoleDeleteReplacementModeInput(currentCode, currentKey),
+      adminUserList: ({ code: currentCode, key: currentKey }) => handleAdminUserListModeInput(currentCode, currentKey),
+      adminUserRoleSelect: ({ code: currentCode, key: currentKey }) => handleAdminUserRoleSelectModeInput(currentCode, currentKey),
+      adminUserDeleteConfirm: ({ code: currentCode, key: currentKey }) => handleAdminUserDeleteConfirmModeInput(currentCode, currentKey),
+      adminRoleNameEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+        handleAdminRoleNameEditModeInput(currentCode, currentKey, currentCtrlKey),
+      itemProperties: ({ code: currentCode, key: currentKey }) =>
+        itemPropertyEditor.handleItemPropertiesModeInput(currentCode, currentKey),
+      itemPropertyEdit: ({ code: currentCode, key: currentKey, ctrlKey: currentCtrlKey }) =>
+        itemPropertyEditor.handleItemPropertyEditModeInput(currentCode, currentKey, currentCtrlKey),
+      itemPropertyOptionSelect: ({ code: currentCode, key: currentKey }) =>
+        itemPropertyEditor.handleItemPropertyOptionSelectModeInput(currentCode, currentKey),
+    },
+    onNormalMode: handleNormalModeInput,
   });
 }
 
@@ -3823,81 +2605,54 @@ function closeSettings(): void {
   }
 }
 
-/** Wires button/form handlers and lifecycle hooks for the main UI shell. */
-function setupUiHandlers(): void {
-  setupDomUiHandlers({
-    dom,
-    updateConnectAvailability,
-    connect,
-    disconnect,
-    openSettings,
-    closeSettings,
-    updateStatus,
-    sfxUiBlip: () => audio.sfxUiBlip(),
-    setupLocalMedia,
-    setPreferredInput: (id, name) => {
-      mediaSession.setPreferredInput(id, name);
-    },
-    setPreferredOutput: (id, name) => {
-      mediaSession.setPreferredOutput(id, name);
-    },
-    updateDeviceSummary,
-    setOutputDevice: (id) => peerManager.setOutputDevice(id),
-  });
-  dom.showRegisterButton.addEventListener('click', () => {
-    if (authMode === 'login') {
-      setAuthMode('register');
-      dom.registerUsername.focus();
-    } else {
-      setAuthMode('login');
-      dom.authUsername.focus();
-    }
-  });
-  dom.logoutButton.addEventListener('click', () => {
-    logOutAccount();
-  });
-  dom.authUsername.addEventListener('input', () => {
-    dom.authUsername.value = sanitizeAuthUsername(dom.authUsername.value);
-    updateConnectAvailability();
-  });
-  dom.authPassword.addEventListener('input', () => {
-    updateConnectAvailability();
-  });
-  dom.registerUsername.addEventListener('input', () => {
-    dom.registerUsername.value = sanitizeAuthUsername(dom.registerUsername.value);
-    updateConnectAvailability();
-  });
-  dom.registerPassword.addEventListener('input', () => {
-    updateConnectAvailability();
-  });
-  dom.registerPasswordConfirm.addEventListener('input', () => {
-    updateConnectAvailability();
-  });
-  dom.registerEmail.addEventListener('input', () => {
-    updateConnectAvailability();
-  });
-
-  const submitAuthOnEnter = (event: KeyboardEvent): void => {
-    if (event.key !== 'Enter') return;
-    if (dom.connectButton.disabled) return;
-    event.preventDefault();
-    connect();
-  };
-  dom.authUsername.addEventListener('keydown', submitAuthOnEnter);
-  dom.authPassword.addEventListener('keydown', submitAuthOnEnter);
-  dom.registerUsername.addEventListener('keydown', submitAuthOnEnter);
-  dom.registerPassword.addEventListener('keydown', submitAuthOnEnter);
-  dom.registerPasswordConfirm.addEventListener('keydown', submitAuthOnEnter);
-  dom.registerEmail.addEventListener('keydown', submitAuthOnEnter);
-}
-
-setupInputHandlers();
-setupUiHandlers();
-dom.authUsername.value = sanitizeAuthUsername(authUsername);
-dom.registerUsername.value = sanitizeAuthUsername(authUsername);
-loadPersistedAuthPolicy();
-setAuthMode('login');
-updateConnectAvailability();
+setupKeyboardInputHandlers({
+  dom: {
+    settingsModal: dom.settingsModal,
+    canvas: dom.canvas,
+  },
+  state,
+  isTextEditingMode,
+  closeSettings,
+  hasBlockedArrowTeleport: (code) => Boolean(activeTeleport && code.startsWith('Arrow')),
+  handleModeInput,
+  canOpenCommandPaletteInMode,
+  openCommandPalette,
+  shouldForwardModeKeyUp: shouldForwardPianoKeyUp,
+  onModeKeyUp: ({ code, shiftKey }) => {
+    itemBehaviorRegistry.handleModeKeyUp('pianoUse', {
+      code,
+      shiftKey,
+    });
+  },
+  pasteIntoActiveTextInput,
+  updateStatus,
+  setReplaceTextOnNextType: (value) => {
+    replaceTextOnNextType = value;
+  },
+});
+setupDomUiHandlers({
+  dom,
+  updateConnectAvailability,
+  connect,
+  disconnect,
+  openSettings,
+  closeSettings,
+  updateStatus,
+  sfxUiBlip: () => audio.sfxUiBlip(),
+  setupLocalMedia,
+  setPreferredInput: (id, name) => {
+    mediaSession.setPreferredInput(id, name);
+  },
+  setPreferredOutput: (id, name) => {
+    mediaSession.setPreferredOutput(id, name);
+  },
+  updateDeviceSummary,
+  setOutputDevice: (id) => peerManager.setOutputDevice(id),
+});
+authController.setupUiHandlers({
+  connect,
+});
+authController.initializeUi();
 updateDeviceSummary();
 setConnectionStatus(
   isVersionReloadedSession()
