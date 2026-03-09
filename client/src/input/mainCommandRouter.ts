@@ -5,7 +5,6 @@ export type MainModeCommand =
   | 'editNickname'
   | 'toggleMute'
   | 'toggleOutputMode'
-  | 'toggleSpatialMode'
   | 'toggleLoopback'
   | 'toggleVoiceLayer'
   | 'toggleItemLayer'
@@ -46,7 +45,6 @@ export type MainModeCommand =
  */
 export function resolveMainModeCommand(code: string, shiftKey: boolean): MainModeCommand | null {
   if (code === 'KeyN') return shiftKey ? null : 'editNickname';
-  if (code === 'KeyH') return shiftKey ? null : 'toggleSpatialMode';
   if (code === 'KeyM') return shiftKey ? 'toggleOutputMode' : 'toggleMute';
   if (code === 'Digit1') return shiftKey ? 'toggleLoopback' : 'toggleVoiceLayer';
   if (code === 'Digit2') return shiftKey ? null : 'toggleItemLayer';

@@ -7,14 +7,7 @@ import {
   type EffectId,
   type EffectRuntime,
 } from './effects';
-import { resolveSpatialMix } from './spatial';
-import {
-  applySpatialOutput,
-  createSpatialOutputRuntime,
-  disconnectSpatialOutputRuntime,
-  type SpatialOutputRuntime,
-  type SpatialRenderMode,
-} from './spatialOutput';
+import { applySpatialMixToNodes, resolveSpatialMix, SPATIAL_RAMP_SECONDS, SPATIAL_TIME_CONSTANT_SECONDS } from './spatial';
 
 export type SpatialPeerRuntime = {
   nickname: string;
@@ -22,7 +15,7 @@ export type SpatialPeerRuntime = {
   y: number;
   listenGain?: number;
   gain?: GainNode;
-  spatialOutput?: SpatialOutputRuntime;
+  panner?: StereoPannerNode;
   audioElement?: HTMLAudioElement;
 };
 
@@ -43,7 +36,7 @@ type ActiveSpatialSampleRuntime = {
   range: number;
   baseGain: number;
   gainNode: GainNode;
-  spatialOutput: SpatialOutputRuntime;
+  pannerNode: StereoPannerNode | null;
   sourceNode: AudioBufferSourceNode;
 };
 
@@ -63,7 +56,6 @@ export class AudioEngine {
   private loopbackEnabled = false;
   private loopbackRuntime: EffectRuntime | null = null;
   private outputMode: OutputMode = 'stereo';
-  private spatialMode: SpatialRenderMode = 'classic';
   private masterVolume = 50;
   private voiceLayerEnabled = true;
   private effectIndex = EFFECT_SEQUENCE.findIndex((effect) => effect.id === 'off');
@@ -197,19 +189,6 @@ export class AudioEngine {
     this.outputMode = mode;
   }
 
-  setSpatialMode(mode: SpatialRenderMode): void {
-    this.spatialMode = mode;
-  }
-
-  getSpatialMode(): SpatialRenderMode {
-    return this.spatialMode;
-  }
-
-  toggleSpatialMode(): SpatialRenderMode {
-    this.spatialMode = this.spatialMode === 'classic' ? 'hrtf' : 'classic';
-    return this.spatialMode;
-  }
-
   setMasterVolume(value: number): number {
     const next = Math.max(0, Math.min(100, Number.isFinite(value) ? Math.round(value) : 50));
     this.masterVolume = next;
@@ -300,20 +279,21 @@ export class AudioEngine {
     const gainNode = this.audioCtx.createGain();
     sourceNode.connect(gainNode);
 
-    let spatialOutput: SpatialOutputRuntime = { kind: 'none' };
-    if (this.voiceLayerEnabled) {
-      spatialOutput = createSpatialOutputRuntime({
-        audioCtx: this.audioCtx,
-        inputNode: gainNode,
-        destination: this.masterGainNode ?? this.audioCtx.destination,
-        outputMode: this.outputMode,
-        spatialMode: this.spatialMode,
-      });
+    let pannerNode: StereoPannerNode | undefined;
+    if (this.supportsStereoPanner()) {
+      pannerNode = this.audioCtx.createStereoPanner();
+      if (this.voiceLayerEnabled) {
+        gainNode.connect(pannerNode).connect(this.masterGainNode ?? this.audioCtx.destination);
+      }
+    } else {
+      if (this.voiceLayerEnabled) {
+        gainNode.connect(this.masterGainNode ?? this.audioCtx.destination);
+      }
     }
 
     peer.audioElement = audioElement;
     peer.gain = gainNode;
-    peer.spatialOutput = spatialOutput;
+    peer.panner = pannerNode;
   }
 
   updateSpatialAudio(peers: Iterable<SpatialPeerRuntime>, playerPosition: { x: number; y: number }): void {
@@ -330,15 +310,13 @@ export class AudioEngine {
       });
       const listenGain = Number.isFinite(peer.listenGain) ? Math.max(0, peer.listenGain as number) : 1;
       const scaledMix = mix ? { ...mix, gain: mix.gain * listenGain } : null;
-      applySpatialOutput({
+      applySpatialMixToNodes({
         audioCtx: this.audioCtx,
-        runtime: peer.spatialOutput ?? { kind: 'none' },
         gainNode: peer.gain,
+        pannerNode: peer.panner ?? null,
         mix: scaledMix,
         outputMode: this.outputMode,
         transition: 'target',
-        dx: peer.x - playerPosition.x,
-        dy: peer.y - playerPosition.y,
       });
     }
   }
@@ -397,20 +375,20 @@ export class AudioEngine {
       const gainNode = audioCtx.createGain();
       gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
       source.connect(gainNode);
-      const spatialOutput = createSpatialOutputRuntime({
-        audioCtx,
-        inputNode: gainNode,
-        destination: sfxGainNode,
-        outputMode: this.outputMode,
-        spatialMode: this.spatialMode,
-      });
+      let pannerNode: StereoPannerNode | null = null;
+      if (this.supportsStereoPanner() && this.outputMode === 'stereo') {
+        pannerNode = audioCtx.createStereoPanner();
+        gainNode.connect(pannerNode).connect(sfxGainNode);
+      } else {
+        gainNode.connect(sfxGainNode);
+      }
       const runtime: ActiveSpatialSampleRuntime = {
         sourceX: sourcePosition.x,
         sourceY: sourcePosition.y,
         range: Math.max(1, range),
         baseGain: gain,
         gainNode,
-        spatialOutput,
+        pannerNode,
         sourceNode: source,
       };
       this.activeSpatialSamples.add(runtime);
@@ -423,7 +401,7 @@ export class AudioEngine {
           // Ignore stale graph disconnects.
         }
         gainNode.disconnect();
-        disconnectSpatialOutputRuntime(spatialOutput);
+        pannerNode?.disconnect();
       };
       source.start();
     } catch {
@@ -450,20 +428,20 @@ export class AudioEngine {
       const gainNode = audioCtx.createGain();
       gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
       source.connect(gainNode);
-      const spatialOutput = createSpatialOutputRuntime({
-        audioCtx,
-        inputNode: gainNode,
-        destination: sfxGainNode,
-        outputMode: this.outputMode,
-        spatialMode: this.spatialMode,
-      });
+      let pannerNode: StereoPannerNode | null = null;
+      if (this.supportsStereoPanner() && this.outputMode === 'stereo') {
+        pannerNode = audioCtx.createStereoPanner();
+        gainNode.connect(pannerNode).connect(sfxGainNode);
+      } else {
+        gainNode.connect(sfxGainNode);
+      }
       const runtime: ActiveSpatialSampleRuntime = {
         sourceX: sourcePosition.x,
         sourceY: sourcePosition.y,
         range: Math.max(1, range),
         baseGain: gain,
         gainNode,
-        spatialOutput,
+        pannerNode,
         sourceNode: source,
       };
       this.activeSpatialSamples.add(runtime);
@@ -477,7 +455,7 @@ export class AudioEngine {
             // Ignore stale graph disconnects.
           }
           gainNode.disconnect();
-          disconnectSpatialOutputRuntime(spatialOutput);
+          pannerNode?.disconnect();
           resolve();
         };
         source.start();
@@ -548,12 +526,10 @@ export class AudioEngine {
       peer.audioElement.remove();
     }
     peer.gain?.disconnect();
-    if (peer.spatialOutput) {
-      disconnectSpatialOutputRuntime(peer.spatialOutput);
-    }
+    peer.panner?.disconnect();
     peer.audioElement = undefined;
     peer.gain = undefined;
-    peer.spatialOutput = undefined;
+    peer.panner = undefined;
   }
 
   private rebuildOutboundEffectGraph(): void {
@@ -613,6 +589,8 @@ export class AudioEngine {
       : { gain: baseGain, pan: 0 };
     if (!resolved) return;
     const finalGain = resolved.gain;
+    const panValue = spec.sourcePosition ? resolved.pan : undefined;
+
     if (finalGain <= 0) return;
 
     const startTime = audioCtx.currentTime + (spec.delay ?? 0);
@@ -625,40 +603,16 @@ export class AudioEngine {
     gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + spec.duration);
 
     oscillator.connect(gainNode);
-    let spatialOutput: SpatialOutputRuntime | null = null;
-    if (spec.sourcePosition && this.outputMode === 'stereo') {
-      if (this.spatialMode === 'hrtf' && typeof audioCtx.createPanner === 'function') {
-        const panner = audioCtx.createPanner();
-        panner.panningModel = 'HRTF';
-        panner.distanceModel = 'inverse';
-        panner.refDistance = 1;
-        panner.maxDistance = 10000;
-        panner.rolloffFactor = 0;
-        panner.positionX.setValueAtTime(spec.sourcePosition.x, startTime);
-        panner.positionY.setValueAtTime(0, startTime);
-        panner.positionZ.setValueAtTime(-spec.sourcePosition.y, startTime);
-        gainNode.connect(panner).connect(sfxGainNode);
-        spatialOutput = { kind: 'hrtf', node: panner };
-      } else if (this.supportsStereoPanner()) {
-        const panner = audioCtx.createStereoPanner();
-        panner.pan.setValueAtTime(Math.max(-1, Math.min(1, resolved.pan)), startTime);
-        gainNode.connect(panner).connect(sfxGainNode);
-        spatialOutput = { kind: 'classic', node: panner };
-      } else {
-        gainNode.connect(sfxGainNode);
-      }
+    if (panValue !== undefined && this.supportsStereoPanner() && this.outputMode === 'stereo') {
+      const panner = audioCtx.createStereoPanner();
+      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, panValue)), startTime);
+      gainNode.connect(panner).connect(sfxGainNode);
     } else {
       gainNode.connect(sfxGainNode);
     }
 
     oscillator.start(startTime);
     oscillator.stop(startTime + spec.duration);
-    oscillator.onended = () => {
-      if (spatialOutput) {
-        disconnectSpatialOutputRuntime(spatialOutput);
-      }
-      gainNode.disconnect();
-    };
   }
 
   private applySpatialSampleRuntime(
@@ -674,27 +628,22 @@ export class AudioEngine {
       baseGain: sample.baseGain,
     });
     if (initial) {
-      applySpatialOutput({
-        audioCtx: this.audioCtx,
-        runtime: sample.spatialOutput,
-        gainNode: sample.gainNode,
-        mix,
-        outputMode: this.outputMode,
-        transition: 'linear',
-        dx: sample.sourceX - playerPosition.x,
-        dy: sample.sourceY - playerPosition.y,
-      });
+      const gainValue = mix?.gain ?? 0;
+      sample.gainNode.gain.setTargetAtTime(gainValue, this.audioCtx.currentTime, ONE_SHOT_ATTACK_SECONDS);
+      if (sample.pannerNode) {
+        const panValue = mix?.pan ?? 0;
+        const resolvedPan = this.outputMode === 'mono' ? 0 : Math.max(-1, Math.min(1, panValue));
+        sample.pannerNode.pan.setValueAtTime(resolvedPan, this.audioCtx.currentTime);
+      }
       return;
     }
-    applySpatialOutput({
+    applySpatialMixToNodes({
       audioCtx: this.audioCtx,
-      runtime: sample.spatialOutput,
       gainNode: sample.gainNode,
+      pannerNode: sample.pannerNode,
       mix,
       outputMode: this.outputMode,
       transition: 'target',
-      dx: sample.sourceX - playerPosition.x,
-      dy: sample.sourceY - playerPosition.y,
     });
   }
 

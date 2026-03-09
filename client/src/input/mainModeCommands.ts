@@ -39,14 +39,6 @@ const MAIN_MODE_COMMANDS: MainModeCommandDescriptor[] = [
     isAvailable: () => true,
   },
   {
-    id: 'toggleSpatialMode',
-    label: 'Toggle classic or HRTF spatial audio',
-    shortcut: 'H',
-    tooltip: 'Switch between classic stereo panning and HRTF spatial audio.',
-    section: 'Audio',
-    isAvailable: () => true,
-  },
-  {
     id: 'toggleOutputMode',
     label: 'Toggle stereo or mono output',
     shortcut: 'Shift+M',

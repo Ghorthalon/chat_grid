@@ -1,13 +1,12 @@
 import { HEARING_RADIUS, type WorldItem } from '../state/gameState';
 import { EFFECT_IDS, clampEffectLevel, connectEffectChain, disconnectEffectRuntime, type EffectId, type EffectRuntime } from './effects';
 import { AudioEngine } from './audioEngine';
-import { resolveSpatialMix } from './spatial';
-import { applySpatialOutput, createSpatialOutputRuntime, disconnectSpatialOutputRuntime, type SpatialOutputRuntime } from './spatialOutput';
+import { applySpatialMixToNodes, resolveSpatialMix } from './spatial';
 import { volumePercentToGain } from './volume';
-import { freshRadioPlaybackUrl, getProxyUrlForMedia, shouldProxyRadioStreamUrl } from './mediaUrl';
 
 export const RADIO_CHANNEL_OPTIONS = ['stereo', 'mono', 'left', 'right'] as const;
 export type RadioChannelMode = (typeof RADIO_CHANNEL_OPTIONS)[number];
+const APP_BASE_PATH = import.meta.env.BASE_URL ?? '/';
 
 type SharedRadioSource = {
   streamUrl: string;
@@ -30,7 +29,7 @@ type ItemRadioOutput = {
   effect: EffectId;
   effectValue: number;
   gain: GainNode;
-  spatialOutput: SpatialOutputRuntime;
+  panner: StereoPannerNode | null;
 };
 
 export function normalizeRadioEffect(effect: unknown): EffectId {
@@ -112,12 +111,50 @@ function connectRadioChannelSource(
   };
 }
 
+/** Returns whether a hostname belongs to Dropbox domains that need proxy support. */
+function isDropboxHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host.endsWith('dropbox.com') || host.endsWith('dropboxusercontent.com');
+}
+
 export function shouldProxyStreamUrl(streamUrl: string): boolean {
-  return shouldProxyRadioStreamUrl(streamUrl);
+  try {
+    const parsed = new URL(streamUrl);
+    if (
+      parsed.origin === window.location.origin &&
+      parsed.pathname.toLowerCase().endsWith('/media_proxy.php')
+    ) {
+      return false;
+    }
+    if (parsed.protocol === 'http:') return true;
+    if (parsed.protocol === 'https:' && isDropboxHost(parsed.hostname)) return true;
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 export function getProxyUrlForStream(streamUrl: string): string {
-  return getProxyUrlForMedia(streamUrl);
+  const normalizedBase = APP_BASE_PATH.endsWith('/') ? APP_BASE_PATH : `${APP_BASE_PATH}/`;
+  const proxy = new URL(`${normalizedBase}media_proxy.php`, window.location.origin);
+  proxy.searchParams.set('url', streamUrl);
+  return proxy.toString();
+}
+
+/** Appends a cache-buster query parameter to avoid stale stream buffers between sessions. */
+function freshStreamUrl(streamUrl: string): string {
+  const playbackSource = shouldProxyStreamUrl(streamUrl) ? getProxyUrlForStream(streamUrl) : streamUrl;
+  try {
+    const parsed = new URL(playbackSource);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname.endsWith('dropbox.com') || hostname.endsWith('dropboxusercontent.com')) {
+      return playbackSource;
+    }
+  } catch {
+    // Leave non-URL strings to the generic cache-buster behavior below.
+  }
+  const separator = playbackSource.includes('?') ? '&' : '?';
+  return `${playbackSource}${separator}chgrid_start=${Date.now()}`;
 }
 
 type RadioSpatialConfig = {
@@ -170,7 +207,7 @@ export class RadioStationRuntime {
     output.effectInput.disconnect();
     disconnectEffectRuntime(output.effectRuntime);
     output.gain.disconnect();
-    disconnectSpatialOutputRuntime(output.spatialOutput);
+    output.panner?.disconnect();
     this.itemRadioOutputs.delete(itemId);
     this.releaseSharedSource(output.streamUrl);
   }
@@ -266,15 +303,13 @@ export class RadioStationRuntime {
           rearGain: 0.4,
         },
       });
-      applySpatialOutput({
+      applySpatialMixToNodes({
         audioCtx,
-        runtime: output.spatialOutput,
         gainNode: output.gain,
+        pannerNode: output.panner,
         mix,
         outputMode: this.audio.getOutputMode(),
         transition: 'target',
-        dx: item.x - playerPosition.x,
-        dy: item.y - playerPosition.y,
       });
     }
   }
@@ -317,7 +352,7 @@ export class RadioStationRuntime {
     }
     const audioCtx = this.audio.context;
     if (!audioCtx) return null;
-    const element = new Audio(freshRadioPlaybackUrl(streamUrl));
+    const element = new Audio(freshStreamUrl(streamUrl));
     element.crossOrigin = 'anonymous';
     element.loop = true;
     element.preload = 'none';
@@ -405,13 +440,13 @@ export class RadioStationRuntime {
     const effectValue = normalizeRadioEffectValue(item.params.mediaEffectValue);
     const effectRuntime = connectEffectChain(audioCtx, effectInput, gain, effect, effectValue);
     const destination = this.audio.getOutputDestinationNode() ?? audioCtx.destination;
-    const spatialOutput = createSpatialOutputRuntime({
-      audioCtx,
-      inputNode: gain,
-      destination,
-      outputMode: this.audio.getOutputMode(),
-      spatialMode: this.audio.getSpatialMode(),
-    });
+    let panner: StereoPannerNode | null = null;
+    if (this.audio.supportsStereoPanner()) {
+      panner = audioCtx.createStereoPanner();
+      gain.connect(panner).connect(destination);
+    } else {
+      gain.connect(destination);
+    }
     this.itemRadioOutputs.set(item.id, {
       streamUrl,
       channel,
@@ -426,7 +461,7 @@ export class RadioStationRuntime {
       effect,
       effectValue,
       gain,
-      spatialOutput,
+      panner,
     });
   }
 
